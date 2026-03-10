@@ -1,0 +1,37 @@
+{
+  "versions": {
+    "external": {
+      "current": "0.2.0",
+      "propagationTargets": [
+        {
+          "file": "pyproject.toml",
+          "type": "field",
+          "path": "project.version"
+        },
+        {
+          "file": "src/mcpoyle/__init__.py",
+          "type": "pattern",
+          "pattern": "__version__"
+        }
+      ],
+      "incrementRules": {
+        "patch": "auto-per-chunk",
+        "minor": "suggest-at-plan-completion",
+        "major": "suggest-at-experience-milestone"
+      }
+    },
+    "spec": {
+      "current": "0.4.0",
+      "incrementRules": {
+        "minor": "auto-on-evolve"
+      }
+    }
+  },
+  "relationshipRules": {
+    "spec-to-external": {
+      "trigger": "spec crosses minor boundary",
+      "action": "suggest external minor bump"
+    }
+  },
+  "formatVersion": "0.35.0"
+}

@@ -9,17 +9,23 @@ from pathlib import Path
 from mcpoyle.clients import (
     CLIENTS,
     ProjectImport,
+    get_enabled_plugins,
+    get_extra_marketplaces,
     get_managed_servers,
     get_managed_servers_nested,
     import_project_servers,
     import_servers_from_client,
     project_servers_key,
+    read_cc_settings,
     read_client_config,
     server_to_client_entry,
+    set_enabled_plugins,
+    set_extra_marketplaces,
+    write_cc_settings,
     write_client_config,
     write_servers_nested,
 )
-from mcpoyle.config import McpoyleConfig, Server
+from mcpoyle.config import Marketplace, McpoyleConfig, Server
 
 
 def _diff_actions(label: str, new_entries: dict, managed: dict, dry_run: bool) -> tuple[list[str], bool]:
@@ -102,6 +108,10 @@ def sync_client(
                 proj_actions = _sync_project(config, client_id, proj.path, dry_run)
                 actions.extend(proj_actions)
 
+        # Sync plugins and marketplaces to Claude Code settings
+        plugin_actions = _sync_cc_plugins(config, client_id, dry_run)
+        actions.extend(plugin_actions)
+
     return actions
 
 
@@ -139,6 +149,80 @@ def _sync_project(
         proj.last_synced = datetime.now(timezone.utc).isoformat()
 
     return diff_actions
+
+
+def _sync_cc_plugins(
+    config: McpoyleConfig,
+    client_id: str,
+    dry_run: bool,
+) -> list[str]:
+    """Sync plugins and marketplaces to Claude Code's settings.json."""
+    actions = []
+    settings = read_cc_settings()
+
+    # Sync plugins
+    plugins = config.resolve_plugins(client_id)
+    new_enabled = {p.qualified_name: p.enabled for p in plugins}
+    current_enabled = get_enabled_plugins(settings)
+
+    plugin_changes = False
+    for qname, state in new_enabled.items():
+        if current_enabled.get(qname) != state:
+            symbol = "+" if state else "~"
+            actions.append(f"  {symbol} plugin {qname} → {'enabled' if state else 'disabled'}")
+            plugin_changes = True
+    for qname in current_enabled:
+        # Only report removals for plugins we manage
+        plugin = config.get_plugin(qname.split("@")[0] if "@" in qname else qname)
+        if plugin and plugin.managed and qname not in new_enabled:
+            actions.append(f"  - plugin {qname}")
+            plugin_changes = True
+
+    if plugin_changes:
+        if dry_run:
+            actions.insert(0, "Claude Code plugins: would sync")
+        else:
+            # Merge: update managed plugins, leave unmanaged alone
+            managed_names = {p.qualified_name for p in config.plugins if p.managed}
+            for qname in list(current_enabled.keys()):
+                if qname in managed_names and qname not in new_enabled:
+                    del current_enabled[qname]
+            current_enabled.update(new_enabled)
+            set_enabled_plugins(settings, current_enabled)
+            actions.append("Claude Code plugins: synced")
+    else:
+        actions.append("Claude Code plugins: already in sync")
+
+    # Sync marketplaces
+    current_mkts = get_extra_marketplaces(settings)
+    new_mkts = {}
+    for m in config.marketplaces:
+        if m.name not in Marketplace.RESERVED_NAMES:
+            source_dict = {"source": m.source.source}
+            if m.source.repo:
+                source_dict["repo"] = m.source.repo
+            elif m.source.path:
+                source_dict["path"] = m.source.path
+            new_mkts[m.name] = {"source": source_dict}
+
+    mkt_changes = new_mkts != current_mkts
+    if mkt_changes:
+        to_add = set(new_mkts.keys()) - set(current_mkts.keys())
+        to_remove = set(current_mkts.keys()) - set(new_mkts.keys())
+        for name in sorted(to_add):
+            actions.append(f"  + marketplace {name}")
+        for name in sorted(to_remove):
+            actions.append(f"  - marketplace {name}")
+        if dry_run:
+            actions.append("Claude Code marketplaces: would sync")
+        else:
+            set_extra_marketplaces(settings, new_mkts)
+            actions.append("Claude Code marketplaces: synced")
+
+    if (plugin_changes or mkt_changes) and not dry_run:
+        write_cc_settings(settings)
+
+    return actions
 
 
 def sync_all(config: McpoyleConfig, dry_run: bool = False) -> dict[str, list[str]]:

@@ -262,6 +262,49 @@ def write_servers_nested(path: Path, key_path: list[str], new_servers: dict) -> 
     path.write_text(json.dumps(existing, indent=2) + "\n")
 
 
+# ── Claude Code settings helpers ─────────────────────────────────
+
+CLAUDE_CODE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+
+
+def read_cc_settings() -> dict:
+    """Read Claude Code's settings.json."""
+    if not CLAUDE_CODE_SETTINGS_PATH.exists():
+        return {}
+    return json.loads(CLAUDE_CODE_SETTINGS_PATH.read_text())
+
+
+def write_cc_settings(settings: dict) -> None:
+    """Write Claude Code's settings.json, backing up first."""
+    if CLAUDE_CODE_SETTINGS_PATH.exists():
+        shutil.copy2(
+            CLAUDE_CODE_SETTINGS_PATH,
+            CLAUDE_CODE_SETTINGS_PATH.with_suffix(".json.bak"),
+        )
+    CLAUDE_CODE_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CLAUDE_CODE_SETTINGS_PATH.write_text(json.dumps(settings, indent=2) + "\n")
+
+
+def get_enabled_plugins(settings: dict) -> dict:
+    """Get enabledPlugins from CC settings."""
+    return settings.get("enabledPlugins", {})
+
+
+def set_enabled_plugins(settings: dict, plugins: dict) -> None:
+    """Set enabledPlugins in CC settings."""
+    settings["enabledPlugins"] = plugins
+
+
+def get_extra_marketplaces(settings: dict) -> dict:
+    """Get extraKnownMarketplaces from CC settings."""
+    return settings.get("extraKnownMarketplaces", {})
+
+
+def set_extra_marketplaces(settings: dict, marketplaces: dict) -> None:
+    """Set extraKnownMarketplaces in CC settings."""
+    settings["extraKnownMarketplaces"] = marketplaces
+
+
 def _get_nested(d: dict, key: str):
     """Get a value from a dict using a dot-separated key path."""
     return _get_nested_list(d, key.split("."))

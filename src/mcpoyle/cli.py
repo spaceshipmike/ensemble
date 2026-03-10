@@ -4,11 +4,22 @@ from __future__ import annotations
 
 import click
 
-from mcpoyle.clients import CLIENTS
+from mcpoyle.clients import (
+    CLIENTS,
+    get_enabled_plugins,
+    get_extra_marketplaces,
+    read_cc_settings,
+    set_enabled_plugins,
+    set_extra_marketplaces,
+    write_cc_settings,
+)
 from mcpoyle.config import (
     ClientAssignment,
     Group,
+    Marketplace,
+    MarketplaceSource,
     McpoyleConfig,
+    Plugin,
     ProjectAssignment,
     Server,
     load_config,
@@ -169,7 +180,13 @@ def groups_list(ctx: click.Context) -> None:
         return
     for g in cfg.groups:
         desc = f" — {g.description}" if g.description else ""
-        click.echo(f"  {g.name} ({len(g.servers)} servers){desc}")
+        parts = []
+        if g.servers:
+            parts.append(f"{len(g.servers)} servers")
+        if g.plugins:
+            parts.append(f"{len(g.plugins)} plugins")
+        counts = ", ".join(parts) if parts else "empty"
+        click.echo(f"  {g.name} ({counts}){desc}")
 
 
 @groups_group.command("create")
@@ -219,9 +236,9 @@ def groups_show(ctx: click.Context, name: str) -> None:
     click.echo(f"Group: {group.name}")
     if group.description:
         click.echo(f"Description: {group.description}")
-    if not group.servers:
-        click.echo("  (no servers)")
-    else:
+
+    if group.servers:
+        click.echo("Servers:")
         for sname in group.servers:
             server = cfg.get_server(sname)
             if server:
@@ -229,6 +246,18 @@ def groups_show(ctx: click.Context, name: str) -> None:
                 click.echo(f"  {sname} [{status}]")
             else:
                 click.echo(f"  {sname} [missing]")
+    else:
+        click.echo("Servers: (none)")
+
+    if group.plugins:
+        click.echo("Plugins:")
+        for pname in group.plugins:
+            plugin = cfg.get_plugin(pname)
+            if plugin:
+                status = click.style("on", fg="green") if plugin.enabled else click.style("off", fg="red")
+                click.echo(f"  {pname} [{status}]")
+            else:
+                click.echo(f"  {pname} [missing]")
 
 
 @groups_group.command("add-server")
@@ -270,6 +299,47 @@ def groups_remove_server(ctx: click.Context, group_name: str, server_name: str) 
     group.servers.remove(server_name)
     _save(ctx)
     click.echo(f"Removed '{server_name}' from group '{group_name}'.")
+
+
+@groups_group.command("add-plugin")
+@click.argument("group_name")
+@click.argument("plugin_name")
+@click.pass_context
+def groups_add_plugin(ctx: click.Context, group_name: str, plugin_name: str) -> None:
+    """Add a plugin to a group."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    group = cfg.get_group(group_name)
+    if not group:
+        click.echo(f"Group '{group_name}' not found.", err=True)
+        raise SystemExit(1)
+    if not cfg.get_plugin(plugin_name):
+        click.echo(f"Plugin '{plugin_name}' not found.", err=True)
+        raise SystemExit(1)
+    if plugin_name in group.plugins:
+        click.echo(f"Plugin '{plugin_name}' already in group '{group_name}'.")
+        return
+    group.plugins.append(plugin_name)
+    _save(ctx)
+    click.echo(f"Added '{plugin_name}' to group '{group_name}'.")
+
+
+@groups_group.command("remove-plugin")
+@click.argument("group_name")
+@click.argument("plugin_name")
+@click.pass_context
+def groups_remove_plugin(ctx: click.Context, group_name: str, plugin_name: str) -> None:
+    """Remove a plugin from a group."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    group = cfg.get_group(group_name)
+    if not group:
+        click.echo(f"Group '{group_name}' not found.", err=True)
+        raise SystemExit(1)
+    if plugin_name not in group.plugins:
+        click.echo(f"Plugin '{plugin_name}' not in group '{group_name}'.", err=True)
+        raise SystemExit(1)
+    group.plugins.remove(plugin_name)
+    _save(ctx)
+    click.echo(f"Removed '{plugin_name}' from group '{group_name}'.")
 
 
 # ── Client commands ──────────────────────────────────────────────
@@ -487,6 +557,334 @@ def registry_add(id_: str) -> None:
     click.echo("Registry install is not yet implemented.")
 
 
+# ── Marketplace commands ─────────────────────────────────────────
+
+
+@cli.group("marketplaces")
+def marketplaces_group() -> None:
+    """Manage Claude Code plugin marketplaces."""
+
+
+@marketplaces_group.command("list")
+@click.pass_context
+def marketplaces_list(ctx: click.Context) -> None:
+    """List all known marketplaces."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    if not cfg.marketplaces:
+        click.echo("No marketplaces configured.")
+        return
+    for m in cfg.marketplaces:
+        source_info = m.source.source
+        if m.source.repo:
+            source_info += f" ({m.source.repo})"
+        elif m.source.path:
+            source_info += f" ({m.source.path})"
+        click.echo(f"  {m.name} [{source_info}]")
+
+
+@marketplaces_group.command("add")
+@click.argument("name")
+@click.option("--repo", default=None, help="GitHub repository (owner/repo)")
+@click.option("--path", "local_path", default=None, help="Local directory path")
+@click.pass_context
+def marketplaces_add(ctx: click.Context, name: str, repo: str | None, local_path: str | None) -> None:
+    """Register a new marketplace."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+
+    if name in Marketplace.RESERVED_NAMES:
+        click.echo(f"'{name}' is a reserved marketplace name.", err=True)
+        raise SystemExit(1)
+
+    if cfg.get_marketplace(name):
+        click.echo(f"Marketplace '{name}' already exists.", err=True)
+        raise SystemExit(1)
+
+    if not repo and not local_path:
+        click.echo("Specify --repo or --path.", err=True)
+        raise SystemExit(1)
+
+    if repo:
+        source = MarketplaceSource(source="github", repo=repo)
+    else:
+        from pathlib import Path
+        abs_path = str(Path(local_path).expanduser().resolve())
+        source = MarketplaceSource(source="directory", path=abs_path)
+
+    marketplace = Marketplace(name=name, source=source)
+    cfg.marketplaces.append(marketplace)
+    _save(ctx)
+
+    # Write to Claude Code settings
+    settings = read_cc_settings()
+    extra = get_extra_marketplaces(settings)
+    extra[name] = {"source": _marketplace_source_to_cc(source)}
+    set_extra_marketplaces(settings, extra)
+    write_cc_settings(settings)
+
+    click.echo(f"Added marketplace '{name}'.")
+
+
+@marketplaces_group.command("remove")
+@click.argument("name")
+@click.pass_context
+def marketplaces_remove(ctx: click.Context, name: str) -> None:
+    """Remove a marketplace."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    marketplace = cfg.get_marketplace(name)
+    if not marketplace:
+        click.echo(f"Marketplace '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    cfg.marketplaces.remove(marketplace)
+    _save(ctx)
+
+    # Remove from Claude Code settings
+    settings = read_cc_settings()
+    extra = get_extra_marketplaces(settings)
+    if name in extra:
+        del extra[name]
+        set_extra_marketplaces(settings, extra)
+        write_cc_settings(settings)
+
+    click.echo(f"Removed marketplace '{name}'.")
+
+
+@marketplaces_group.command("show")
+@click.argument("name")
+@click.pass_context
+def marketplaces_show(ctx: click.Context, name: str) -> None:
+    """Show marketplace details."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    marketplace = cfg.get_marketplace(name)
+    if not marketplace:
+        click.echo(f"Marketplace '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Name:   {marketplace.name}")
+    click.echo(f"Source: {marketplace.source.source}")
+    if marketplace.source.repo:
+        click.echo(f"Repo:   {marketplace.source.repo}")
+    if marketplace.source.path:
+        click.echo(f"Path:   {marketplace.source.path}")
+
+    # Show plugins from this marketplace
+    plugins = [p for p in cfg.plugins if p.marketplace == name]
+    if plugins:
+        click.echo("Plugins:")
+        for p in plugins:
+            status = click.style("on", fg="green") if p.enabled else click.style("off", fg="red")
+            click.echo(f"  {p.name} [{status}]")
+
+
+def _marketplace_source_to_cc(source: MarketplaceSource) -> dict:
+    """Convert a MarketplaceSource to Claude Code's native format."""
+    d: dict = {"source": source.source}
+    if source.source == "github" and source.repo:
+        d["repo"] = source.repo
+    elif source.source == "directory" and source.path:
+        d["path"] = source.path
+    elif source.url:
+        d["url"] = source.url
+    return d
+
+
+# ── Plugin commands ──────────────────────────────────────────────
+
+
+@cli.group("plugins")
+def plugins_group() -> None:
+    """Manage Claude Code plugins."""
+
+
+@plugins_group.command("list")
+@click.pass_context
+def plugins_list(ctx: click.Context) -> None:
+    """List all plugins."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    if not cfg.plugins:
+        click.echo("No plugins tracked.")
+        return
+    for p in cfg.plugins:
+        status = click.style("on", fg="green") if p.enabled else click.style("off", fg="red")
+        managed = "" if p.managed else " (unmanaged)"
+        click.echo(f"  {p.name} [{status}] @ {p.marketplace}{managed}")
+
+
+@plugins_group.command("install")
+@click.argument("name")
+@click.option("--marketplace", "marketplace_name", default=None, help="Marketplace to install from")
+@click.pass_context
+def plugins_install(ctx: click.Context, name: str, marketplace_name: str | None) -> None:
+    """Install a plugin from a marketplace."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+
+    if cfg.get_plugin(name):
+        click.echo(f"Plugin '{name}' is already installed.", err=True)
+        raise SystemExit(1)
+
+    # Resolve marketplace
+    if marketplace_name:
+        marketplace = cfg.get_marketplace(marketplace_name)
+        if not marketplace:
+            click.echo(f"Marketplace '{marketplace_name}' not found.", err=True)
+            raise SystemExit(1)
+    elif len(cfg.marketplaces) == 1:
+        marketplace = cfg.marketplaces[0]
+        marketplace_name = marketplace.name
+    elif cfg.marketplaces:
+        click.echo("Multiple marketplaces available. Specify --marketplace.", err=True)
+        raise SystemExit(1)
+    else:
+        # Default to official marketplace
+        marketplace_name = "claude-plugins-official"
+
+    if not marketplace_name:
+        marketplace_name = "claude-plugins-official"
+
+    plugin = Plugin(name=name, marketplace=marketplace_name, enabled=True, managed=True)
+    cfg.plugins.append(plugin)
+    _save(ctx)
+
+    # Write to Claude Code enabledPlugins
+    settings = read_cc_settings()
+    enabled = get_enabled_plugins(settings)
+    enabled[plugin.qualified_name] = True
+    set_enabled_plugins(settings, enabled)
+    write_cc_settings(settings)
+
+    click.echo(f"Installed plugin '{name}' from {marketplace_name}.")
+
+
+@plugins_group.command("uninstall")
+@click.argument("name")
+@click.pass_context
+def plugins_uninstall(ctx: click.Context, name: str) -> None:
+    """Uninstall a plugin."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    plugin = cfg.get_plugin(name)
+    if not plugin:
+        click.echo(f"Plugin '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    # Remove from enabledPlugins
+    settings = read_cc_settings()
+    enabled = get_enabled_plugins(settings)
+    if plugin.qualified_name in enabled:
+        del enabled[plugin.qualified_name]
+        set_enabled_plugins(settings, enabled)
+        write_cc_settings(settings)
+
+    # Remove from groups
+    for group in cfg.groups:
+        if plugin.name in group.plugins:
+            group.plugins.remove(plugin.name)
+
+    cfg.plugins.remove(plugin)
+    _save(ctx)
+    click.echo(f"Uninstalled plugin '{name}'.")
+
+
+@plugins_group.command("enable")
+@click.argument("name")
+@click.pass_context
+def plugins_enable(ctx: click.Context, name: str) -> None:
+    """Enable a plugin."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    plugin = cfg.get_plugin(name)
+    if not plugin:
+        click.echo(f"Plugin '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    plugin.enabled = True
+    _save(ctx)
+
+    settings = read_cc_settings()
+    enabled = get_enabled_plugins(settings)
+    enabled[plugin.qualified_name] = True
+    set_enabled_plugins(settings, enabled)
+    write_cc_settings(settings)
+
+    click.echo(f"Enabled plugin '{name}'.")
+
+
+@plugins_group.command("disable")
+@click.argument("name")
+@click.pass_context
+def plugins_disable(ctx: click.Context, name: str) -> None:
+    """Disable a plugin."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    plugin = cfg.get_plugin(name)
+    if not plugin:
+        click.echo(f"Plugin '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    plugin.enabled = False
+    _save(ctx)
+
+    settings = read_cc_settings()
+    enabled = get_enabled_plugins(settings)
+    enabled[plugin.qualified_name] = False
+    set_enabled_plugins(settings, enabled)
+    write_cc_settings(settings)
+
+    click.echo(f"Disabled plugin '{name}'.")
+
+
+@plugins_group.command("show")
+@click.argument("name")
+@click.pass_context
+def plugins_show(ctx: click.Context, name: str) -> None:
+    """Show plugin details."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    plugin = cfg.get_plugin(name)
+    if not plugin:
+        click.echo(f"Plugin '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    status = click.style("enabled", fg="green") if plugin.enabled else click.style("disabled", fg="red")
+    managed = "yes" if plugin.managed else "no"
+    click.echo(f"Name:        {plugin.name}")
+    click.echo(f"Marketplace: {plugin.marketplace}")
+    click.echo(f"Status:      {status}")
+    click.echo(f"Managed:     {managed}")
+    click.echo(f"Qualified:   {plugin.qualified_name}")
+
+    member_of = [g.name for g in cfg.groups if plugin.name in g.plugins]
+    if member_of:
+        click.echo(f"Groups:      {', '.join(member_of)}")
+
+
+@plugins_group.command("import")
+@click.pass_context
+def plugins_import(ctx: click.Context) -> None:
+    """Import existing plugins from Claude Code settings."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    settings = read_cc_settings()
+    enabled = get_enabled_plugins(settings)
+
+    imported = 0
+    for qualified_name, is_enabled in enabled.items():
+        # Parse "name@marketplace" format
+        if "@" in qualified_name:
+            pname, mkt = qualified_name.rsplit("@", 1)
+        else:
+            pname, mkt = qualified_name, ""
+
+        if cfg.get_plugin(pname):
+            continue
+
+        plugin = Plugin(name=pname, marketplace=mkt, enabled=bool(is_enabled), managed=False)
+        cfg.plugins.append(plugin)
+        imported += 1
+        click.echo(f"  + {pname} @ {mkt}")
+
+    if imported:
+        _save(ctx)
+        click.echo(f"Imported {imported} plugin(s).")
+    else:
+        click.echo("No new plugins to import.")
+
+
 # ── Help command ─────────────────────────────────────────────────
 
 
@@ -510,6 +908,8 @@ GROUPS
   mcp groups show <name>                Show group members and their status.
   mcp groups add-server <group> <srv>   Add a server to a group.
   mcp groups remove-server <group> <srv>  Remove a server from a group.
+  mcp groups add-plugin <group> <plg>   Add a plugin to a group.
+  mcp groups remove-plugin <group> <plg>  Remove a plugin from a group.
 
 CLIENTS
   mcp clients                           Detect installed clients, show assignments and
@@ -537,12 +937,30 @@ SYNC
   Managed entries are tagged with a __mcpoyle marker in the client config.
   Client configs are backed up (.bak) before each write.
   Sync is idempotent — running it twice produces the same result.
+  For Claude Code, sync also updates plugins and marketplaces.
 
 IMPORT
   mcp import <client>                   Import servers from a client's existing config
                                         into the central registry. Skips duplicates and
                                         already-managed entries. For Claude Code, also
                                         scans all project-level mcpServers.
+
+PLUGINS (Claude Code)
+  mcp plugins list                      List all tracked plugins with status.
+  mcp plugins install <name>            Install a plugin. Options: --marketplace <name>
+  mcp plugins uninstall <name>          Remove a plugin from registry and settings.
+  mcp plugins enable <name>             Enable a disabled plugin.
+  mcp plugins disable <name>            Disable a plugin without removing it.
+  mcp plugins show <name>               Show plugin details and group membership.
+  mcp plugins import                    Import existing plugins from Claude Code settings.
+
+MARKETPLACES (Claude Code)
+  mcp marketplaces list                 List all registered marketplaces.
+  mcp marketplaces add <name>           Register a marketplace. Options:
+        --repo <owner/repo>               GitHub repository source
+        --path <dir>                      Local directory source
+  mcp marketplaces remove <name>        Remove a marketplace.
+  mcp marketplaces show <name>          Show marketplace details and plugins.
 
 REGISTRY (coming soon)
   mcp registry search <query>           Search the Smithery registry.
@@ -554,6 +972,9 @@ CONFIG
   Claude Code project-level assignments write to ~/.claude.json under
   projects.<absolute-path>.mcpServers. Different projects can use different groups.
 
+  Plugin state: ~/.claude/settings.json → enabledPlugins
+  Marketplaces: ~/.claude/settings.json → extraKnownMarketplaces
+
 EXAMPLES
   mcp import claude-desktop                          Import existing servers
   mcp groups create dev-tools --description "Dev"    Create a group
@@ -561,7 +982,9 @@ EXAMPLES
   mcp assign claude-desktop dev-tools                Assign group to client
   mcp assign claude-code minimal --project ~/Code/x  Per-project assignment
   mcp sync                                           Sync everything
-  mcp sync --dry-run                                 Preview first\
+  mcp sync --dry-run                                 Preview first
+  mcp plugins install clangd-lsp                     Install a plugin
+  mcp marketplaces add home --path ~/Code/my-mkt     Register local marketplace\
 """
 
 

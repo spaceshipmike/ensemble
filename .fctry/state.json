@@ -1,0 +1,23 @@
+{
+  "currentCommand": "execute",
+  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
+  "workflowStep": "executor-build",
+  "buildRun": {
+    "status": "completed",
+    "plan": {
+      "specVersion": "0.4.0",
+      "chunks": [
+        {"name": "Config schema expansion", "status": "completed"},
+        {"name": "Marketplace commands", "status": "completed"},
+        {"name": "Plugin commands", "status": "completed"},
+        {"name": "Group plugin support", "status": "completed"},
+        {"name": "Plugin-aware sync", "status": "completed"},
+        {"name": "Tests for new features", "status": "completed"}
+      ]
+    }
+  },
+  "upgradeApplied": {
+    "from": "0.0.0",
+    "to": "0.35.0"
+  }
+}
