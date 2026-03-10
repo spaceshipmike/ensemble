@@ -110,7 +110,7 @@ Sync is **idempotent** — running it twice produces the same result. Config fil
 
 Central config lives at `~/.config/mcpoyle/config.json`, created automatically on first use.
 
-Secrets in env values should use 1Password references (`op://Dev/...`) — MCPoyle stores the references, not plaintext.
+MCPoyle stores env values as-is. For secrets, use secret manager references (e.g., `op://Dev/...` for 1Password) rather than plaintext — MCPoyle will pass them through and your runtime can resolve them.
 
 ## License
 
