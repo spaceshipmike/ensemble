@@ -138,6 +138,33 @@ mcpoyle unassign claude-code --project ~/Code/myapp
 
 ---
 
+## Scope
+
+### `mcpoyle scope <name> --project <path>`
+
+Move a server or plugin from global scope to project-only. The item is removed from the global Claude Code group and added to the project's group. If groups don't exist yet, they are created automatically:
+
+- If global Claude Code has no group ("all servers" mode), a `claude-code-global` group is created containing all currently enabled servers and plugins
+- If the project has no group, one is created (named after the project directory) cloned from the global group
+
+After scoping, the item exists only in the project's group. Run `mcpoyle sync claude-code` to apply the changes.
+
+```
+mcpoyle scope ctx --project ~/Code/space-tracker
+mcpoyle scope clangd-lsp --project ~/Code/space-tracker
+mcpoyle sync claude-code
+```
+
+To reverse (move back to global), add the item back to the global group and remove from the project group:
+
+```
+mcpoyle groups add-server claude-code-global ctx
+mcpoyle groups remove-server space-tracker ctx
+mcpoyle sync claude-code
+```
+
+---
+
 ## Sync
 
 ### `mcpoyle sync [<client>] [options]`

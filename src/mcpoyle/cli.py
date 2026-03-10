@@ -460,6 +460,113 @@ def unassign(ctx: click.Context, client: str, project_path: str | None) -> None:
         click.echo(f"Unassigned {CLIENTS[client].name} — will receive all enabled servers.")
 
 
+# ── Scope command ────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("name")
+@click.option("--project", "project_path", required=True, help="Project to scope to")
+@click.pass_context
+def scope(ctx: click.Context, name: str, project_path: str) -> None:
+    """Move a server or plugin from global to project-only scope.
+
+    Removes the item from the global Claude Code assignment and adds it
+    to the project's group. If no groups exist yet, they are created
+    automatically.
+    """
+    from pathlib import Path as _Path
+
+    cfg: McpoyleConfig = ctx.obj["config"]
+    abs_path = str(_Path(project_path).expanduser().resolve())
+    project_basename = _Path(abs_path).name
+
+    # Detect whether name is a server or plugin
+    server = cfg.get_server(name)
+    plugin = cfg.get_plugin(name)
+    if not server and not plugin:
+        click.echo(f"'{name}' is not a known server or plugin.", err=True)
+        raise SystemExit(1)
+
+    item_type = "server" if server else "plugin"
+
+    # Ensure claude-code client assignment exists
+    assignment = cfg.get_client("claude-code")
+    if not assignment:
+        assignment = ClientAssignment(id="claude-code")
+        cfg.clients.append(assignment)
+
+    # Step 1: Ensure global uses a group (not "all")
+    if not assignment.group:
+        global_group_name = "claude-code-global"
+        global_group = cfg.get_group(global_group_name)
+        if not global_group:
+            # Create global group with all currently enabled servers and plugins
+            global_group = Group(
+                name=global_group_name,
+                description="Auto-created global group for Claude Code",
+                servers=[s.name for s in cfg.servers if s.enabled],
+                plugins=[p.name for p in cfg.plugins if p.enabled],
+            )
+            cfg.groups.append(global_group)
+            click.echo(f"Created group '{global_group_name}' with all enabled items.")
+        assignment.group = global_group_name
+    else:
+        global_group_name = assignment.group
+        global_group = cfg.get_group(global_group_name)
+        if not global_group:
+            click.echo(f"Global group '{global_group_name}' not found.", err=True)
+            raise SystemExit(1)
+
+    # Step 2: Ensure project has a group assignment
+    proj = assignment.get_project(abs_path)
+    if not proj:
+        proj = ProjectAssignment(path=abs_path)
+        assignment.projects.append(proj)
+
+    if not proj.group:
+        proj_group_name = project_basename
+        # Avoid collision with existing group
+        if cfg.get_group(proj_group_name) and proj_group_name == global_group_name:
+            proj_group_name = f"{project_basename}-project"
+        proj_group = cfg.get_group(proj_group_name)
+        if not proj_group:
+            # Clone from global group so project starts with same items
+            proj_group = Group(
+                name=proj_group_name,
+                description=f"Servers and plugins for {project_basename}",
+                servers=list(global_group.servers),
+                plugins=list(global_group.plugins),
+            )
+            cfg.groups.append(proj_group)
+            click.echo(f"Created group '{proj_group_name}' for project.")
+        proj.group = proj_group_name
+    else:
+        proj_group_name = proj.group
+        proj_group = cfg.get_group(proj_group_name)
+        if not proj_group:
+            click.echo(f"Project group '{proj_group_name}' not found.", err=True)
+            raise SystemExit(1)
+
+    # Step 3: Add to project group, remove from global group
+    if item_type == "server":
+        if name not in proj_group.servers:
+            proj_group.servers.append(name)
+        if name in global_group.servers:
+            global_group.servers.remove(name)
+    else:
+        if name not in proj_group.plugins:
+            proj_group.plugins.append(name)
+        if name in global_group.plugins:
+            global_group.plugins.remove(name)
+
+    _save(ctx)
+
+    click.echo(f"Scoped {item_type} '{name}' to project {abs_path}.")
+    click.echo(f"  removed from: {global_group_name} (global)")
+    click.echo(f"  added to:     {proj_group_name} (project)")
+    click.echo(f"Run 'mcpoyle sync claude-code' to apply.")
+
+
 # ── Sync commands ────────────────────────────────────────────────
 
 
@@ -927,6 +1034,11 @@ ASSIGNMENTS
   mcp unassign <client>                 Remove a project-level assignment.
         --project <path>                (--project is Claude Code only)
 
+SCOPE
+  mcp scope <name> --project <path>     Move a server or plugin from global to
+                                        project-only. Auto-creates groups if needed.
+                                        Run 'mcp sync claude-code' after to apply.
+
 SYNC
   mcp sync                              Sync all detected clients.
   mcp sync <client>                     Sync one client.
@@ -989,7 +1101,8 @@ EXAMPLES
   mcp sync                                           Sync everything
   mcp sync --dry-run                                 Preview first
   mcp plugins install clangd-lsp                     Install a plugin
-  mcp marketplaces add home --path ~/Code/my-mkt     Register local marketplace\
+  mcp marketplaces add home --path ~/Code/my-mkt     Register local marketplace
+  mcp scope ctx --project ~/Code/myapp               Move ctx to project-only\
 """
 
 
