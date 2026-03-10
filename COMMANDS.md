@@ -76,6 +76,18 @@ mcpoyle groups add-server dev-tools ctx
 
 Remove a server from a group.
 
+### `mcpoyle groups add-plugin <group> <plugin>`
+
+Add a plugin to a group. Use short name (e.g., `clangd-lsp`) or full qualified name (`clangd-lsp@claude-plugins-official`).
+
+```
+mcpoyle groups add-plugin dev-tools clangd-lsp
+```
+
+### `mcpoyle groups remove-plugin <group> <plugin>`
+
+Remove a plugin from a group.
+
 ---
 
 ## Clients
@@ -148,6 +160,9 @@ mcpoyle sync claude-code --project ~/Code/myapp  # sync one project
 
 - Managed servers are identified by a `__mcpoyle` marker in each entry
 - Servers not managed by mcpoyle are never modified or removed (additive only)
+- For Claude Code, also syncs plugin enabled/disabled state and marketplace registrations
+- Project-level plugin sync writes to `<project>/.claude/settings.local.json` (not `settings.json`), keeping your plugin choices personal and gitignored
+- Automatically applies workaround for [CC bug #27247](https://github.com/anthropics/claude-code/issues/27247): ensures `enabledPlugins` key exists in project `settings.json` so local overrides aren't silently dropped
 - Client config files are backed up to `.bak` before writing
 - Running sync twice produces the same result (idempotent)
 
@@ -161,6 +176,91 @@ For Claude Code, also scans all project-level `mcpServers` entries in `~/.claude
 mcpoyle import claude-desktop    # import from global config
 mcpoyle import claude-code       # import from global + all project configs
 ```
+
+---
+
+## Plugins (Claude Code)
+
+Plugin state is tracked via `enabledPlugins`. At the user level, this lives in `~/.claude/settings.json`. At the project level, mcpoyle writes to `<project>/.claude/settings.local.json` (personal, gitignored) so your plugin choices don't affect teammates.
+
+### `mcpoyle plugins list`
+
+List all plugins tracked by mcpoyle with their enabled/disabled status and marketplace.
+
+### `mcpoyle plugins install <name> [options]`
+
+Install a plugin from a known marketplace.
+
+| Option | Description |
+|--------|-------------|
+| `--marketplace <name>` | Which marketplace to install from (required if ambiguous) |
+
+```
+mcpoyle plugins install clangd-lsp
+mcpoyle plugins install my-plugin --marketplace homelab
+```
+
+Writes to Claude Code:
+- Fetches plugin source to `~/.claude/plugins/cache/`
+- Sets `"name@marketplace": true` in `~/.claude/settings.json` → `enabledPlugins`
+
+### `mcpoyle plugins uninstall <name>`
+
+Remove a plugin. Removes from `enabledPlugins` and cleans up cached files.
+
+### `mcpoyle plugins enable <name>`
+
+Enable a disabled plugin. Sets `enabledPlugins` entry to `true` without modifying cached files.
+
+### `mcpoyle plugins disable <name>`
+
+Disable a plugin. Sets `enabledPlugins` entry to `false` without removing cached files.
+
+### `mcpoyle plugins show <name>`
+
+Show full plugin details: marketplace, enabled state, cache path, and group membership.
+
+### `mcpoyle plugins import`
+
+Import existing plugins from `enabledPlugins` in `~/.claude/settings.json` into mcpoyle's central registry. Marks imported plugins as `managed: false`. Does not modify Claude Code's config.
+
+```
+mcpoyle plugins import    # import all existing plugins
+```
+
+---
+
+## Marketplaces (Claude Code)
+
+### `mcpoyle marketplaces list`
+
+List all known marketplaces with their source type and plugin count.
+
+### `mcpoyle marketplaces add <name> [options]`
+
+Register a new marketplace.
+
+| Option | Description |
+|--------|-------------|
+| `--repo <owner/repo>` | GitHub repository source |
+| `--path <dir>` | Local directory source |
+
+```
+mcpoyle marketplaces add my-plugins --repo myorg/claude-plugins
+mcpoyle marketplaces add local-dev --path ~/Code/my-marketplace
+```
+
+Registers in both mcpoyle's config and Claude Code's `settings.json` → `extraKnownMarketplaces`. Uses CC's native format (`{"source": "github", "repo": "..."}` or `{"source": "directory", "path": "..."}`).
+
+Reserved names that will be rejected: `claude-code-marketplace`, `claude-code-plugins`, `claude-plugins-official`, `anthropic-marketplace`, `anthropic-plugins`, `agent-skills`, `life-sciences`.
+
+### `mcpoyle marketplaces remove <name>`
+
+Remove a marketplace from mcpoyle's config and Claude Code's `extraKnownMarketplaces`. Does not uninstall plugins from that marketplace.
+
+### `mcpoyle marketplaces show <name>`
+
+Show marketplace details: source and list of available plugins.
 
 ---
 
@@ -194,3 +294,13 @@ mcpoyle assign claude-code dev-tools                        # global
 mcpoyle assign claude-code minimal --project ~/Code/myapp   # project-level
 mcpoyle sync claude-code                                    # syncs both
 ```
+
+### Plugin Config Paths
+
+| Scope | File | Managed by |
+|-------|------|------------|
+| User (global) | `~/.claude/settings.json` → `enabledPlugins` | `mcpoyle plugins install/enable/disable` |
+| Project (personal) | `<project>/.claude/settings.local.json` → `enabledPlugins` | `mcpoyle sync` (when group has plugins) |
+| Marketplaces | `~/.claude/settings.json` → `extraKnownMarketplaces` | `mcpoyle marketplaces add/remove` |
+
+Project-level plugins are written to `settings.local.json` (gitignored) rather than `settings.json` (committed), so your plugin preferences don't affect the team. mcpoyle automatically ensures the `enabledPlugins` key exists in the project's `settings.json` as a workaround for a [known Claude Code bug](https://github.com/anthropics/claude-code/issues/27247) where local overrides are silently ignored without it.

@@ -938,6 +938,8 @@ SYNC
   Client configs are backed up (.bak) before each write.
   Sync is idempotent — running it twice produces the same result.
   For Claude Code, sync also updates plugins and marketplaces.
+  Project-level plugins write to <project>/.claude/settings.local.json
+  (personal, gitignored) with auto-workaround for CC bug #27247.
 
 IMPORT
   mcp import <client>                   Import servers from a client's existing config
@@ -954,6 +956,9 @@ PLUGINS (Claude Code)
   mcp plugins show <name>               Show plugin details and group membership.
   mcp plugins import                    Import existing plugins from Claude Code settings.
 
+  User-level: writes to ~/.claude/settings.json → enabledPlugins
+  Project-level: writes to <project>/.claude/settings.local.json (via sync)
+
 MARKETPLACES (Claude Code)
   mcp marketplaces list                 List all registered marketplaces.
   mcp marketplaces add <name>           Register a marketplace. Options:
@@ -969,10 +974,10 @@ REGISTRY (coming soon)
 CONFIG
   Central config: ~/.config/mcpoyle/config.json (created automatically).
 
-  Claude Code project-level assignments write to ~/.claude.json under
-  projects.<absolute-path>.mcpServers. Different projects can use different groups.
-
-  Plugin state: ~/.claude/settings.json → enabledPlugins
+  Servers:      ~/.claude.json → mcpServers (global)
+                ~/.claude.json → projects.<path>.mcpServers (per-project)
+  Plugins:      ~/.claude/settings.json → enabledPlugins (global)
+                <project>/.claude/settings.local.json → enabledPlugins (per-project)
   Marketplaces: ~/.claude/settings.json → extraKnownMarketplaces
 
 EXAMPLES
