@@ -1,0 +1,20 @@
+[project]
+name = "mcpoyle"
+version = "0.1.0"
+description = "Centrally manage MCP server configurations across AI clients"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "click>=8.1",
+]
+
+[project.scripts]
+mcp = "mcpoyle.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcpoyle"]
