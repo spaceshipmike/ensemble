@@ -4,28 +4,14 @@ from __future__ import annotations
 
 import click
 
-from mcpoyle.clients import (
-    CLIENTS,
-    get_enabled_plugins,
-    get_extra_marketplaces,
-    read_cc_settings,
-    set_enabled_plugins,
-    set_extra_marketplaces,
-    write_cc_settings,
-)
+from mcpoyle.clients import CLIENTS
 from mcpoyle.config import (
-    ClientAssignment,
-    Group,
-    Marketplace,
-    MarketplaceSource,
     McpoyleConfig,
-    Plugin,
-    ProjectAssignment,
-    Server,
     load_config,
     save_config,
 )
 from mcpoyle.sync import do_import, sync_all, sync_client
+from mcpoyle import operations as ops
 
 
 @click.group()
@@ -38,6 +24,19 @@ def cli(ctx: click.Context) -> None:
 
 def _save(ctx: click.Context) -> None:
     save_config(ctx.obj["config"])
+
+
+def _handle(ctx: click.Context, result: ops.OpResult, save: bool = True) -> None:
+    """Handle an operation result: print messages/errors, save if needed, exit on failure."""
+    if not result.ok:
+        click.echo(result.error, err=True)
+        for msg in result.messages:
+            click.echo(msg)
+        raise SystemExit(1)
+    if save:
+        _save(ctx)
+    for msg in result.messages:
+        click.echo(msg)
 
 
 # ── Server commands ──────────────────────────────────────────────
@@ -65,11 +64,6 @@ def list_servers(ctx: click.Context) -> None:
 @click.pass_context
 def add(ctx: click.Context, name: str, cmd: str, args_: tuple[str, ...], env_pairs: tuple[str, ...], transport: str) -> None:
     """Add a new server."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    if cfg.get_server(name):
-        click.echo(f"Server '{name}' already exists.", err=True)
-        raise SystemExit(1)
-
     env = {}
     for pair in env_pairs:
         if "=" not in pair:
@@ -78,10 +72,8 @@ def add(ctx: click.Context, name: str, cmd: str, args_: tuple[str, ...], env_pai
         k, v = pair.split("=", 1)
         env[k] = v
 
-    server = Server(name=name, command=cmd, args=list(args_), env=env, transport=transport)
-    cfg.servers.append(server)
-    _save(ctx)
-    click.echo(f"Added server '{name}'.")
+    result = ops.add_server(ctx.obj["config"], name, cmd, list(args_), env, transport)
+    _handle(ctx, result)
 
 
 @cli.command()
@@ -89,19 +81,8 @@ def add(ctx: click.Context, name: str, cmd: str, args_: tuple[str, ...], env_pai
 @click.pass_context
 def remove(ctx: click.Context, name: str) -> None:
     """Remove a server."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    server = cfg.get_server(name)
-    if not server:
-        click.echo(f"Server '{name}' not found.", err=True)
-        raise SystemExit(1)
-
-    cfg.servers.remove(server)
-    # Also remove from any groups
-    for group in cfg.groups:
-        if name in group.servers:
-            group.servers.remove(name)
-    _save(ctx)
-    click.echo(f"Removed server '{name}'.")
+    result = ops.remove_server(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @cli.command()
@@ -109,14 +90,8 @@ def remove(ctx: click.Context, name: str) -> None:
 @click.pass_context
 def enable(ctx: click.Context, name: str) -> None:
     """Enable a server."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    server = cfg.get_server(name)
-    if not server:
-        click.echo(f"Server '{name}' not found.", err=True)
-        raise SystemExit(1)
-    server.enabled = True
-    _save(ctx)
-    click.echo(f"Enabled server '{name}'.")
+    result = ops.enable_server(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @cli.command()
@@ -124,14 +99,8 @@ def enable(ctx: click.Context, name: str) -> None:
 @click.pass_context
 def disable(ctx: click.Context, name: str) -> None:
     """Disable a server."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    server = cfg.get_server(name)
-    if not server:
-        click.echo(f"Server '{name}' not found.", err=True)
-        raise SystemExit(1)
-    server.enabled = False
-    _save(ctx)
-    click.echo(f"Disabled server '{name}'.")
+    result = ops.disable_server(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @cli.command()
@@ -195,13 +164,8 @@ def groups_list(ctx: click.Context) -> None:
 @click.pass_context
 def groups_create(ctx: click.Context, name: str, description: str) -> None:
     """Create a new group."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    if cfg.get_group(name):
-        click.echo(f"Group '{name}' already exists.", err=True)
-        raise SystemExit(1)
-    cfg.groups.append(Group(name=name, description=description))
-    _save(ctx)
-    click.echo(f"Created group '{name}'.")
+    result = ops.create_group(ctx.obj["config"], name, description)
+    _handle(ctx, result)
 
 
 @groups_group.command("delete")
@@ -209,18 +173,8 @@ def groups_create(ctx: click.Context, name: str, description: str) -> None:
 @click.pass_context
 def groups_delete(ctx: click.Context, name: str) -> None:
     """Delete a group."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    group = cfg.get_group(name)
-    if not group:
-        click.echo(f"Group '{name}' not found.", err=True)
-        raise SystemExit(1)
-    cfg.groups.remove(group)
-    # Clear assignments pointing to this group
-    for client in cfg.clients:
-        if client.group == name:
-            client.group = None
-    _save(ctx)
-    click.echo(f"Deleted group '{name}'.")
+    result = ops.delete_group(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @groups_group.command("show")
@@ -266,20 +220,8 @@ def groups_show(ctx: click.Context, name: str) -> None:
 @click.pass_context
 def groups_add_server(ctx: click.Context, group_name: str, server_name: str) -> None:
     """Add a server to a group."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    group = cfg.get_group(group_name)
-    if not group:
-        click.echo(f"Group '{group_name}' not found.", err=True)
-        raise SystemExit(1)
-    if not cfg.get_server(server_name):
-        click.echo(f"Server '{server_name}' not found.", err=True)
-        raise SystemExit(1)
-    if server_name in group.servers:
-        click.echo(f"Server '{server_name}' already in group '{group_name}'.")
-        return
-    group.servers.append(server_name)
-    _save(ctx)
-    click.echo(f"Added '{server_name}' to group '{group_name}'.")
+    result = ops.add_server_to_group(ctx.obj["config"], group_name, server_name)
+    _handle(ctx, result)
 
 
 @groups_group.command("remove-server")
@@ -288,17 +230,8 @@ def groups_add_server(ctx: click.Context, group_name: str, server_name: str) -> 
 @click.pass_context
 def groups_remove_server(ctx: click.Context, group_name: str, server_name: str) -> None:
     """Remove a server from a group."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    group = cfg.get_group(group_name)
-    if not group:
-        click.echo(f"Group '{group_name}' not found.", err=True)
-        raise SystemExit(1)
-    if server_name not in group.servers:
-        click.echo(f"Server '{server_name}' not in group '{group_name}'.", err=True)
-        raise SystemExit(1)
-    group.servers.remove(server_name)
-    _save(ctx)
-    click.echo(f"Removed '{server_name}' from group '{group_name}'.")
+    result = ops.remove_server_from_group(ctx.obj["config"], group_name, server_name)
+    _handle(ctx, result)
 
 
 @groups_group.command("add-plugin")
@@ -307,20 +240,8 @@ def groups_remove_server(ctx: click.Context, group_name: str, server_name: str) 
 @click.pass_context
 def groups_add_plugin(ctx: click.Context, group_name: str, plugin_name: str) -> None:
     """Add a plugin to a group."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    group = cfg.get_group(group_name)
-    if not group:
-        click.echo(f"Group '{group_name}' not found.", err=True)
-        raise SystemExit(1)
-    if not cfg.get_plugin(plugin_name):
-        click.echo(f"Plugin '{plugin_name}' not found.", err=True)
-        raise SystemExit(1)
-    if plugin_name in group.plugins:
-        click.echo(f"Plugin '{plugin_name}' already in group '{group_name}'.")
-        return
-    group.plugins.append(plugin_name)
-    _save(ctx)
-    click.echo(f"Added '{plugin_name}' to group '{group_name}'.")
+    result = ops.add_plugin_to_group(ctx.obj["config"], group_name, plugin_name)
+    _handle(ctx, result)
 
 
 @groups_group.command("remove-plugin")
@@ -329,17 +250,8 @@ def groups_add_plugin(ctx: click.Context, group_name: str, plugin_name: str) -> 
 @click.pass_context
 def groups_remove_plugin(ctx: click.Context, group_name: str, plugin_name: str) -> None:
     """Remove a plugin from a group."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    group = cfg.get_group(group_name)
-    if not group:
-        click.echo(f"Group '{group_name}' not found.", err=True)
-        raise SystemExit(1)
-    if plugin_name not in group.plugins:
-        click.echo(f"Plugin '{plugin_name}' not in group '{group_name}'.", err=True)
-        raise SystemExit(1)
-    group.plugins.remove(plugin_name)
-    _save(ctx)
-    click.echo(f"Removed '{plugin_name}' from group '{group_name}'.")
+    result = ops.remove_plugin_from_group(ctx.obj["config"], group_name, plugin_name)
+    _handle(ctx, result)
 
 
 # ── Client commands ──────────────────────────────────────────────
@@ -377,51 +289,8 @@ def clients_cmd(ctx: click.Context) -> None:
 @click.pass_context
 def assign(ctx: click.Context, client: str, group: str | None, assign_all: bool, project_path: str | None) -> None:
     """Assign a group to a client."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    if client not in CLIENTS:
-        click.echo(f"Unknown client: {client}", err=True)
-        click.echo(f"Valid clients: {', '.join(CLIENTS.keys())}")
-        raise SystemExit(1)
-
-    if project_path and client != "claude-code":
-        click.echo("--project is only supported for claude-code.", err=True)
-        raise SystemExit(1)
-
-    if assign_all:
-        group = None
-    elif not group:
-        click.echo("Specify a group name or use --all.", err=True)
-        raise SystemExit(1)
-    elif not cfg.get_group(group):
-        click.echo(f"Group '{group}' not found.", err=True)
-        raise SystemExit(1)
-
-    assignment = cfg.get_client(client)
-    if not assignment:
-        assignment = ClientAssignment(id=client)
-        cfg.clients.append(assignment)
-
-    if project_path:
-        from pathlib import Path
-        abs_path = str(Path(project_path).expanduser().resolve())
-        proj = assignment.get_project(abs_path)
-        if not proj:
-            proj = ProjectAssignment(path=abs_path, group=group)
-            assignment.projects.append(proj)
-        else:
-            proj.group = group
-        _save(ctx)
-        if group:
-            click.echo(f"Assigned group '{group}' to Claude Code project {abs_path}.")
-        else:
-            click.echo(f"Assigned all enabled servers to Claude Code project {abs_path}.")
-    else:
-        assignment.group = group
-        _save(ctx)
-        if group:
-            click.echo(f"Assigned group '{group}' to {CLIENTS[client].name}.")
-        else:
-            click.echo(f"Assigned all enabled servers to {CLIENTS[client].name}.")
+    result = ops.assign_client(ctx.obj["config"], client, group, assign_all, project_path)
+    _handle(ctx, result)
 
 
 @cli.command()
@@ -430,34 +299,8 @@ def assign(ctx: click.Context, client: str, group: str | None, assign_all: bool,
 @click.pass_context
 def unassign(ctx: click.Context, client: str, project_path: str | None) -> None:
     """Remove group assignment from a client (reverts to all servers)."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    if client not in CLIENTS:
-        click.echo(f"Unknown client: {client}", err=True)
-        raise SystemExit(1)
-
-    if project_path and client != "claude-code":
-        click.echo("--project is only supported for claude-code.", err=True)
-        raise SystemExit(1)
-
-    assignment = cfg.get_client(client)
-    if not assignment:
-        click.echo(f"No assignment for {CLIENTS[client].name}.")
-        return
-
-    if project_path:
-        from pathlib import Path
-        abs_path = str(Path(project_path).expanduser().resolve())
-        proj = assignment.get_project(abs_path)
-        if proj:
-            assignment.projects.remove(proj)
-            _save(ctx)
-            click.echo(f"Removed project assignment for {abs_path}.")
-        else:
-            click.echo(f"No project assignment for {abs_path}.")
-    else:
-        assignment.group = None
-        _save(ctx)
-        click.echo(f"Unassigned {CLIENTS[client].name} — will receive all enabled servers.")
+    result = ops.unassign_client(ctx.obj["config"], client, project_path)
+    _handle(ctx, result)
 
 
 # ── Rules commands ───────────────────────────────────────────────
@@ -489,27 +332,8 @@ def rules_add(ctx: click.Context, path: str, group: str) -> None:
 
     Example: mcpoyle rules add ~/Projects/ assistant
     """
-    from pathlib import Path as _Path
-    from mcpoyle.config import PathRule
-
-    cfg: McpoyleConfig = ctx.obj["config"]
-
-    if not cfg.get_group(group):
-        click.echo(f"Group '{group}' not found.", err=True)
-        raise SystemExit(1)
-
-    abs_path = str(_Path(path).expanduser().resolve())
-
-    # Check for duplicate
-    for r in cfg.rules:
-        if r.resolved_path == abs_path:
-            click.echo(f"Rule for '{abs_path}' already exists (→ {r.group}).", err=True)
-            raise SystemExit(1)
-
-    cfg.rules.append(PathRule(path=path, group=group))
-    _save(ctx)
-    click.echo(f"Added rule: {path} → {group}")
-    click.echo("Projects under this path will get this group on next sync.")
+    result = ops.add_rule(ctx.obj["config"], path, group)
+    _handle(ctx, result)
 
 
 @rules_group.command("remove")
@@ -517,19 +341,8 @@ def rules_add(ctx: click.Context, path: str, group: str) -> None:
 @click.pass_context
 def rules_remove(ctx: click.Context, path: str) -> None:
     """Remove a path rule."""
-    from pathlib import Path as _Path
-
-    cfg: McpoyleConfig = ctx.obj["config"]
-    abs_path = str(_Path(path).expanduser().resolve())
-
-    rule = next((r for r in cfg.rules if r.resolved_path == abs_path), None)
-    if not rule:
-        click.echo(f"No rule for '{path}'.", err=True)
-        raise SystemExit(1)
-
-    cfg.rules.remove(rule)
-    _save(ctx)
-    click.echo(f"Removed rule for '{path}'.")
+    result = ops.remove_rule(ctx.obj["config"], path)
+    _handle(ctx, result)
 
 
 # ── Scope command ────────────────────────────────────────────────
@@ -546,97 +359,8 @@ def scope(ctx: click.Context, name: str, project_path: str) -> None:
     to the project's group. If no groups exist yet, they are created
     automatically.
     """
-    from pathlib import Path as _Path
-
-    cfg: McpoyleConfig = ctx.obj["config"]
-    abs_path = str(_Path(project_path).expanduser().resolve())
-    project_basename = _Path(abs_path).name
-
-    # Detect whether name is a server or plugin
-    server = cfg.get_server(name)
-    plugin = cfg.get_plugin(name)
-    if not server and not plugin:
-        click.echo(f"'{name}' is not a known server or plugin.", err=True)
-        raise SystemExit(1)
-
-    item_type = "server" if server else "plugin"
-
-    # Ensure claude-code client assignment exists
-    assignment = cfg.get_client("claude-code")
-    if not assignment:
-        assignment = ClientAssignment(id="claude-code")
-        cfg.clients.append(assignment)
-
-    # Step 1: Ensure global uses a group (not "all")
-    if not assignment.group:
-        global_group_name = "claude-code-global"
-        global_group = cfg.get_group(global_group_name)
-        if not global_group:
-            # Create global group with all currently enabled servers and plugins
-            global_group = Group(
-                name=global_group_name,
-                description="Auto-created global group for Claude Code",
-                servers=[s.name for s in cfg.servers if s.enabled],
-                plugins=[p.name for p in cfg.plugins if p.enabled],
-            )
-            cfg.groups.append(global_group)
-            click.echo(f"Created group '{global_group_name}' with all enabled items.")
-        assignment.group = global_group_name
-    else:
-        global_group_name = assignment.group
-        global_group = cfg.get_group(global_group_name)
-        if not global_group:
-            click.echo(f"Global group '{global_group_name}' not found.", err=True)
-            raise SystemExit(1)
-
-    # Step 2: Ensure project has a group assignment
-    proj = assignment.get_project(abs_path)
-    if not proj:
-        proj = ProjectAssignment(path=abs_path)
-        assignment.projects.append(proj)
-
-    if not proj.group:
-        proj_group_name = project_basename
-        # Avoid collision with existing group
-        if cfg.get_group(proj_group_name) and proj_group_name == global_group_name:
-            proj_group_name = f"{project_basename}-project"
-        proj_group = cfg.get_group(proj_group_name)
-        if not proj_group:
-            # Clone from global group so project starts with same items
-            proj_group = Group(
-                name=proj_group_name,
-                description=f"Servers and plugins for {project_basename}",
-                servers=list(global_group.servers),
-                plugins=list(global_group.plugins),
-            )
-            cfg.groups.append(proj_group)
-            click.echo(f"Created group '{proj_group_name}' for project.")
-        proj.group = proj_group_name
-    else:
-        proj_group_name = proj.group
-        proj_group = cfg.get_group(proj_group_name)
-        if not proj_group:
-            click.echo(f"Project group '{proj_group_name}' not found.", err=True)
-            raise SystemExit(1)
-
-    # Step 3: Add to project group, remove from global group
-    if item_type == "server":
-        if name not in proj_group.servers:
-            proj_group.servers.append(name)
-        if name in global_group.servers:
-            global_group.servers.remove(name)
-    else:
-        if name not in proj_group.plugins:
-            proj_group.plugins.append(name)
-        if name in global_group.plugins:
-            global_group.plugins.remove(name)
-
-    _save(ctx)
-
-    click.echo(f"Scoped {item_type} '{name}' to project {abs_path}.")
-    click.echo(f"  removed from: {global_group_name} (global)")
-    click.echo(f"  added to:     {proj_group_name} (project)")
-    click.echo(f"Run 'mcpoyle sync claude-code' to apply.")
+    result = ops.scope_item(ctx.obj["config"], name, project_path)
+    _handle(ctx, result)
 
 
 # ── Sync commands ────────────────────────────────────────────────
@@ -768,39 +492,8 @@ def marketplaces_list(ctx: click.Context) -> None:
 @click.pass_context
 def marketplaces_add(ctx: click.Context, name: str, repo: str | None, local_path: str | None) -> None:
     """Register a new marketplace."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-
-    if name in Marketplace.RESERVED_NAMES:
-        click.echo(f"'{name}' is a reserved marketplace name.", err=True)
-        raise SystemExit(1)
-
-    if cfg.get_marketplace(name):
-        click.echo(f"Marketplace '{name}' already exists.", err=True)
-        raise SystemExit(1)
-
-    if not repo and not local_path:
-        click.echo("Specify --repo or --path.", err=True)
-        raise SystemExit(1)
-
-    if repo:
-        source = MarketplaceSource(source="github", repo=repo)
-    else:
-        from pathlib import Path
-        abs_path = str(Path(local_path).expanduser().resolve())
-        source = MarketplaceSource(source="directory", path=abs_path)
-
-    marketplace = Marketplace(name=name, source=source)
-    cfg.marketplaces.append(marketplace)
-    _save(ctx)
-
-    # Write to Claude Code settings
-    settings = read_cc_settings()
-    extra = get_extra_marketplaces(settings)
-    extra[name] = {"source": _marketplace_source_to_cc(source)}
-    set_extra_marketplaces(settings, extra)
-    write_cc_settings(settings)
-
-    click.echo(f"Added marketplace '{name}'.")
+    result = ops.add_marketplace(ctx.obj["config"], name, repo, local_path)
+    _handle(ctx, result)
 
 
 @marketplaces_group.command("remove")
@@ -808,24 +501,8 @@ def marketplaces_add(ctx: click.Context, name: str, repo: str | None, local_path
 @click.pass_context
 def marketplaces_remove(ctx: click.Context, name: str) -> None:
     """Remove a marketplace."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    marketplace = cfg.get_marketplace(name)
-    if not marketplace:
-        click.echo(f"Marketplace '{name}' not found.", err=True)
-        raise SystemExit(1)
-
-    cfg.marketplaces.remove(marketplace)
-    _save(ctx)
-
-    # Remove from Claude Code settings
-    settings = read_cc_settings()
-    extra = get_extra_marketplaces(settings)
-    if name in extra:
-        del extra[name]
-        set_extra_marketplaces(settings, extra)
-        write_cc_settings(settings)
-
-    click.echo(f"Removed marketplace '{name}'.")
+    result = ops.remove_marketplace(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @marketplaces_group.command("show")
@@ -853,18 +530,6 @@ def marketplaces_show(ctx: click.Context, name: str) -> None:
         for p in plugins:
             status = click.style("on", fg="green") if p.enabled else click.style("off", fg="red")
             click.echo(f"  {p.name} [{status}]")
-
-
-def _marketplace_source_to_cc(source: MarketplaceSource) -> dict:
-    """Convert a MarketplaceSource to Claude Code's native format."""
-    d: dict = {"source": source.source}
-    if source.source == "github" and source.repo:
-        d["repo"] = source.repo
-    elif source.source == "directory" and source.path:
-        d["path"] = source.path
-    elif source.url:
-        d["url"] = source.url
-    return d
 
 
 # ── Plugin commands ──────────────────────────────────────────────
@@ -895,43 +560,8 @@ def plugins_list(ctx: click.Context) -> None:
 @click.pass_context
 def plugins_install(ctx: click.Context, name: str, marketplace_name: str | None) -> None:
     """Install a plugin from a marketplace."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-
-    if cfg.get_plugin(name):
-        click.echo(f"Plugin '{name}' is already installed.", err=True)
-        raise SystemExit(1)
-
-    # Resolve marketplace
-    if marketplace_name:
-        marketplace = cfg.get_marketplace(marketplace_name)
-        if not marketplace:
-            click.echo(f"Marketplace '{marketplace_name}' not found.", err=True)
-            raise SystemExit(1)
-    elif len(cfg.marketplaces) == 1:
-        marketplace = cfg.marketplaces[0]
-        marketplace_name = marketplace.name
-    elif cfg.marketplaces:
-        click.echo("Multiple marketplaces available. Specify --marketplace.", err=True)
-        raise SystemExit(1)
-    else:
-        # Default to official marketplace
-        marketplace_name = "claude-plugins-official"
-
-    if not marketplace_name:
-        marketplace_name = "claude-plugins-official"
-
-    plugin = Plugin(name=name, marketplace=marketplace_name, enabled=True, managed=True)
-    cfg.plugins.append(plugin)
-    _save(ctx)
-
-    # Write to Claude Code enabledPlugins
-    settings = read_cc_settings()
-    enabled = get_enabled_plugins(settings)
-    enabled[plugin.qualified_name] = True
-    set_enabled_plugins(settings, enabled)
-    write_cc_settings(settings)
-
-    click.echo(f"Installed plugin '{name}' from {marketplace_name}.")
+    result = ops.install_plugin(ctx.obj["config"], name, marketplace_name)
+    _handle(ctx, result)
 
 
 @plugins_group.command("uninstall")
@@ -939,28 +569,8 @@ def plugins_install(ctx: click.Context, name: str, marketplace_name: str | None)
 @click.pass_context
 def plugins_uninstall(ctx: click.Context, name: str) -> None:
     """Uninstall a plugin."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    plugin = cfg.get_plugin(name)
-    if not plugin:
-        click.echo(f"Plugin '{name}' not found.", err=True)
-        raise SystemExit(1)
-
-    # Remove from enabledPlugins
-    settings = read_cc_settings()
-    enabled = get_enabled_plugins(settings)
-    if plugin.qualified_name in enabled:
-        del enabled[plugin.qualified_name]
-        set_enabled_plugins(settings, enabled)
-        write_cc_settings(settings)
-
-    # Remove from groups
-    for group in cfg.groups:
-        if plugin.name in group.plugins:
-            group.plugins.remove(plugin.name)
-
-    cfg.plugins.remove(plugin)
-    _save(ctx)
-    click.echo(f"Uninstalled plugin '{name}'.")
+    result = ops.uninstall_plugin(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @plugins_group.command("enable")
@@ -968,22 +578,8 @@ def plugins_uninstall(ctx: click.Context, name: str) -> None:
 @click.pass_context
 def plugins_enable(ctx: click.Context, name: str) -> None:
     """Enable a plugin."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    plugin = cfg.get_plugin(name)
-    if not plugin:
-        click.echo(f"Plugin '{name}' not found.", err=True)
-        raise SystemExit(1)
-
-    plugin.enabled = True
-    _save(ctx)
-
-    settings = read_cc_settings()
-    enabled = get_enabled_plugins(settings)
-    enabled[plugin.qualified_name] = True
-    set_enabled_plugins(settings, enabled)
-    write_cc_settings(settings)
-
-    click.echo(f"Enabled plugin '{name}'.")
+    result = ops.enable_plugin(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @plugins_group.command("disable")
@@ -991,22 +587,8 @@ def plugins_enable(ctx: click.Context, name: str) -> None:
 @click.pass_context
 def plugins_disable(ctx: click.Context, name: str) -> None:
     """Disable a plugin."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    plugin = cfg.get_plugin(name)
-    if not plugin:
-        click.echo(f"Plugin '{name}' not found.", err=True)
-        raise SystemExit(1)
-
-    plugin.enabled = False
-    _save(ctx)
-
-    settings = read_cc_settings()
-    enabled = get_enabled_plugins(settings)
-    enabled[plugin.qualified_name] = False
-    set_enabled_plugins(settings, enabled)
-    write_cc_settings(settings)
-
-    click.echo(f"Disabled plugin '{name}'.")
+    result = ops.disable_plugin(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 @plugins_group.command("show")
@@ -1037,31 +619,11 @@ def plugins_show(ctx: click.Context, name: str) -> None:
 @click.pass_context
 def plugins_import(ctx: click.Context) -> None:
     """Import existing plugins from Claude Code settings."""
-    cfg: McpoyleConfig = ctx.obj["config"]
-    settings = read_cc_settings()
-    enabled = get_enabled_plugins(settings)
-
-    imported = 0
-    for qualified_name, is_enabled in enabled.items():
-        # Parse "name@marketplace" format
-        if "@" in qualified_name:
-            pname, mkt = qualified_name.rsplit("@", 1)
-        else:
-            pname, mkt = qualified_name, ""
-
-        if cfg.get_plugin(pname):
-            continue
-
-        plugin = Plugin(name=pname, marketplace=mkt, enabled=bool(is_enabled), managed=False)
-        cfg.plugins.append(plugin)
-        imported += 1
-        click.echo(f"  + {pname} @ {mkt}")
-
-    if imported:
-        _save(ctx)
-        click.echo(f"Imported {imported} plugin(s).")
-    else:
-        click.echo("No new plugins to import.")
+    result = ops.import_plugins(ctx.obj["config"])
+    if result.imported:
+        for p in result.imported:
+            click.echo(f"  + {p.name} @ {p.marketplace}")
+    _handle(ctx, result, save=bool(result.imported))
 
 
 # ── Help command ─────────────────────────────────────────────────
@@ -1159,6 +721,9 @@ MARKETPLACES (Claude Code)
   mcp marketplaces remove <name>        Remove a marketplace.
   mcp marketplaces show <name>          Show marketplace details and plugins.
 
+TUI
+  mcp tui                               Open the interactive TUI dashboard.
+
 REGISTRY (coming soon)
   mcp registry search <query>           Search the Smithery registry.
   mcp registry add <id>                 Install from the registry.
@@ -1182,7 +747,8 @@ EXAMPLES
   mcp sync --dry-run                                 Preview first
   mcp plugins install clangd-lsp                     Install a plugin
   mcp marketplaces add home --path ~/Code/my-mkt     Register local marketplace
-  mcp scope ctx --project ~/Code/myapp               Move ctx to project-only\
+  mcp scope ctx --project ~/Code/myapp               Move ctx to project-only
+  mcp tui                                            Open TUI dashboard\
 """
 
 
@@ -1190,3 +756,10 @@ EXAMPLES
 def reference_cmd() -> None:
     """Show the full command reference (for humans and LLMs)."""
     click.echo(FULL_HELP)
+
+
+@cli.command()
+def tui() -> None:
+    """Open the interactive TUI dashboard."""
+    from mcpoyle.tui import main as tui_main
+    tui_main()

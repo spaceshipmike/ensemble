@@ -1,7 +1,14 @@
 ---
-version: 0.5.0
-status: draft
-last_updated: 2026-03-10
+version: 0.6.0
+status: active
+last_updated: 2026-03-12
+synopsis:
+  short: "Central manager for MCP servers and Claude Code plugins across AI clients"
+  medium: "mcpoyle is a CLI and TUI tool that centrally manages MCP server configurations and Claude Code plugins across multiple AI clients. It provides a single registry, group-based organization, and automatic sync to each client's native config format."
+  readme: "mcpoyle eliminates the pain of maintaining MCP server configurations across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, and JetBrains. Define your servers once, organize them into groups, assign groups to clients or projects, and sync. For Claude Code, mcpoyle extends to full plugin lifecycle management — install, uninstall, enable, disable — and marketplace registration. The CLI surface is optimized for scripting and AI agents; the TUI dashboard provides a human-friendly overview with keyboard-driven navigation and sync previews."
+  tech-stack: [Python 3.12+, click, Textual, hatch, uv, JSON config]
+  patterns: [additive sync, central registry, group-based assignment, presentation-agnostic core, operations layer]
+  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, CLI + TUI surfaces]
 ---
 
 # mcpoyle
@@ -10,7 +17,7 @@ A CLI tool for centrally managing MCP server configurations and Claude Code plug
 
 ## Philosophy
 
-mcpoyle is designed to be equally useful for humans and AI agents. Every action a user can take from the CLI, an agent should be able to take programmatically. This means: structured output where it matters, deterministic behavior, no interactive prompts in the default path, and clear exit codes. An agent managing a fleet of projects should be able to script mcpoyle the same way a human uses it interactively.
+mcpoyle is designed to be equally useful for humans and AI agents. Every action a user can take from the CLI, an agent should be able to take programmatically. This means: structured output where it matters, deterministic behavior, no interactive prompts in the default path, and clear exit codes. An agent managing a fleet of projects should be able to script mcpoyle the same way a human uses it interactively. For hands-on human use, the TUI dashboard provides a visual overview with keyboard-driven navigation, while the CLI remains the programmatic and agent-optimized surface.
 
 ## Problem
 
@@ -79,6 +86,56 @@ mcpoyle marketplaces show <name>          # show marketplace details + plugins
 mcpoyle groups add-plugin <group> <plugin>
 mcpoyle groups remove-plugin <group> <plugin>
 ```
+
+## TUI Surface
+
+`mcp tui` opens a full-screen terminal dashboard built with Textual. The TUI provides a visual overview of all mcpoyle-managed state and supports toggle/action operations without requiring users to remember CLI syntax. For detailed edits (server command, args, env vars), users drop to the CLI or edit config directly — the TUI is not a form editor.
+
+### Dashboard
+
+The dashboard displays five panels, each showing a summary of one domain:
+
+- **Servers panel** — lists all servers with their enabled/disabled state and group membership. Disabled servers are visually dimmed.
+- **Plugins panel** — lists installed plugins with their enabled state and marketplace source.
+- **Marketplaces panel** — lists registered marketplaces with source type (GitHub/local).
+- **Groups panel** — lists groups with member counts (servers and plugins).
+- **Clients panel** — lists detected clients with sync status: "synced" (config matches registry), "stale" (registry changed since last sync), or "never" (not yet synced).
+
+### Navigation
+
+- Arrow keys navigate within the active panel (up/down through items)
+- Tab switches focus between panels
+- Enter selects or drills into the highlighted item (e.g., entering a group shows its members)
+- Esc returns to the previous view or closes a modal
+- Standard keyboard conventions throughout — no vim bindings as default
+
+### Actions
+
+The TUI supports toggle and action operations on the selected item:
+
+- **Enable/disable** servers and plugins (toggles the enabled state in the registry)
+- **Assign/unassign** servers to groups
+- **Trigger sync** for an individual client or all clients
+- **Remove** servers or plugins from the registry
+
+All mutations flow through the operations layer, the same code path the CLI uses.
+
+### Sync Preview
+
+When triggering a sync from the TUI, a preview panel appears before any writes occur:
+
+- Shows the diff of what would be written to each client's config file
+- Displays both server and plugin changes, grouped by client
+- The user confirms to apply or cancels to return to the dashboard
+- Equivalent to `mcpoyle sync --dry-run` followed by `mcpoyle sync`
+
+### Command Palette
+
+Ctrl+P opens a searchable command palette overlay:
+
+- Lists all available actions: sync, add server, assign group, enable/disable, remove, etc.
+- Fuzzy search matching — typing narrows the list in real time
+- Selecting an action executes it against the currently highlighted item or prompts for a target
 
 ## Config
 
@@ -298,13 +355,13 @@ When a group contains both servers and plugins, `mcpoyle sync` handles both:
 
 - **Language:** Python 3.12+
 - **CLI framework:** click
+- **TUI framework:** Textual
 - **Distribution:** uv / PyPI (`uvx mcpoyle`)
 - **Config:** JSON (serde-style, no external DB)
 - **Secrets:** 1Password CLI (`op://`) references in env values — mcpoyle stores the references, not plaintext
 
 ## Non-Goals
 
-- GUI / TUI — this is a CLI tool
 - Running or proxying MCP servers — mcpoyle only manages configs
 - Server health checks or monitoring
 - Multi-machine sync (single machine only)
@@ -314,7 +371,16 @@ When a group contains both servers and plugins, `mcpoyle sync` handles both:
 
 ## Architecture
 
-Core logic (config, clients, sync, plugins) must remain presentation-agnostic. All operations return structured data (dataclasses, dicts, result objects) — never print directly. The CLI layer is a thin wrapper that formats and displays. This keeps the door open for a TUI or GUI surface without refactoring internals.
+Core logic is organized into four layers: data model, operations, sync engine, and presentation. The CLI and TUI are both thin presentation layers over a shared operations + sync + config core. All mutations (install, uninstall, enable, disable, assign, scope, etc.) live in the operations layer, never in presentation code. All operations return structured data (dataclasses, dicts, result objects) — never print directly.
+
+| Module | Role |
+|--------|------|
+| `config.py` | Data model (Server, Plugin, Marketplace, Group, etc.) and JSON I/O |
+| `clients.py` | Client definitions, detection, config file read/write, CC settings helpers |
+| `operations.py` | Business logic for all mutations (install, uninstall, enable, disable, assign, scope, etc.) — shared by CLI and TUI |
+| `sync.py` | Sync engine — resolves servers/plugins per client, writes configs |
+| `cli.py` | Thin click wrapper that formats and displays |
+| `tui.py` | Textual TUI dashboard — visual presentation layer |
 
 ## Design Principles
 
@@ -324,8 +390,13 @@ Core logic (config, clients, sync, plugins) must remain presentation-agnostic. A
 4. **No daemon** — runs on demand, no file watching, no background process.
 5. **Dry-run support** — `mcpoyle sync --dry-run` shows what would change without writing.
 
+## Future
+
+- **Multi-group assignments** — Allow projects and clients to be assigned multiple groups, with resolved servers/plugins being the union. Currently limited to one group each.
+
 ## Changelog
 
+- **0.6.0** — Add TUI dashboard (Textual) via `mcp tui` subcommand; extract operations layer from CLI for shared business logic
 - **0.5.0** — Add `scope` command for moving servers/plugins from global to project-only. Project-level plugin sync writes to `.claude/settings.local.json` with auto-workaround for CC bug #27247. Auto-creates groups when transitioning from "all servers" mode.
 - **0.4.0** — Correct plugin spec against official docs: use `enabledPlugins` as source of truth (not `installed_plugins.json`), fix marketplace source format (`"source"` not `"type"`, `"directory"` not `"local"`), drop auto-update toggle (UI-only), scope to user-only for v1 due to CC scope bugs, add reserved marketplace name validation
 - **0.3.0** — Add Claude Code plugin lifecycle management and marketplace registration

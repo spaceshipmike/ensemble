@@ -1,23 +1,33 @@
 {
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
+  "completedSteps": ["state-owner-scan", "executor-plan"],
   "workflowStep": "executor-build",
-  "buildRun": {
-    "status": "completed",
-    "plan": {
-      "specVersion": "0.4.0",
-      "chunks": [
-        {"name": "Config schema expansion", "status": "completed"},
-        {"name": "Marketplace commands", "status": "completed"},
-        {"name": "Plugin commands", "status": "completed"},
-        {"name": "Group plugin support", "status": "completed"},
-        {"name": "Plugin-aware sync", "status": "completed"},
-        {"name": "Tests for new features", "status": "completed"}
-      ]
-    }
-  },
+  "specVersion": "0.6.0",
   "upgradeApplied": {
-    "from": "0.0.0",
-    "to": "0.35.0"
+    "from": "0.35.2",
+    "to": "0.37.1"
+  },
+  "scenarioScore": {
+    "satisfied": 6,
+    "total": 30
+  },
+  "buildRun": {
+    "status": "running",
+    "plan": {
+      "specVersion": "0.6.0",
+      "totalChunks": 9
+    },
+    "chunks": [
+      {"id": 1, "name": "Extract operations layer", "status": "planned"},
+      {"id": 2, "name": "Refactor cli.py", "status": "planned"},
+      {"id": 3, "name": "Add Textual dependency + tui subcommand", "status": "planned"},
+      {"id": 4, "name": "TUI Dashboard", "status": "planned"},
+      {"id": 5, "name": "TUI Navigation", "status": "planned"},
+      {"id": 6, "name": "TUI Toggle Actions", "status": "planned"},
+      {"id": 7, "name": "Sync Preview Panel", "status": "planned"},
+      {"id": 8, "name": "Command Palette", "status": "planned"},
+      {"id": 9, "name": "Tests", "status": "planned"}
+    ],
+    "lastCheckpoint": null
   }
 }
