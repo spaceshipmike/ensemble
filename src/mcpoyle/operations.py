@@ -237,6 +237,12 @@ def assign_client(
     client_name = CLIENTS[client_id].name
 
     if project_path:
+        # Try resolving as project name via registry if it doesn't look like a path
+        if not project_path.startswith(("/", "~", ".")):
+            from mcpoyle.projects import resolve_project_path
+            resolved = resolve_project_path(project_path)
+            if resolved:
+                project_path = resolved
         abs_path = str(Path(project_path).expanduser().resolve())
         proj = assignment.get_project(abs_path)
         if not proj:
@@ -275,6 +281,11 @@ def unassign_client(
         return AssignResult(client_id=client_id, messages=[f"No assignment for {client_name}."])
 
     if project_path:
+        if not project_path.startswith(("/", "~", ".")):
+            from mcpoyle.projects import resolve_project_path
+            resolved = resolve_project_path(project_path)
+            if resolved:
+                project_path = resolved
         abs_path = str(Path(project_path).expanduser().resolve())
         proj = assignment.get_project(abs_path)
         if proj:

@@ -156,6 +156,7 @@ class McpoyleApp(App):
         Binding("2", "tab_2", "Groups", show=False),
         Binding("3", "tab_3", "Clients", show=False),
         Binding("4", "tab_4", "Marketplaces", show=False),
+        Binding("5", "tab_5", "Projects", show=False),
         Binding("s", "sync_all", "Sync All"),
         Binding("r", "refresh", "Refresh"),
         Binding("e", "toggle_enable", "Enable/Disable"),
@@ -169,7 +170,7 @@ class McpoyleApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with TabbedContent("Servers & Plugins", "Groups", "Clients", "Marketplaces"):
+        with TabbedContent("Servers & Plugins", "Groups", "Clients", "Marketplaces", "Projects"):
             with TabPane("Servers & Plugins", id="tab-servers-plugins"):
                 with Vertical(id="servers-section"):
                     yield Label("Servers", classes="section-label")
@@ -183,6 +184,8 @@ class McpoyleApp(App):
                 yield DataTable(id="clients-table")
             with TabPane("Marketplaces", id="tab-marketplaces"):
                 yield DataTable(id="marketplaces-table")
+            with TabPane("Projects", id="tab-projects"):
+                yield DataTable(id="projects-table")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -210,12 +213,17 @@ class McpoyleApp(App):
         mkts.add_columns("Name", "Source", "Detail")
         mkts.cursor_type = "row"
 
+        projects = self.query_one("#projects-table", DataTable)
+        projects.add_columns("Name", "Type", "Group", "Servers", "Path")
+        projects.cursor_type = "row"
+
     def _populate_all(self) -> None:
         self._populate_servers()
         self._populate_plugins()
         self._populate_groups()
         self._populate_clients()
         self._populate_marketplaces()
+        self._populate_projects()
 
     def _populate_servers(self) -> None:
         table = self.query_one("#servers-table", DataTable)
@@ -266,6 +274,36 @@ class McpoyleApp(App):
         for m in self.cfg.marketplaces:
             detail = m.source.repo or m.source.path or m.source.url or ""
             table.add_row(m.name, m.source.source, detail, key=m.name)
+
+    def _populate_projects(self) -> None:
+        from mcpoyle.projects import is_available, list_projects
+
+        table = self.query_one("#projects-table", DataTable)
+        table.clear()
+        if not is_available():
+            return
+
+        for p in list_projects():
+            # Find group assignment for this project's paths
+            group_info = "—"
+            for path in p.paths:
+                for client in self.cfg.clients:
+                    proj_assign = client.get_project(path)
+                    if proj_assign and proj_assign.group:
+                        group_info = proj_assign.group
+                        break
+                if group_info != "—":
+                    break
+
+            # Count servers in scope
+            if group_info != "—":
+                group = self.cfg.get_group(group_info)
+                server_count = str(len(group.servers)) if group else "0"
+            else:
+                server_count = str(len([s for s in self.cfg.servers if s.enabled]))
+
+            primary_path = p.paths[0] if p.paths else "—"
+            table.add_row(p.display_name, p.type, group_info, server_count, primary_path, key=p.name)
 
     def _reload_config(self) -> None:
         self.cfg = load_config()
@@ -321,6 +359,9 @@ class McpoyleApp(App):
 
     def action_tab_4(self) -> None:
         self._switch_tab("tab-marketplaces")
+
+    def action_tab_5(self) -> None:
+        self._switch_tab("tab-projects")
 
     # ── Actions ─────────────────────────────────────────────────
 

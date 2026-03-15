@@ -345,6 +345,52 @@ def rules_remove(ctx: click.Context, path: str) -> None:
     _handle(ctx, result)
 
 
+# ── Projects command ─────────────────────────────────────────────
+
+
+@cli.command("projects")
+@click.pass_context
+def projects_cmd(ctx: click.Context) -> None:
+    """List registry projects with MCP server status."""
+    from mcpoyle.projects import is_available, list_projects
+
+    if not is_available():
+        click.echo("Project registry not found (~/.local/share/project-registry/registry.db).")
+        return
+
+    cfg: McpoyleConfig = ctx.obj["config"]
+    projects = list_projects()
+    if not projects:
+        click.echo("No active projects in registry.")
+        return
+
+    for p in projects:
+        # Find if any mcpoyle assignment exists for this project's paths
+        group_info = "—"
+        for path in p.paths:
+            for client in cfg.clients:
+                proj_assign = client.get_project(path)
+                if proj_assign and proj_assign.group:
+                    group_info = proj_assign.group
+                    break
+            if group_info != "—":
+                break
+
+        # Count servers in scope
+        if group_info != "—":
+            group = cfg.get_group(group_info)
+            server_count = len(group.servers) if group else 0
+        else:
+            server_count = len([s for s in cfg.servers if s.enabled])
+
+        paths_str = ", ".join(p.paths[:2])
+        if len(p.paths) > 2:
+            paths_str += f" (+{len(p.paths) - 2})"
+
+        click.echo(f"  {p.display_name}")
+        click.echo(f"    group: {group_info} | {server_count} servers | {paths_str}")
+
+
 # ── Scope command ────────────────────────────────────────────────
 
 

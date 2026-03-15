@@ -21,7 +21,7 @@
       }
     },
     "spec": {
-      "current": "0.10.0",
+      "current": "0.11.0",
       "incrementRules": {
         "minor": "auto-on-evolve"
       }
@@ -33,5 +33,5 @@
       "action": "suggest external minor bump"
     }
   },
-  "formatVersion": "0.63.0"
+  "formatVersion": "0.64.0"
 }

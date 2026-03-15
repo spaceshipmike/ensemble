@@ -1,5 +1,5 @@
 ---
-version: 0.10.0
+version: 0.11.0
 status: active
 last_updated: 2026-03-13
 synopsis:
@@ -7,8 +7,8 @@ synopsis:
   medium: "mcpoyle is a CLI and TUI tool that centrally manages MCP server configurations and Claude Code plugins across multiple AI clients. It provides a single registry, group-based organization, and automatic sync to each client's native config format."
   readme: "mcpoyle eliminates the pain of maintaining MCP server configurations across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, and JetBrains. Define your servers once, organize them into groups, assign groups to clients or projects, and sync. For Claude Code, mcpoyle extends to full plugin lifecycle management — install, uninstall, enable, disable — and marketplace registration. The CLI surface is optimized for scripting and AI agents; the TUI dashboard provides a human-friendly overview with keyboard-driven navigation and sync previews."
   tech-stack: [Python 3.12+, click, Textual, httpx, hatch, uv, JSON config]
-  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, multi-registry search, presentation-agnostic core, operations layer]
-  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, registry discovery + install, CLI + TUI surfaces]
+  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, presentation-agnostic core, operations layer]
+  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, registry discovery + install, project-aware scoping, CLI + TUI surfaces]
 ---
 
 # mcpoyle
@@ -93,6 +93,8 @@ mcpoyle rules remove <path>
 
 mcpoyle scope <name> --project <path>     # move server/plugin to project-only
 
+mcpoyle projects                          # list registry projects with MCP server status
+
 mcpoyle tui                               # open interactive TUI dashboard
 mcpoyle reference                         # show full command reference
 ```
@@ -103,16 +105,17 @@ mcpoyle reference                         # show full command reference
 
 ### Dashboard
 
-The dashboard uses a tabbed interface with four tabs. Each tab takes the full screen, keeping the layout clean and readable. Tabs are navigated with number keys (1-4) or by clicking.
+The dashboard uses a tabbed interface with five tabs. Each tab takes the full screen, keeping the layout clean and readable. Tabs are navigated with number keys (1-5) or by clicking.
 
 - **Servers & Plugins** (tab 1, default) — servers table on top, plugins table below. Servers show enabled/disabled state, command, and group membership. Plugins show enabled state, marketplace, and managed status.
 - **Groups** (tab 2) — lists groups with member counts (servers and plugins) and description.
 - **Clients** (tab 3) — lists detected clients with install status, assigned group, and last sync timestamp (or "never" if not yet synced).
 - **Marketplaces** (tab 4) — lists registered marketplaces with source type (GitHub/local) and detail.
+- **Projects** (tab 5) — lists active projects from the project registry with assigned group, MCP server count, and filesystem paths. Only visible when the registry database is available.
 
 ### Navigation
 
-- 1/2/3/4 switches between tabs
+- 1/2/3/4/5 switches between tabs
 - Arrow keys navigate within the active table (up/down through items)
 - Tab switches focus between tables when a tab has multiple (e.g., servers and plugins)
 - Esc closes a modal
@@ -235,6 +238,60 @@ mcpoyle rules list                        # list all path rules
 mcpoyle rules add <path> <group>          # add a rule (group must exist)
 mcpoyle rules remove <path>               # remove a rule
 ```
+
+## Project Registry Integration
+
+mcpoyle can optionally read from the project-registry SQLite database (`~/.local/share/project-registry/registry.db`) for project-aware scoping. This enables project-name-based assignments instead of relying solely on path rules, and gives the TUI a projects view.
+
+### What It Provides
+
+The registry knows which projects exist, what type they are (`project` or `area_of_focus`), their status (`active`, `archived`, etc.), and their filesystem paths. mcpoyle reads this to:
+
+- **Validate projects** — when assigning servers to a project, mcpoyle can confirm the project exists and resolve its path automatically
+- **Name-based assignment** — `mcpoyle assign claude-code dev-tools --project chorus` instead of requiring the full path
+- **TUI projects view** — a tab showing registry projects with their assigned MCP servers and groups
+- **Enriched sync** — during sync, use registry project paths alongside (or instead of) path rules to determine which groups apply
+
+### Database Schema (read-only)
+
+mcpoyle reads three tables from the registry:
+
+- `projects` — `name`, `display_name`, `type`, `status`
+- `project_paths` — filesystem paths per project (a project can have multiple paths, e.g., code + thinking surface)
+- `project_fields` — extended key-value fields per project (e.g., `tech_stack`, `short_description`)
+
+### Graceful Fallback
+
+If the registry database doesn't exist or is inaccessible, mcpoyle falls back to current behavior — path rules and explicit assignments work as before. The registry is optional infrastructure, not a hard dependency.
+
+### Resolution Order
+
+When resolving which group a project gets during sync:
+
+1. **Explicit assignment** (`mcpoyle assign --project`) — always wins
+2. **Registry lookup** — if the project path matches a registry project with a group assignment
+3. **Path rules** — prefix-based auto-assignment
+4. **Default** — no group, receives all enabled servers
+
+### CLI Enhancements
+
+```
+mcpoyle assign claude-code dev-tools --project chorus   # resolve project name via registry
+mcpoyle projects                                        # list registry projects with MCP server status
+```
+
+### TUI Enhancement
+
+The TUI gains a **Projects** tab showing all active registry projects with:
+
+- Project name and type
+- Assigned group (if any)
+- Number of MCP servers in scope
+- Filesystem paths
+
+### Future: Write-Back
+
+In a future version, mcpoyle may write `mcp_servers` back to the registry's `project_fields` table, making mcpoyle a producer as well as a consumer. This is deferred to keep the initial integration read-only and low-risk.
 
 ## Plugins (Claude Code)
 
@@ -475,7 +532,9 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 | `config.py` | Data model (Server, Plugin, Marketplace, Group, etc.) and JSON I/O |
 | `clients.py` | Client definitions, detection, config file read/write, CC settings helpers |
 | `operations.py` | Business logic for all mutations (install, uninstall, enable, disable, assign, scope, etc.) — shared by CLI and TUI |
+| `projects.py` | Project registry reader — reads project-registry SQLite DB for project-aware scoping |
 | `sync.py` | Sync engine — resolves servers/plugins per client, writes configs |
+| `registry.py` | MCP server registry clients (Official, Glama) — search, show, install |
 | `cli.py` | Thin click wrapper that formats and displays |
 | `tui.py` | Textual TUI dashboard — visual presentation layer |
 
@@ -491,11 +550,13 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 ## Future
 
 - **Multi-group assignments** — Allow projects and clients to be assigned multiple groups, with resolved servers/plugins being the union. Currently limited to one group each.
+- **Project registry write-back** — Write `mcp_servers` to the project-registry's `project_fields` table, making mcpoyle a producer as well as a consumer.
 - **Additional registries** — Smithery and PulseMCP as opt-in sources with API key configuration.
 - **SkillsGate integration** — SkillsGate (`skillsgate.ai`) is an open marketplace for AI agent skills (coding workflows, prompt libraries). Different from MCP servers but complementary — could integrate as a skills discovery source alongside Claude Code plugins.
 
 ## Changelog
 
+- **0.11.0** — Integrate project-registry for project-aware scoping. Read-only SQLite integration: name-based project assignment, `mcpoyle projects` command, Projects tab in TUI. Add `projects.py` module. Registry is optional with graceful fallback.
 - **0.10.0** — Expand supported clients from 8 to 15 (add Gemini CLI, Codex CLI, Copilot CLI/JetBrains, Amazon Q, Cline, Roo Code). Add config backup before first sync. Add token cost estimates to registry show. Note MCP Scoreboard as future registry source.
 - **0.9.0** — Integrate MCP server registries (Official MCP Registry + Glama). Search, show, and install servers from public registries with automatic config translation (npm→npx, pypi→uvx). Add httpx dependency. Note SkillsGate as future integration.
 - **0.8.0** — Shift TUI from 5-panel simultaneous layout to 4-tab interface: Servers & Plugins (combined), Groups, Clients, Marketplaces
