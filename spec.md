@@ -1,5 +1,5 @@
 ---
-version: 0.11.0
+version: 0.12.0
 status: active
 last_updated: 2026-03-13
 synopsis:
@@ -7,7 +7,7 @@ synopsis:
   medium: "mcpoyle is a CLI and TUI tool that centrally manages MCP server configurations and Claude Code plugins across multiple AI clients. It provides a single registry, group-based organization, and automatic sync to each client's native config format."
   readme: "mcpoyle eliminates the pain of maintaining MCP server configurations across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, and JetBrains. Define your servers once, organize them into groups, assign groups to clients or projects, and sync. For Claude Code, mcpoyle extends to full plugin lifecycle management — install, uninstall, enable, disable — and marketplace registration. The CLI surface is optimized for scripting and AI agents; the TUI dashboard provides a human-friendly overview with keyboard-driven navigation and sync previews."
   tech-stack: [Python 3.12+, click, Textual, httpx, hatch, uv, JSON config]
-  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, presentation-agnostic core, operations layer]
+  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit]
   goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, registry discovery + install, project-aware scoping, CLI + TUI surfaces]
 ---
 
@@ -94,6 +94,9 @@ mcpoyle rules remove <path>
 mcpoyle scope <name> --project <path>     # move server/plugin to project-only
 
 mcpoyle projects                          # list registry projects with MCP server status
+
+mcpoyle doctor                            # audit config health across all clients
+mcpoyle doctor --json                     # structured output for scripting
 
 mcpoyle tui                               # open interactive TUI dashboard
 mcpoyle reference                         # show full command reference
@@ -437,6 +440,54 @@ When a group contains both servers and plugins, `mcpoyle sync` handles both:
 
 `mcpoyle sync --dry-run` shows both server and plugin changes.
 
+### Drift Detection
+
+On each sync, mcpoyle computes a content hash (SHA-256) of every managed server/plugin config it writes. These hashes are stored in the central config alongside the `last_synced` timestamp. On the next sync, before writing, mcpoyle re-reads the client config and hashes the current state of each managed entry. If a hash differs from what mcpoyle last wrote, the entry was modified outside mcpoyle.
+
+When drift is detected, `mcpoyle sync` reports it:
+
+```
+⚠ claude-desktop: server "ctx" was modified outside mcpoyle
+  Use --force to overwrite, or --adopt to update mcpoyle's registry
+```
+
+Behavior:
+- **Default** — warn and skip the drifted entry (don't overwrite manual edits)
+- **`--force`** — overwrite with mcpoyle's version
+- **`--adopt`** — update mcpoyle's central config to match the manually-edited version
+
+`mcpoyle sync --dry-run` includes drift warnings in its output.
+
+## Doctor
+
+`mcpoyle doctor` runs a deterministic health audit across all managed configs — no network calls, no LLM. It checks for common issues and reports them with severity levels (error, warning, info).
+
+### Checks
+
+| Check | Severity | What it detects |
+|-------|----------|-----------------|
+| Missing env vars | error | Server env references an `op://` or variable that isn't set |
+| Orphaned entries | warning | Server in a client config with `__mcpoyle` marker but not in central registry |
+| Stale configs | warning | Client hasn't been synced since a server was added/modified |
+| Config parse errors | error | Client config file exists but contains invalid JSON/TOML |
+| Drift detected | warning | Managed entry was modified outside mcpoyle (same hash check as sync) |
+| Unreachable binary | warning | Server command binary not found on `$PATH` |
+
+### Output
+
+```
+$ mcpoyle doctor
+✓ Central config valid (17 servers, 4 groups, 3 plugins)
+✓ claude-desktop: config valid, in sync
+⚠ cursor: server "prm" has missing env var GITHUB_TOKEN
+⚠ claude-code: 2 orphaned entries (run mcpoyle sync to clean up)
+✗ windsurf: config file contains invalid JSON
+
+2 errors, 2 warnings
+```
+
+`mcpoyle doctor --json` outputs structured results for scripting.
+
 ## Registry
 
 mcpoyle integrates with MCP server registries to discover, browse, and install servers without manually constructing configs. Two registries are supported out of the box, both with public APIs requiring no authentication:
@@ -517,7 +568,7 @@ Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-i
 ## Non-Goals
 
 - Running or proxying MCP servers — mcpoyle only manages configs
-- Server health checks or monitoring
+- Server runtime health checks or monitoring — `mcpoyle doctor` audits config files, not running processes
 - Multi-machine sync (single machine only)
 - Marketplace auto-update management — controlled via Claude Code's UI, not JSON
 - Plugin development tooling — mcpoyle manages installed plugins, not authoring
@@ -556,6 +607,7 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 
 ## Changelog
 
+- **0.12.0** — Add content-hash drift detection to sync engine (warn on manual edits, `--force`/`--adopt` flags). Add `mcpoyle doctor` command for deterministic config health auditing (env vars, orphaned entries, stale configs, parse errors, unreachable binaries). Inspired by patterns in Caliber (ai-setup).
 - **0.11.0** — Integrate project-registry for project-aware scoping. Read-only SQLite integration: name-based project assignment, `mcpoyle projects` command, Projects tab in TUI. Add `projects.py` module. Registry is optional with graceful fallback.
 - **0.10.0** — Expand supported clients from 8 to 15 (add Gemini CLI, Codex CLI, Copilot CLI/JetBrains, Amazon Q, Cline, Roo Code). Add config backup before first sync. Add token cost estimates to registry show. Note MCP Scoreboard as future registry source.
 - **0.9.0** — Integrate MCP server registries (Official MCP Registry + Glama). Search, show, and install servers from public registries with automatic config translation (npm→npx, pypi→uvx). Add httpx dependency. Note SkillsGate as future integration.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -134,6 +135,7 @@ class ClientAssignment:
     group: str | None = None
     last_synced: str | None = None
     projects: list[ProjectAssignment] = field(default_factory=list)
+    server_hashes: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> ClientAssignment:
@@ -151,6 +153,7 @@ class ClientAssignment:
             group=d.get("group"),
             last_synced=d.get("last_synced"),
             projects=projects,
+            server_hashes=d.get("server_hashes", {}),
         )
 
     def get_project(self, path: str) -> ProjectAssignment | None:
@@ -242,6 +245,16 @@ class McpoyleConfig:
                 return []
             return [p for p in self.plugins if p.enabled and p.name in group.plugins]
         return [p for p in self.plugins if p.enabled]
+
+
+def compute_entry_hash(entry: dict) -> str:
+    """Compute a SHA-256 hash of a server entry dict in canonical form.
+
+    Strips the __mcpoyle marker before hashing so the hash reflects
+    only the meaningful config content (command, args, env, etc.).
+    """
+    canonical = {k: v for k, v in sorted(entry.items()) if k != "__mcpoyle"}
+    return hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
 
 
 def load_config() -> McpoyleConfig:

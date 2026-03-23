@@ -28,11 +28,43 @@ from mcpoyle.clients import (
     write_project_settings,
     write_servers_nested,
 )
-from mcpoyle.config import ClientAssignment, Marketplace, McpoyleConfig, ProjectAssignment, Server
+from mcpoyle.config import ClientAssignment, Marketplace, McpoyleConfig, ProjectAssignment, Server, compute_entry_hash
 
 
-def _diff_actions(label: str, new_entries: dict, managed: dict, dry_run: bool) -> tuple[list[str], bool]:
-    """Compare new vs managed entries and return action descriptions + whether changes exist."""
+@dataclass
+class DriftInfo:
+    """A server entry that was modified outside mcpoyle."""
+    name: str
+    current_hash: str
+    stored_hash: str
+
+
+def _detect_drift(managed: dict, stored_hashes: dict[str, str]) -> list[DriftInfo]:
+    """Compare current managed entries against stored hashes to detect manual edits."""
+    drifted = []
+    for name, entry in managed.items():
+        if name in stored_hashes:
+            current_hash = compute_entry_hash(entry)
+            if current_hash != stored_hashes[name]:
+                drifted.append(DriftInfo(name=name, current_hash=current_hash, stored_hash=stored_hashes[name]))
+    return drifted
+
+
+def _diff_actions(
+    label: str,
+    new_entries: dict,
+    managed: dict,
+    dry_run: bool,
+    stored_hashes: dict[str, str] | None = None,
+    force: bool = False,
+    adopt: bool = False,
+) -> tuple[list[str], bool, list[DriftInfo]]:
+    """Compare new vs managed entries and return action descriptions, whether changes exist, and drift info."""
+    # Detect drift before computing diff
+    drifted: list[DriftInfo] = []
+    if stored_hashes:
+        drifted = _detect_drift(managed, stored_hashes)
+
     to_add = set(new_entries.keys()) - set(managed.keys())
     to_remove = set(managed.keys()) - set(new_entries.keys())
     to_update = {
@@ -40,23 +72,41 @@ def _diff_actions(label: str, new_entries: dict, managed: dict, dry_run: bool) -
         if new_entries[k] != managed[k]
     }
 
-    if not to_add and not to_remove and not to_update:
-        return [f"{label}: already in sync"], False
+    # Handle drifted entries
+    drifted_names = {d.name for d in drifted}
+    skipped_names: set[str] = set()
+    for d in drifted:
+        if d.name in to_update:
+            if force:
+                pass  # will be overwritten as part of to_update
+            elif adopt:
+                # Remove from to_update — keep the manual edit
+                to_update.discard(d.name)
+            else:
+                # Default: skip drifted entry
+                to_update.discard(d.name)
+                skipped_names.add(d.name)
+
+    if not to_add and not to_remove and not to_update and not skipped_names:
+        return [f"{label}: already in sync"], False, drifted
 
     actions = []
+    for name in sorted(skipped_names):
+        actions.append(f"  ⚠ {name} was modified outside mcpoyle (use --force to overwrite, --adopt to keep)")
     for name in sorted(to_add):
         actions.append(f"  + {name}")
     for name in sorted(to_remove):
         actions.append(f"  - {name}")
     for name in sorted(to_update):
-        actions.append(f"  ~ {name}")
+        suffix = " (overwriting manual edit)" if name in drifted_names and force else ""
+        actions.append(f"  ~ {name}{suffix}")
 
     if dry_run:
         actions.insert(0, f"{label}: would sync")
     else:
         actions.append(f"{label}: synced")
 
-    return actions, True
+    return actions, True, drifted
 
 
 def sync_client(
@@ -64,10 +114,14 @@ def sync_client(
     client_id: str,
     dry_run: bool = False,
     project: str | None = None,
+    force: bool = False,
+    adopt: bool = False,
 ) -> list[str]:
     """Sync servers to a client. Returns list of action descriptions.
 
     If project is specified (Claude Code only), sync only that project's config.
+    force: overwrite manually-edited entries
+    adopt: update mcpoyle's registry to match manually-edited entries
     """
     client_def = CLIENTS.get(client_id)
     if not client_def:
@@ -85,6 +139,9 @@ def sync_client(
     new_entries = {s.name: server_to_client_entry(s) for s in servers}
     actions = []
 
+    assignment = config.get_client(client_id)
+    stored_hashes = assignment.server_hashes if assignment else {}
+
     paths = client_def.resolved_paths
     if not paths:
         return [f"{client_def.name}: no config files found"]
@@ -94,18 +151,48 @@ def sync_client(
         managed = get_managed_servers(existing, client_def.servers_key)
         label = f"{client_def.name} ({path.name})"
 
-        diff_actions, has_changes = _diff_actions(label, new_entries, managed, dry_run)
+        diff_actions, has_changes, drifted = _diff_actions(
+            label, new_entries, managed, dry_run,
+            stored_hashes=stored_hashes, force=force, adopt=adopt,
+        )
         actions.extend(diff_actions)
 
+        # Handle --adopt: update mcpoyle's server registry from manual edits
+        if adopt and drifted and not dry_run:
+            for d in drifted:
+                if d.name in managed:
+                    _adopt_server_entry(config, d.name, managed[d.name])
+
+        # Build the entries to actually write (skip drifted unless force)
         if has_changes and not dry_run:
-            write_client_config(path, existing, client_def.servers_key, new_entries)
-            assignment = config.get_client(client_id)
-            if assignment:
-                assignment.last_synced = datetime.now(timezone.utc).isoformat()
+            drifted_names = {d.name for d in drifted}
+            skipped = drifted_names - (set() if force else set())
+            if not force and not adopt:
+                # Remove drifted entries from new_entries so they aren't overwritten
+                entries_to_write = {k: v for k, v in new_entries.items() if k not in drifted_names}
+                # Re-add drifted entries with their current (manual) values
+                for name in drifted_names:
+                    if name in managed:
+                        entries_to_write[name] = managed[name]
+            else:
+                entries_to_write = new_entries
+
+            write_client_config(path, existing, client_def.servers_key, entries_to_write)
+
+            # Store hashes of what we wrote
+            if not assignment:
+                assignment = ClientAssignment(id=client_id)
+                config.clients.append(assignment)
+            assignment.server_hashes = {
+                name: compute_entry_hash(entry)
+                for name, entry in entries_to_write.items()
+            }
+            assignment.last_synced = datetime.now(timezone.utc).isoformat()
 
     # Also sync any project-level assignments for Claude Code
     if client_id == "claude-code":
-        assignment = config.get_client(client_id)
+        if not assignment:
+            assignment = config.get_client(client_id)
         if not assignment:
             assignment = ClientAssignment(id=client_id)
             config.clients.append(assignment)
@@ -125,6 +212,19 @@ def sync_client(
         actions.extend(plugin_actions)
 
     return actions
+
+
+def _adopt_server_entry(config: McpoyleConfig, name: str, entry: dict) -> None:
+    """Update mcpoyle's server registry to match a manually-edited client entry."""
+    server = config.get_server(name)
+    if not server:
+        return
+    server.command = entry.get("command", server.command)
+    server.args = entry.get("args", server.args)
+    server.env = entry.get("env", server.env)
+    transport = entry.get("transport", "stdio")
+    if transport:
+        server.transport = transport
 
 
 def _sync_project(
@@ -154,7 +254,7 @@ def _sync_project(
     managed = get_managed_servers_nested(existing, key_path)
     label = f"Claude Code project ({abs_path})"
 
-    diff_actions, has_changes = _diff_actions(label, new_entries, managed, dry_run)
+    diff_actions, has_changes, _drifted = _diff_actions(label, new_entries, managed, dry_run)
 
     if has_changes and not dry_run:
         write_servers_nested(path, key_path, new_entries)
@@ -316,12 +416,17 @@ def _sync_cc_plugins(
     return actions
 
 
-def sync_all(config: McpoyleConfig, dry_run: bool = False) -> dict[str, list[str]]:
+def sync_all(
+    config: McpoyleConfig,
+    dry_run: bool = False,
+    force: bool = False,
+    adopt: bool = False,
+) -> dict[str, list[str]]:
     """Sync all detected clients."""
     results = {}
     for client_id, client_def in CLIENTS.items():
         if client_def.is_installed:
-            results[client_id] = sync_client(config, client_id, dry_run)
+            results[client_id] = sync_client(config, client_id, dry_run, force=force, adopt=adopt)
     return results
 
 

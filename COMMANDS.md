@@ -107,6 +107,13 @@ Detect installed AI clients, show their sync status, group assignments, and any 
 | `windsurf` | Windsurf | `~/.windsurf/mcp.json` |
 | `zed` | Zed | `~/.config/zed/settings.json` |
 | `jetbrains` | JetBrains | `~/.config/JetBrains/*/mcp.json` |
+| `gemini-cli` | Gemini CLI | `~/.gemini/settings.json` |
+| `codex-cli` | Codex CLI | `~/.codex/config.toml` |
+| `copilot-cli` | Copilot CLI | `~/.copilot/mcp-config.json` |
+| `copilot-jetbrains` | Copilot JetBrains | `~/.config/github-copilot/mcp.json` |
+| `amazon-q` | Amazon Q | `~/.aws/amazonq/mcp.json` |
+| `cline` | Cline | VS Code globalStorage |
+| `roo-code` | Roo Code | VS Code globalStorage |
 
 ### `mcpoyle assign <client> <group> [options]`
 
@@ -204,6 +211,8 @@ Write the resolved server configurations to client config files. Without a clien
 |--------|-------------|
 | `--dry-run` | Show what would change without writing any files |
 | `--project <path>` | Sync only a specific project (Claude Code only) |
+| `--force` | Overwrite entries that were modified outside mcpoyle |
+| `--adopt` | Update mcpoyle's registry to match manual edits |
 
 ```
 mcpoyle sync                                    # sync all clients
@@ -219,7 +228,8 @@ mcpoyle sync claude-code --project ~/Code/myapp  # sync one project
 - For Claude Code, also syncs plugin enabled/disabled state and marketplace registrations
 - Project-level plugin sync writes to `<project>/.claude/settings.local.json` (not `settings.json`), keeping your plugin choices personal and gitignored
 - Automatically applies workaround for [CC bug #27247](https://github.com/anthropics/claude-code/issues/27247): ensures `enabledPlugins` key exists in project `settings.json` so local overrides aren't silently dropped
-- Client config files are backed up to `.bak` before writing
+- Client config files are backed up before writing
+- Content hashes are stored after each sync; on the next sync, mcpoyle detects entries that were modified outside mcpoyle (drift). Drifted entries are warned about and skipped by default. Use `--force` to overwrite or `--adopt` to accept the manual changes into mcpoyle's registry.
 - Running sync twice produces the same result (idempotent)
 
 ### `mcpoyle import <client>`
@@ -232,6 +242,35 @@ For Claude Code, also scans all project-level `mcpServers` entries in `~/.claude
 mcpoyle import claude-desktop    # import from global config
 mcpoyle import claude-code       # import from global + all project configs
 ```
+
+---
+
+## Doctor
+
+### `mcpoyle doctor [options]`
+
+Run a deterministic health audit across all managed configs. No network calls, no LLM — purely filesystem checks.
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output structured JSON for scripting |
+
+```
+mcpoyle doctor          # human-readable output
+mcpoyle doctor --json   # structured JSON
+```
+
+**Checks performed:**
+
+| Check | Severity | What it detects |
+|-------|----------|-----------------|
+| Missing env vars | error | Server env has empty values |
+| 1Password CLI missing | warning | Env var uses `op://` but `op` CLI not found |
+| Unreachable binary | warning | Server command not found on `$PATH` |
+| Config parse errors | error | Client config file contains invalid JSON |
+| Orphaned entries | warning | `__mcpoyle`-marked entries in client configs not in central registry |
+| Stale configs | warning | Client has never been synced |
+| Drift detected | warning | Managed entry was modified outside mcpoyle |
 
 ---
 
@@ -321,15 +360,29 @@ Show marketplace details: source and list of available plugins.
 
 ---
 
-## Registry (coming soon)
+## Registry
 
 ### `mcpoyle registry search <query>`
 
-Search the Smithery MCP server registry. Not yet implemented.
+Search MCP server registries (Official MCP Registry + Glama). Results show server name, transport type, source registry, and description.
 
-### `mcpoyle registry add <id>`
+### `mcpoyle registry show <id>`
 
-Install a server from the Smithery registry. Not yet implemented.
+Show full details for a server from its source registry: description, transport, required env vars, available tools, and estimated token cost.
+
+### `mcpoyle registry add <id> [options]`
+
+Install a server from a registry into mcpoyle's central config. Automatically translates registry metadata to mcpoyle's server format (npm→npx, pypi→uvx).
+
+| Option | Description |
+|--------|-------------|
+| `--env KEY=VAL` | Environment variable (repeatable). Prompts for required vars not provided. |
+
+```
+mcpoyle registry search "github"
+mcpoyle registry show @anthropic/github-mcp
+mcpoyle registry add @anthropic/github-mcp --env GITHUB_TOKEN=op://Dev/github/token
+```
 
 ---
 

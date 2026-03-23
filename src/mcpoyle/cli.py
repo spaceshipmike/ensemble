@@ -416,10 +416,17 @@ def scope(ctx: click.Context, name: str, project_path: str) -> None:
 @click.argument("client", required=False)
 @click.option("--dry-run", is_flag=True, help="Show what would change without writing")
 @click.option("--project", "project_path", default=None, help="Project path (Claude Code only)")
+@click.option("--force", is_flag=True, help="Overwrite entries modified outside mcpoyle")
+@click.option("--adopt", is_flag=True, help="Update mcpoyle registry to match manual edits")
 @click.pass_context
-def sync(ctx: click.Context, client: str | None, dry_run: bool, project_path: str | None) -> None:
+def sync(ctx: click.Context, client: str | None, dry_run: bool, project_path: str | None, force: bool, adopt: bool) -> None:
     """Sync server configs to clients."""
     cfg: McpoyleConfig = ctx.obj["config"]
+
+    if force and adopt:
+        click.echo("Cannot use --force and --adopt together.", err=True)
+        raise SystemExit(1)
+
     if dry_run:
         click.echo("Dry run — no files will be modified.\n")
 
@@ -436,11 +443,11 @@ def sync(ctx: click.Context, client: str | None, dry_run: bool, project_path: st
         if client not in CLIENTS:
             click.echo(f"Unknown client: {client}", err=True)
             raise SystemExit(1)
-        actions = sync_client(cfg, client, dry_run)
+        actions = sync_client(cfg, client, dry_run, force=force, adopt=adopt)
         for a in actions:
             click.echo(a)
     else:
-        results = sync_all(cfg, dry_run)
+        results = sync_all(cfg, dry_run, force=force, adopt=adopt)
         if not results:
             click.echo("No installed clients detected.")
             return
@@ -764,6 +771,44 @@ def plugins_import(ctx: click.Context) -> None:
     _handle(ctx, result, save=bool(result.imported))
 
 
+# ── Doctor command ───────────────────────────────────────────
+
+
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="Output structured JSON for scripting")
+@click.pass_context
+def doctor(ctx: click.Context, as_json: bool) -> None:
+    """Audit config health across all clients."""
+    from mcpoyle.doctor import run_doctor
+
+    cfg: McpoyleConfig = ctx.obj["config"]
+    result = run_doctor(cfg)
+
+    if as_json:
+        import json
+        click.echo(json.dumps(result.to_dict(), indent=2))
+        return
+
+    # Summary line
+    click.echo(f"✓ Central config valid ({result.server_count} servers, {result.group_count} groups, {result.plugin_count} plugins)")
+
+    # Per-check output
+    for check in result.checks:
+        if check.severity == "error":
+            symbol = click.style("✗", fg="red")
+        elif check.severity == "warning":
+            symbol = click.style("⚠", fg="yellow")
+        else:
+            symbol = click.style("·", fg="blue")
+        click.echo(f"{symbol} {check.client}: {check.message}")
+
+    # Footer
+    if result.errors or result.warnings:
+        click.echo(f"\n{result.errors} errors, {result.warnings} warnings")
+    else:
+        click.echo("\nAll checks passed.")
+
+
 # ── Help command ─────────────────────────────────────────────────
 
 
@@ -795,7 +840,8 @@ CLIENTS
                                         sync status. Shows project-level assignments
                                         for Claude Code.
 
-  Supported clients: claude-desktop, claude-code, cursor, vscode, windsurf, zed, jetbrains
+  Supported clients: claude-desktop, claude-code, cursor, vscode, windsurf, zed,
+    jetbrains, gemini-cli, codex-cli, copilot-cli, copilot-jetbrains, amazon-q, cline, roo-code
 
 ASSIGNMENTS
   mcp assign <client> <group>           Assign a group to a client.
@@ -824,10 +870,15 @@ SYNC
   mcp sync <client>                     Sync one client.
   mcp sync <client> --project <path>    Sync one Claude Code project.
   mcp sync --dry-run                    Preview changes without writing files.
+  mcp sync --force                      Overwrite entries modified outside mcpoyle.
+  mcp sync --adopt                      Update mcpoyle registry to match manual edits.
 
   Sync is additive-only: servers not managed by mcp are never touched.
   Managed entries are tagged with a __mcpoyle marker in the client config.
-  Client configs are backed up (.bak) before each write.
+  Client configs are backed up before each write.
+  Sync detects manual edits via content hashing — drifted entries are
+  warned about and skipped by default. Use --force to overwrite or
+  --adopt to accept the manual changes into mcpoyle's registry.
   Sync is idempotent — running it twice produces the same result.
   For Claude Code, sync also updates plugins and marketplaces.
   Project-level plugins write to <project>/.claude/settings.local.json
@@ -858,6 +909,13 @@ MARKETPLACES (Claude Code)
         --path <dir>                      Local directory source
   mcp marketplaces remove <name>        Remove a marketplace.
   mcp marketplaces show <name>          Show marketplace details and plugins.
+
+DOCTOR
+  mcp doctor                            Audit config health across all clients.
+  mcp doctor --json                     Structured JSON output for scripting.
+
+  Checks: missing env vars, unreachable binaries, orphaned entries,
+  stale (never-synced) configs, JSON parse errors, drift detection.
 
 TUI
   mcp tui                               Open the interactive TUI dashboard.
