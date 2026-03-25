@@ -201,6 +201,31 @@ mcpoyle sync claude-code
 
 ---
 
+## Init
+
+### `mcpoyle init [options]`
+
+Guided first-run setup. Walks through client detection, server import, group creation, assignment, and initial sync. Safe to re-run — skips steps that are already done.
+
+| Option | Description |
+|--------|-------------|
+| `--auto` | Non-interactive: imports from all detected clients, creates no groups, syncs all servers to all clients |
+
+```
+mcpoyle init          # interactive guided setup
+mcpoyle init --auto   # non-interactive, imports and syncs everything
+```
+
+**Steps:**
+
+1. Detect installed AI clients
+2. Import existing MCP servers from each client's config
+3. Optionally create groups and add servers to them
+4. Assign groups to clients (or keep "all servers" default)
+5. Preview sync (dry run) and apply on confirmation
+
+---
+
 ## Sync
 
 ### `mcpoyle sync [<client>] [options]`

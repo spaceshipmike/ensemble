@@ -70,8 +70,11 @@ def test_detect_drift_with_change():
 
 
 def test_doctor_empty_config():
+    from unittest.mock import patch
     cfg = McpoyleConfig()
-    result = run_doctor(cfg)
+    # Mock client detection to avoid picking up real config files on the test machine
+    with patch("mcpoyle.doctor.CLIENTS", {}):
+        result = run_doctor(cfg)
     assert result.errors == 0
     assert result.warnings == 0
     assert result.server_count == 0

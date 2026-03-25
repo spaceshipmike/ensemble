@@ -1,5 +1,5 @@
 ---
-version: 0.12.0
+version: 0.13.0
 status: active
 last_updated: 2026-03-13
 synopsis:
@@ -7,7 +7,7 @@ synopsis:
   medium: "mcpoyle is a CLI and TUI tool that centrally manages MCP server configurations and Claude Code plugins across multiple AI clients. It provides a single registry, group-based organization, and automatic sync to each client's native config format."
   readme: "mcpoyle eliminates the pain of maintaining MCP server configurations across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, and JetBrains. Define your servers once, organize them into groups, assign groups to clients or projects, and sync. For Claude Code, mcpoyle extends to full plugin lifecycle management — install, uninstall, enable, disable — and marketplace registration. The CLI surface is optimized for scripting and AI agents; the TUI dashboard provides a human-friendly overview with keyboard-driven navigation and sync previews."
   tech-stack: [Python 3.12+, click, Textual, httpx, hatch, uv, JSON config]
-  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit]
+  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit, guided onboarding, marker-based coexistence]
   goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, registry discovery + install, project-aware scoping, CLI + TUI surfaces]
 ---
 
@@ -95,6 +95,7 @@ mcpoyle scope <name> --project <path>     # move server/plugin to project-only
 
 mcpoyle projects                          # list registry projects with MCP server status
 
+mcpoyle init                              # guided first-run setup
 mcpoyle doctor                            # audit config health across all clients
 mcpoyle doctor --json                     # structured output for scripting
 
@@ -458,6 +459,68 @@ Behavior:
 
 `mcpoyle sync --dry-run` includes drift warnings in its output.
 
+## Init
+
+`mcpoyle init` is a guided onboarding command for first-time setup. It walks the user through client detection, optional server import, group creation, and initial assignment — replacing the need to run multiple commands manually.
+
+### Flow
+
+1. **Detect clients** — scans for installed AI clients and displays them with install status
+2. **Import existing servers** — for each detected client, offers to import existing MCP server configs into the central registry (`mcpoyle import`)
+3. **Create groups** — prompts to create one or more groups (e.g., "dev-tools", "work", "personal") with optional descriptions
+4. **Assign groups** — for each detected client, prompts to assign a group or keep the default (all enabled servers)
+5. **Initial sync** — runs `mcpoyle sync --dry-run` to preview, then `mcpoyle sync` on confirmation
+
+### Behavior
+
+- Skips steps that are already done (e.g., if servers already exist in the central config, skip import)
+- Non-destructive — never overwrites existing config, only adds
+- Can be re-run safely; detects existing state and adjusts prompts
+- `mcpoyle init --auto` skips interactive prompts: imports from all detected clients, creates no groups, assigns all servers to all clients, and syncs
+
+### Output
+
+```
+$ mcpoyle init
+Detected clients:
+  ✓ Claude Desktop (installed)
+  ✓ Claude Code (installed)
+  ✓ Cursor (installed)
+  · Windsurf (not found)
+
+Import servers from Claude Desktop? [Y/n] y
+  + ctx (npx tsx /path/to/index.ts serve)
+  + prm (npx tsx /path/to/prm/index.ts serve)
+  Imported 2 servers.
+
+Create a group? [y/N] y
+  Group name: dev-tools
+  Description: Core development servers
+
+  Add servers to dev-tools:
+    [x] ctx
+    [x] prm
+  Added 2 servers to dev-tools.
+
+Assign groups to clients:
+  Claude Desktop → dev-tools
+  Claude Code → (all servers)
+  Cursor → dev-tools
+
+Preview sync... (dry run)
+  Claude Desktop: would sync
+    + ctx
+    + prm
+  ...
+
+Apply? [Y/n] y
+  Claude Desktop: synced
+  Claude Code: synced
+  Cursor: synced
+
+Setup complete. Run 'mcpoyle tui' to manage, or 'mcpoyle sync' after changes.
+```
+
 ## Doctor
 
 `mcpoyle doctor` runs a deterministic health audit across all managed configs — no network calls, no LLM. It checks for common issues and reports them with severity levels (error, warning, info).
@@ -597,6 +660,7 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 4. **No daemon** — runs on demand, no file watching, no background process.
 5. **Dry-run support** — `mcpoyle sync --dry-run` shows what would change without writing.
 6. **Config backup** — before writing to any client's config file for the first time, mcpoyle creates a `.mcpoyle-backup` copy alongside the original. Subsequent writes do not overwrite the backup.
+7. **Marker-based coexistence** — mcpoyle tags every server entry it writes with a `__mcpoyle: true` marker. On sync, mcpoyle reads all servers, preserves entries without the marker untouched, and only manages its own. This means mcpoyle coexists safely with other tools that write to the same config files (e.g., ToolHive, Caliber, manual edits). However, other tools that don't use markers may overwrite mcpoyle's entries during their own sync. Users running multiple config management tools should sync mcpoyle last, or use `mcpoyle doctor` to detect unexpected changes via drift detection.
 
 ## Future
 
@@ -607,6 +671,7 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 
 ## Changelog
 
+- **0.13.0** — Add `mcpoyle init` guided onboarding command (detect clients, import servers, create groups, assign, sync). Add marker-based coexistence documentation to Design Principles. Inspired by patterns in ToolHive.
 - **0.12.0** — Add content-hash drift detection to sync engine (warn on manual edits, `--force`/`--adopt` flags). Add `mcpoyle doctor` command for deterministic config health auditing (env vars, orphaned entries, stale configs, parse errors, unreachable binaries). Inspired by patterns in Caliber (ai-setup).
 - **0.11.0** — Integrate project-registry for project-aware scoping. Read-only SQLite integration: name-based project assignment, `mcpoyle projects` command, Projects tab in TUI. Add `projects.py` module. Registry is optional with graceful fallback.
 - **0.10.0** — Expand supported clients from 8 to 15 (add Gemini CLI, Codex CLI, Copilot CLI/JetBrains, Amazon Q, Cline, Roo Code). Add config backup before first sync. Add token cost estimates to registry show. Note MCP Scoreboard as future registry source.

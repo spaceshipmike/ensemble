@@ -391,6 +391,135 @@ def projects_cmd(ctx: click.Context) -> None:
         click.echo(f"    group: {group_info} | {server_count} servers | {paths_str}")
 
 
+# ── Init command ─────────────────────────────────────────────────
+
+
+@cli.command("init")
+@click.option("--auto", "auto_mode", is_flag=True, help="Non-interactive: import all, no groups, sync all")
+@click.pass_context
+def init_cmd(ctx: click.Context, auto_mode: bool) -> None:
+    """Guided first-run setup.
+
+    Walks through client detection, server import, group creation,
+    assignment, and initial sync. Safe to re-run.
+    """
+    cfg: McpoyleConfig = ctx.obj["config"]
+
+    # Step 1: Detect clients
+    click.echo("Detected clients:")
+    installed_clients = []
+    for client_id, client_def in CLIENTS.items():
+        if client_def.is_installed:
+            click.echo(f"  {click.style('✓', fg='green')} {client_def.name} (installed)")
+            installed_clients.append(client_id)
+        else:
+            click.echo(f"  {click.style('·', fg='yellow')} {client_def.name} (not found)")
+    click.echo()
+
+    if not installed_clients:
+        click.echo("No clients detected. Install an AI client and re-run mcpoyle init.")
+        return
+
+    # Step 2: Import existing servers
+    has_existing = len(cfg.servers) > 0
+    if has_existing and not auto_mode:
+        click.echo(f"Central config already has {len(cfg.servers)} server(s). Skipping import.\n")
+    else:
+        for client_id in installed_clients:
+            client_name = CLIENTS[client_id].name
+            should_import = auto_mode or click.confirm(f"Import servers from {client_name}?", default=True)
+            if should_import:
+                result = do_import(cfg, client_id)
+                if result.servers:
+                    for s in result.servers:
+                        click.echo(f"  + {s.name} ({s.command} {' '.join(s.args)})")
+                    click.echo(f"  Imported {len(result.servers)} server(s) from {client_name}.")
+                if result.project_imports:
+                    for proj in result.project_imports:
+                        click.echo(f"  Imported {len(proj.servers)} server(s) from project {proj.path}.")
+        if cfg.servers:
+            _save(ctx)
+            click.echo()
+
+    # Step 3: Create groups (skip in auto mode)
+    if not auto_mode and cfg.servers:
+        while click.confirm("Create a group?", default=False):
+            name = click.prompt("  Group name")
+            desc = click.prompt("  Description", default="")
+            result = ops.create_group(cfg, name, desc)
+            if not result.ok:
+                click.echo(f"  {result.error}")
+                continue
+            _save(ctx)
+            click.echo(f"  Created group '{name}'.")
+
+            # Offer to add servers to the group
+            for server in cfg.servers:
+                if click.confirm(f"    Add {server.name} to {name}?", default=True):
+                    ops.add_server_to_group(cfg, name, server.name)
+            _save(ctx)
+            click.echo()
+
+    # Step 4: Assign groups to clients
+    if not auto_mode and cfg.groups:
+        click.echo("Assign groups to clients:")
+        for client_id in installed_clients:
+            client_name = CLIENTS[client_id].name
+            assignment = cfg.get_client(client_id)
+            if assignment and assignment.group:
+                click.echo(f"  {client_name}: already assigned to '{assignment.group}'")
+                continue
+
+            group_names = [g.name for g in cfg.groups]
+            click.echo(f"  {client_name}:")
+            click.echo(f"    0) all servers (default)")
+            for i, gname in enumerate(group_names, 1):
+                click.echo(f"    {i}) {gname}")
+
+            choice = click.prompt("    Choice", default="0")
+            if choice != "0" and choice.isdigit() and 1 <= int(choice) <= len(group_names):
+                group_name = group_names[int(choice) - 1]
+                ops.assign_client(cfg, client_id, group_name)
+                click.echo(f"    → {group_name}")
+            else:
+                ops.assign_client(cfg, client_id, None, assign_all=True)
+                click.echo(f"    → all servers")
+        _save(ctx)
+        click.echo()
+
+    # Step 5: Sync
+    if not cfg.servers:
+        click.echo("No servers to sync. Add servers with 'mcpoyle add' or 'mcpoyle registry add'.")
+        return
+
+    if auto_mode:
+        click.echo("Syncing all detected clients...")
+        results = sync_all(cfg, dry_run=False)
+        for cid, actions in results.items():
+            for a in actions:
+                click.echo(a)
+        _save(ctx)
+    else:
+        click.echo("Preview sync... (dry run)")
+        results = sync_all(cfg, dry_run=True)
+        for cid, actions in results.items():
+            for a in actions:
+                click.echo(a)
+        click.echo()
+
+        if click.confirm("Apply?", default=True):
+            results = sync_all(cfg, dry_run=False)
+            for cid, actions in results.items():
+                for a in actions:
+                    click.echo(a)
+            _save(ctx)
+        else:
+            click.echo("Skipped. Run 'mcpoyle sync' when ready.")
+
+    click.echo()
+    click.echo("Setup complete. Run 'mcpoyle tui' to manage, or 'mcpoyle sync' after changes.")
+
+
 # ── Scope command ────────────────────────────────────────────────
 
 
@@ -865,6 +994,12 @@ SCOPE
                                         project-only. Auto-creates groups if needed.
                                         Run 'mcp sync claude-code' after to apply.
 
+INIT
+  mcp init                              Guided first-run setup: detect clients,
+                                        import servers, create groups, assign, sync.
+  mcp init --auto                       Non-interactive: import all, skip groups, sync.
+                                        Safe to re-run — skips already-done steps.
+
 SYNC
   mcp sync                              Sync all detected clients.
   mcp sync <client>                     Sync one client.
@@ -937,6 +1072,8 @@ CONFIG
   Marketplaces: ~/.claude/settings.json → extraKnownMarketplaces
 
 EXAMPLES
+  mcp init                                           Guided first-run setup
+  mcp init --auto                                    Non-interactive setup
   mcp import claude-desktop                          Import existing servers
   mcp groups create dev-tools --description "Dev"    Create a group
   mcp groups add-server dev-tools ctx                Add server to group
