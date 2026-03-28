@@ -175,6 +175,19 @@ mcpoyle rules remove ~/Projects/
 
 ---
 
+## Search
+
+### `mcpoyle search <query> [--limit <n>]`
+
+Search installed servers by name, tool names, and tool descriptions. Uses BM25-style term frequency ranking with field boosting (server name 3x, tool name 2x, tool description 1x). Results show match score and which fields matched.
+
+```
+mcpoyle search "github"
+mcpoyle search "file read" --limit 5
+```
+
+---
+
 ## Scope
 
 ### `mcpoyle scope <name> --project <path>`

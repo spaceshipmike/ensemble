@@ -542,6 +542,37 @@ def init_cmd(ctx: click.Context, auto_mode: bool) -> None:
     click.echo("Setup complete. Run 'mcpoyle tui' to manage, or 'mcpoyle sync' after changes.")
 
 
+# ── Search command ───────────────────────────────────────────────
+
+
+@cli.command("search")
+@click.argument("query")
+@click.option("--limit", default=20, help="Maximum results to show")
+@click.pass_context
+def search_cmd(ctx: click.Context, query: str, limit: int) -> None:
+    """Search installed servers by name, tools, and descriptions."""
+    from mcpoyle.search import search_servers
+
+    cfg: McpoyleConfig = ctx.obj["config"]
+    results = search_servers(cfg, query, limit=limit)
+
+    if not results:
+        click.echo(f"No servers matching '{query}'.")
+        return
+
+    for r in results:
+        server = cfg.get_server(r.server_name)
+        status = click.style("on", fg="green") if server and server.enabled else click.style("off", fg="red")
+        score = click.style(f"{r.score:.1f}", fg="cyan")
+        click.echo(f"  {r.server_name} [{status}] (score: {score})")
+
+        if "name" in r.matched_fields:
+            click.echo(f"    matched: server name")
+        if r.matched_tools:
+            tools_str = ", ".join(r.matched_tools)
+            click.echo(f"    matched tools: {tools_str}")
+
+
 # ── Scope command ────────────────────────────────────────────────
 
 
@@ -1048,6 +1079,10 @@ RULES
 
   Rules auto-assign groups to Claude Code projects based on their path.
   Explicit assignments override rules. Most specific prefix wins.
+
+SEARCH
+  mcp search <query>                    Search installed servers by name, tools,
+        [--limit <n>]                     and descriptions. BM25-style ranking.
 
 SCOPE
   mcp scope <name> --project <path>     Move a server or plugin from global to
