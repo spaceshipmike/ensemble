@@ -225,6 +225,14 @@ def _adopt_server_entry(config: McpoyleConfig, name: str, entry: dict) -> None:
     transport = entry.get("transport", "stdio")
     if transport:
         server.transport = transport
+    if "url" in entry:
+        server.url = entry["url"]
+    auth_info = entry.get("auth", {})
+    if isinstance(auth_info, dict):
+        if "type" in auth_info:
+            server.auth_type = auth_info["type"]
+        if "ref" in auth_info:
+            server.auth_ref = auth_info["ref"]
 
 
 def _sync_project(

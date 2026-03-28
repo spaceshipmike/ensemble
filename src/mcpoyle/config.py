@@ -14,6 +14,32 @@ LOCK_PATH = CONFIG_DIR / "config.lock"
 
 
 @dataclass
+class ServerOrigin:
+    """Tracks where a server definition came from."""
+    source: str = ""  # "manual", "registry", "import"
+    client: str = ""  # client id if imported
+    registry_id: str = ""  # registry identifier if from registry
+    timestamp: str = ""  # ISO 8601
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ServerOrigin:
+        if not d or not isinstance(d, dict):
+            return cls()
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class ToolInfo:
+    """Metadata about a tool provided by a server."""
+    name: str
+    description: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ToolInfo:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
 class Server:
     name: str
     enabled: bool = True
@@ -21,10 +47,26 @@ class Server:
     command: str = ""
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
+    # HTTP transport fields
+    url: str = ""
+    auth_type: str = ""  # "", "bearer", "api-key", "header"
+    auth_ref: str = ""  # op:// reference or env var name
+    # Provenance
+    origin: ServerOrigin = field(default_factory=ServerOrigin)
+    # Tool metadata
+    tools: list[ToolInfo] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> Server:
-        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+        # Handle nested origin and tools
+        origin_data = d.get("origin")
+        tools_data = d.get("tools", [])
+        simple_fields = {k: v for k, v in d.items()
+                         if k in cls.__dataclass_fields__ and k not in ("origin", "tools")}
+        simple_fields["origin"] = ServerOrigin.from_dict(origin_data) if origin_data else ServerOrigin()
+        simple_fields["tools"] = [ToolInfo.from_dict(t) if isinstance(t, dict) else ToolInfo(name=str(t))
+                                  for t in tools_data]
+        return cls(**simple_fields)
 
 
 @dataclass

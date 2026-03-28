@@ -30,6 +30,8 @@ from mcpoyle.config import (
     Plugin,
     ProjectAssignment,
     Server,
+    ServerOrigin,
+    ToolInfo,
 )
 
 
@@ -95,6 +97,11 @@ def add_server(
     args: list[str] | None = None,
     env: dict[str, str] | None = None,
     transport: str = "stdio",
+    url: str = "",
+    auth_type: str = "",
+    auth_ref: str = "",
+    origin: ServerOrigin | None = None,
+    tools: list[ToolInfo] | None = None,
 ) -> ServerResult:
     if cfg.get_server(name):
         return ServerResult(ok=False, error=f"Server '{name}' already exists.")
@@ -105,6 +112,11 @@ def add_server(
         args=args or [],
         env=env or {},
         transport=transport,
+        url=url,
+        auth_type=auth_type,
+        auth_ref=auth_ref,
+        origin=origin or ServerOrigin(),
+        tools=tools or [],
     )
     cfg.servers.append(server)
     return ServerResult(server=server, messages=[f"Added server '{name}'."])

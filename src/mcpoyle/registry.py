@@ -360,10 +360,14 @@ def translate_to_server_config(detail: ServerDetail) -> dict:
             name = name[len(prefix):]
             break
 
-    return {
+    result = {
         "name": name,
         "command": command,
         "args": args,
         "env": {},
         "transport": detail.transport,
     }
+    # For HTTP-based servers, include URL if available
+    if detail.transport in ("sse", "http", "streamable-http") and detail.homepage:
+        result["url"] = detail.homepage
+    return result

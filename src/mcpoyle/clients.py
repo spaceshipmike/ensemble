@@ -174,14 +174,25 @@ for _c in _client_defs:
 def server_to_client_entry(server: Server) -> dict:
     """Convert a Server to the dict format used in client configs."""
     entry: dict = {MCPOYLE_MARKER: True}
-    if server.command:
-        entry["command"] = server.command
-    if server.args:
-        entry["args"] = server.args
-    if server.env:
-        entry["env"] = server.env
-    if server.transport and server.transport != "stdio":
+
+    if server.transport in ("sse", "http", "streamable-http") and server.url:
+        # HTTP-based transport
+        entry["url"] = server.url
         entry["transport"] = server.transport
+        if server.auth_type and server.auth_ref:
+            entry["auth"] = {"type": server.auth_type, "ref": server.auth_ref}
+        if server.env:
+            entry["env"] = server.env
+    else:
+        # stdio transport
+        if server.command:
+            entry["command"] = server.command
+        if server.args:
+            entry["args"] = server.args
+        if server.env:
+            entry["env"] = server.env
+        if server.transport and server.transport != "stdio":
+            entry["transport"] = server.transport
     return entry
 
 
@@ -228,12 +239,16 @@ def _entry_to_server(name: str, entry: dict) -> Server | None:
         return None
     if entry.get(MCPOYLE_MARKER):
         return None
+    auth_info = entry.get("auth", {})
     return Server(
         name=name,
         command=entry.get("command", ""),
         args=entry.get("args", []),
         env=entry.get("env", {}),
         transport=entry.get("transport", "stdio"),
+        url=entry.get("url", ""),
+        auth_type=auth_info.get("type", "") if isinstance(auth_info, dict) else "",
+        auth_ref=auth_info.get("ref", "") if isinstance(auth_info, dict) else "",
     )
 
 

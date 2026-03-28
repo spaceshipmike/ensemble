@@ -52,7 +52,10 @@ def list_servers(ctx: click.Context) -> None:
         return
     for s in cfg.servers:
         status = click.style("on", fg="green") if s.enabled else click.style("off", fg="red")
-        click.echo(f"  {s.name} [{status}] — {s.command} {' '.join(s.args)}")
+        if s.transport in ("sse", "http", "streamable-http") and s.url:
+            click.echo(f"  {s.name} [{status}] — {s.url}")
+        else:
+            click.echo(f"  {s.name} [{status}] — {s.command} {' '.join(s.args)}")
 
 
 @cli.command()
@@ -118,12 +121,31 @@ def show(ctx: click.Context, name: str) -> None:
     click.echo(f"Name:      {server.name}")
     click.echo(f"Status:    {status}")
     click.echo(f"Transport: {server.transport}")
-    click.echo(f"Command:   {server.command}")
-    click.echo(f"Args:      {' '.join(server.args) if server.args else '(none)'}")
+    if server.transport in ("sse", "http", "streamable-http") and server.url:
+        click.echo(f"URL:       {server.url}")
+        if server.auth_type:
+            click.echo(f"Auth:      {server.auth_type} (ref: {server.auth_ref})")
+    else:
+        click.echo(f"Command:   {server.command}")
+        click.echo(f"Args:      {' '.join(server.args) if server.args else '(none)'}")
     if server.env:
         click.echo("Env:")
         for k, v in server.env.items():
             click.echo(f"  {k}={v}")
+    if server.origin and server.origin.source:
+        origin_parts = [server.origin.source]
+        if server.origin.registry_id:
+            origin_parts.append(server.origin.registry_id)
+        elif server.origin.client:
+            origin_parts.append(server.origin.client)
+        click.echo(f"Origin:    {' / '.join(origin_parts)}")
+    if server.tools:
+        click.echo(f"Tools:     {len(server.tools)} tool(s)")
+        for t in server.tools[:5]:
+            desc = f" — {t.description}" if t.description else ""
+            click.echo(f"  {t.name}{desc}")
+        if len(server.tools) > 5:
+            click.echo(f"  ... and {len(server.tools) - 5} more")
 
     # Show group membership
     member_of = [g.name for g in cfg.groups if server.name in g.servers]
@@ -722,6 +744,16 @@ def registry_add(ctx: click.Context, server_id: str, env_pairs: tuple[str, ...])
 
     config["env"] = env
 
+    # Build origin and tool metadata from registry detail
+    from datetime import datetime, timezone
+    from mcpoyle.config import ServerOrigin, ToolInfo
+    origin = ServerOrigin(
+        source="registry",
+        registry_id=server_id,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    tools = [ToolInfo(name=t) for t in detail.tools] if detail.tools else []
+
     # Add via operations layer
     result = ops.add_server(
         ctx.obj["config"],
@@ -730,6 +762,9 @@ def registry_add(ctx: click.Context, server_id: str, env_pairs: tuple[str, ...])
         args=config["args"],
         env=config["env"],
         transport=config["transport"],
+        url=config.get("url", ""),
+        origin=origin,
+        tools=tools,
     )
     _handle(ctx, result)
 
