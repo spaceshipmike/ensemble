@@ -652,11 +652,12 @@ def registry_group() -> None:
 
 @registry_group.command("search")
 @click.argument("query")
-def registry_search(query: str) -> None:
+@click.option("--no-cache", is_flag=True, help="Bypass the response cache")
+def registry_search(query: str, no_cache: bool) -> None:
     """Search MCP server registries."""
     from mcpoyle.registry import search_registries
 
-    results = search_registries(query)
+    results = search_registries(query, use_cache=not no_cache)
     if not results:
         click.echo("No servers found.")
         return
@@ -671,11 +672,12 @@ def registry_search(query: str) -> None:
 
 @registry_group.command("show")
 @click.argument("server_id")
-def registry_show(server_id: str) -> None:
+@click.option("--no-cache", is_flag=True, help="Bypass the response cache")
+def registry_show(server_id: str, no_cache: bool) -> None:
     """Show server details from registry."""
     from mcpoyle.registry import get_server
 
-    detail = get_server(server_id)
+    detail = get_server(server_id, use_cache=not no_cache)
     if not detail:
         click.echo(f"Server '{server_id}' not found.", err=True)
         raise SystemExit(1)
@@ -767,6 +769,29 @@ def registry_add(ctx: click.Context, server_id: str, env_pairs: tuple[str, ...])
         tools=tools,
     )
     _handle(ctx, result)
+
+
+@registry_group.command("backends")
+def registry_backends() -> None:
+    """List available registry backends."""
+    from mcpoyle.registry import get_adapters
+
+    adapters = get_adapters()
+    click.echo(f"{len(adapters)} registry backend(s):")
+    for adapter in adapters:
+        click.echo(f"  {adapter.name} — {adapter.base_url}")
+
+
+@registry_group.command("cache-clear")
+def registry_cache_clear() -> None:
+    """Clear the registry response cache."""
+    from mcpoyle.registry import clear_cache
+
+    count = clear_cache()
+    if count:
+        click.echo(f"Cleared {count} cached response(s).")
+    else:
+        click.echo("Cache is empty.")
 
 
 # ── Marketplace commands ─────────────────────────────────────────
@@ -1092,10 +1117,14 @@ TUI
 
 REGISTRY
   mcp registry search <query>           Search MCP server registries (Official + Glama).
+        [--no-cache]                      Bypass the response cache.
   mcp registry show <id>                Show server details from registry.
+        [--no-cache]                      Bypass the response cache.
   mcp registry add <id>                 Install a server from the registry. Options:
         [--env KEY=VAL ...]               Environment variables (repeatable).
                                           Prompts for required vars not provided.
+  mcp registry backends                 List available registry backends.
+  mcp registry cache-clear              Clear the registry response cache.
 
 CONFIG
   Central config: ~/.config/mcpoyle/config.json (created automatically).

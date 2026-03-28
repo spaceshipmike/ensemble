@@ -121,6 +121,8 @@ class Marketplace:
 @dataclass
 class Settings:
     adopt_unmanaged_plugins: bool = False
+    registry_cache_ttl: int = 3600  # seconds, 0 to disable caching
+    sync_cost_warning_threshold: int = 50  # tool count threshold for cost warning
 
     @classmethod
     def from_dict(cls, d: dict) -> Settings:

@@ -388,17 +388,17 @@ Show marketplace details: source and list of available plugins.
 
 ## Registry
 
-### `mcpoyle registry search <query>`
+### `mcpoyle registry search <query> [--no-cache]`
 
-Search MCP server registries (Official MCP Registry + Glama). Results show server name, transport type, source registry, and description.
+Search MCP server registries (Official MCP Registry + Glama). Results show server name, transport type, source registry, and description. Use `--no-cache` to bypass the response cache.
 
-### `mcpoyle registry show <id>`
+### `mcpoyle registry show <id> [--no-cache]`
 
-Show full details for a server from its source registry: description, transport, required env vars, available tools, and estimated token cost.
+Show full details for a server from its source registry: description, transport, required env vars, available tools, and estimated token cost. Use `--no-cache` to bypass the response cache.
 
 ### `mcpoyle registry add <id> [options]`
 
-Install a server from a registry into mcpoyle's central config. Automatically translates registry metadata to mcpoyle's server format (npm→npx, pypi→uvx).
+Install a server from a registry into mcpoyle's central config. Automatically translates registry metadata to mcpoyle's server format (npm→npx, pypi→uvx). Stores origin provenance and tool metadata.
 
 | Option | Description |
 |--------|-------------|
@@ -409,6 +409,14 @@ mcpoyle registry search "github"
 mcpoyle registry show @anthropic/github-mcp
 mcpoyle registry add @anthropic/github-mcp --env GITHUB_TOKEN=op://Dev/github/token
 ```
+
+### `mcpoyle registry backends`
+
+List available registry backends with their base URLs.
+
+### `mcpoyle registry cache-clear`
+
+Clear the file-based registry response cache at `~/.config/mcpoyle/cache/registry/`. Cache TTL is configurable via `registry_cache_ttl` in settings (default: 3600s).
 
 ---
 
