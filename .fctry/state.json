@@ -1,5 +1,33 @@
 {
+  "upgradeApplied": {
+    "from": "0.75.0",
+    "to": "0.76.19"
+  },
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "executor-plan"],
-  "workflowStep": "executor-build"
+  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
+  "specVersion": "0.14.0",
+  "readinessSummary": {
+    "satisfied": 7,
+    "partial": 5,
+    "missing": 6,
+    "draft": 0
+  },
+  "buildRun": {
+    "status": "completed",
+    "plan": {
+      "specVersion": "0.14.0",
+      "totalChunks": 7,
+      "chunks": [
+        {"id": 1, "name": "Server Model Expansion", "status": "completed"},
+        {"id": 2, "name": "TOML Support + mcpx Client", "status": "completed"},
+        {"id": 3, "name": "Registry Adapter + Caching", "status": "completed"},
+        {"id": 4, "name": "Local Capability Search", "status": "completed"},
+        {"id": 5, "name": "Context Cost Awareness", "status": "completed"},
+        {"id": 6, "name": "Init Auto-Discovery + Doctor", "status": "completed"},
+        {"id": 7, "name": "Tests + TUI Fix", "status": "completed"}
+      ]
+    },
+    "chunkProgress": "7/7",
+    "lastCheckpoint": "2026-03-28T12:30:00Z"
+  }
 }

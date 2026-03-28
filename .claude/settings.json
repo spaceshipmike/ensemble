@@ -1,5 +1,9 @@
 {
   "enabledPlugins": {
     "fctry@fctry-marketplace": true
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node /Users/michaellebowitz/code/fctry/src/statusline/fctry-statusline.js"
   }
 }
