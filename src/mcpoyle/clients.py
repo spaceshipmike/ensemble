@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,80 @@ from mcpoyle.config import Server
 
 MCPOYLE_MARKER = "__mcpoyle"
 BACKUP_SUFFIX = ".mcpoyle-backup"
+
+
+def _toml_value(v) -> str:
+    """Format a Python value as a TOML value string."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return repr(v)
+    if isinstance(v, str):
+        # Escape backslashes and quotes
+        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    if isinstance(v, list):
+        items = ", ".join(_toml_value(item) for item in v)
+        return f"[{items}]"
+    if isinstance(v, dict):
+        # Inline table
+        items = ", ".join(f"{k} = {_toml_value(val)}" for k, val in v.items())
+        return f"{{{items}}}"
+    return f'"{v}"'
+
+
+def dict_to_toml(data: dict, prefix: str = "") -> str:
+    """Convert a dict to TOML format string.
+
+    Handles nested dicts as TOML tables (sections). Simple values go first,
+    then nested tables. This covers the MCP server config patterns used by
+    Codex CLI and mcpx.
+    """
+    lines: list[str] = []
+    tables: list[tuple[str, dict]] = []
+
+    for key, val in data.items():
+        if isinstance(val, dict):
+            # Check if it's a simple dict (all non-dict values) -> inline table
+            # or a complex dict with nested dicts -> TOML table section
+            has_nested = any(isinstance(v, dict) for v in val.values())
+            if has_nested:
+                tables.append((key, val))
+            else:
+                # Simple dict — write as inline table or table section
+                tables.append((key, val))
+        else:
+            lines.append(f"{key} = {_toml_value(val)}")
+
+    for table_key, table_val in tables:
+        full_key = f"{prefix}.{table_key}" if prefix else table_key
+        lines.append("")
+        lines.append(f"[{full_key}]")
+        # Separate simple values from nested dicts
+        sub_tables: list[tuple[str, dict]] = []
+        for k, v in table_val.items():
+            if isinstance(v, dict):
+                sub_tables.append((k, v))
+            else:
+                lines.append(f"{k} = {_toml_value(v)}")
+        # Recurse into nested tables
+        for sub_key, sub_val in sub_tables:
+            sub_full = f"{full_key}.{sub_key}"
+            lines.append("")
+            lines.append(f"[{sub_full}]")
+            for k, v in sub_val.items():
+                if isinstance(v, dict):
+                    # One more level deep
+                    lines.append("")
+                    lines.append(f"[{sub_full}.{k}]")
+                    for k2, v2 in v.items():
+                        lines.append(f"{k2} = {_toml_value(v2)}")
+                else:
+                    lines.append(f"{k} = {_toml_value(v)}")
+
+    return "\n".join(lines) + "\n"
 
 
 def _backup_config(path: Path) -> None:
@@ -30,6 +105,7 @@ class ClientDef:
     servers_key: str  # top-level JSON key for MCP servers
     detect_paths: list[str] | None = None  # paths to check for detection
     glob_pattern: bool = False  # True for JetBrains-style glob paths
+    config_format: str = "json"  # "json" or "toml"
 
     @property
     def resolved_paths(self) -> list[Path]:
@@ -129,6 +205,15 @@ _client_defs = [
         config_path="~/.codex/config.toml",
         servers_key="mcp_servers",
         detect_paths=["~/.codex/config.toml"],
+        config_format="toml",
+    ),
+    ClientDef(
+        id="mcpx",
+        name="mcpx",
+        config_path="~/.config/mcpx/config.toml",
+        servers_key="servers",
+        detect_paths=["~/.config/mcpx/config.toml"],
+        config_format="toml",
     ),
     ClientDef(
         id="copilot-cli",
@@ -197,10 +282,23 @@ def server_to_client_entry(server: Server) -> dict:
 
 
 def read_client_config(path: Path) -> dict:
-    """Read a client's config file, returning empty dict if missing."""
+    """Read a client's config file, returning empty dict if missing.
+
+    Automatically detects TOML vs JSON based on file extension.
+    """
     if not path.exists():
         return {}
+    if path.suffix == ".toml":
+        return read_toml_config(path)
     return json.loads(path.read_text())
+
+
+def read_toml_config(path: Path) -> dict:
+    """Read a TOML config file, returning empty dict if missing."""
+    if not path.exists():
+        return {}
+    with open(path, "rb") as f:
+        return tomllib.load(f)
 
 
 def get_managed_servers(config: dict, servers_key: str) -> dict:
@@ -230,7 +328,10 @@ def write_client_config(path: Path, config: dict, servers_key: str, new_servers:
     _set_nested(existing, servers_key, merged)
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(existing, indent=2) + "\n")
+    if path.suffix == ".toml":
+        path.write_text(dict_to_toml(existing))
+    else:
+        path.write_text(json.dumps(existing, indent=2) + "\n")
 
 
 def _entry_to_server(name: str, entry: dict) -> Server | None:

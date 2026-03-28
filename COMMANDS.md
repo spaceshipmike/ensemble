@@ -109,6 +109,7 @@ Detect installed AI clients, show their sync status, group assignments, and any 
 | `jetbrains` | JetBrains | `~/.config/JetBrains/*/mcp.json` |
 | `gemini-cli` | Gemini CLI | `~/.gemini/settings.json` |
 | `codex-cli` | Codex CLI | `~/.codex/config.toml` |
+| `mcpx` | mcpx | `~/.config/mcpx/config.toml` |
 | `copilot-cli` | Copilot CLI | `~/.copilot/mcp-config.json` |
 | `copilot-jetbrains` | Copilot JetBrains | `~/.config/github-copilot/mcp.json` |
 | `amazon-q` | Amazon Q | `~/.aws/amazonq/mcp.json` |

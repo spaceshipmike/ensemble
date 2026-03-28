@@ -103,21 +103,25 @@ def _check_unreachable_binaries(config: McpoyleConfig, result: DoctorResult) -> 
 
 
 def _check_config_parse_errors(result: DoctorResult) -> None:
-    """Check if client config files contain valid JSON (or TOML for Codex)."""
+    """Check if client config files contain valid JSON or TOML."""
+    import tomllib
+
     for client_id, client_def in CLIENTS.items():
         for path in client_def.resolved_paths:
             if not path.exists():
                 continue
-            # Skip TOML files (e.g., Codex CLI uses config.toml)
-            if path.suffix == ".toml":
-                continue
             try:
-                json.loads(path.read_text())
-            except (json.JSONDecodeError, OSError) as e:
+                if path.suffix == ".toml" or client_def.config_format == "toml":
+                    with open(path, "rb") as f:
+                        tomllib.load(f)
+                else:
+                    json.loads(path.read_text())
+            except (json.JSONDecodeError, OSError, tomllib.TOMLDecodeError) as e:
+                fmt = "TOML" if path.suffix == ".toml" else "JSON"
                 result.checks.append(Check(
                     severity="error",
                     client=client_def.name,
-                    message=f"config file contains invalid JSON: {e}",
+                    message=f"config file contains invalid {fmt}: {e}",
                 ))
 
 

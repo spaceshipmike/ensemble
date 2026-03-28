@@ -1005,7 +1005,7 @@ CLIENTS
                                         for Claude Code.
 
   Supported clients: claude-desktop, claude-code, cursor, vscode, windsurf, zed,
-    jetbrains, gemini-cli, codex-cli, copilot-cli, copilot-jetbrains, amazon-q, cline, roo-code
+    jetbrains, gemini-cli, codex-cli, mcpx, copilot-cli, copilot-jetbrains, amazon-q, cline, roo-code
 
 ASSIGNMENTS
   mcp assign <client> <group>           Assign a group to a client.
