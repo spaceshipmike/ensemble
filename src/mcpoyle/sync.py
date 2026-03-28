@@ -28,7 +28,7 @@ from mcpoyle.clients import (
     write_project_settings,
     write_servers_nested,
 )
-from mcpoyle.config import ClientAssignment, Marketplace, McpoyleConfig, ProjectAssignment, Server, compute_entry_hash
+from mcpoyle.config import ClientAssignment, Marketplace, McpoyleConfig, ProjectAssignment, Server, Settings, compute_entry_hash
 
 
 @dataclass
@@ -211,6 +211,10 @@ def sync_client(
         plugin_actions = _sync_cc_plugins(config, client_id, dry_run)
         actions.extend(plugin_actions)
 
+    # Append context cost summary
+    cost_actions = _context_cost_summary(servers, config.settings)
+    actions.extend(cost_actions)
+
     return actions
 
 
@@ -233,6 +237,35 @@ def _adopt_server_entry(config: McpoyleConfig, name: str, entry: dict) -> None:
             server.auth_type = auth_info["type"]
         if "ref" in auth_info:
             server.auth_ref = auth_info["ref"]
+
+
+def _context_cost_summary(servers: list[Server], settings: Settings) -> list[str]:
+    """Compute tool count and estimated token cost for synced servers."""
+    total_tools = sum(len(s.tools) for s in servers)
+    # Estimate token cost: ~200 tokens per tool definition if no raw char data
+    total_tokens = 0
+    for s in servers:
+        for tool in s.tools:
+            # Use name + description length as rough estimate
+            chars = len(tool.name) + len(tool.description)
+            total_tokens += max(chars // 4, 200)  # at least 200 tokens per tool
+    if total_tools == 0:
+        # No tool metadata — can't compute cost
+        return []
+
+    actions: list[str] = []
+    if total_tokens >= 1000:
+        cost_str = f"~{total_tokens // 1000}K tokens"
+    else:
+        cost_str = f"~{total_tokens} tokens"
+
+    actions.append(f"  Context cost: {len(servers)} servers, {total_tools} tools, {cost_str}")
+
+    threshold = settings.sync_cost_warning_threshold
+    if total_tools > threshold:
+        actions.append(f"  ⚠ Tool count ({total_tools}) exceeds warning threshold ({threshold}). Consider using groups to reduce scope.")
+
+    return actions
 
 
 def _sync_project(
