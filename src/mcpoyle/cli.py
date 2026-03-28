@@ -442,6 +442,35 @@ def init_cmd(ctx: click.Context, auto_mode: bool) -> None:
         click.echo("No clients detected. Install an AI client and re-run mcpoyle init.")
         return
 
+    # Step 1.5: Show unified server landscape across all clients
+    from mcpoyle.clients import import_servers_from_client, import_project_servers, read_client_config, get_unmanaged_servers, get_managed_servers
+    landscape: dict[str, set[str]] = {}  # server_name -> set of client names
+    for client_id in installed_clients:
+        client_def = CLIENTS[client_id]
+        for path in client_def.resolved_paths:
+            try:
+                client_config = read_client_config(path)
+            except Exception:
+                continue
+            unmanaged = get_unmanaged_servers(client_config, client_def.servers_key)
+            managed = get_managed_servers(client_config, client_def.servers_key)
+            for name in list(unmanaged.keys()) + list(managed.keys()):
+                landscape.setdefault(name, set()).add(client_def.name)
+            # Claude Code project servers
+            if client_id == "claude-code":
+                projects = import_project_servers(client_config)
+                for proj in projects:
+                    for s in proj.servers:
+                        landscape.setdefault(s.name, set()).add(f"{client_def.name} ({proj.path})")
+
+    if landscape:
+        click.echo(f"Server landscape ({len(landscape)} unique servers across {len(installed_clients)} clients):")
+        for name in sorted(landscape.keys()):
+            clients_str = ", ".join(sorted(landscape[name]))
+            in_mcpoyle = " (managed)" if cfg.get_server(name) else ""
+            click.echo(f"  {name} → {clients_str}{in_mcpoyle}")
+        click.echo()
+
     # Step 2: Import existing servers
     has_existing = len(cfg.servers) > 0
     if has_existing and not auto_mode:

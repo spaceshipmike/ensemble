@@ -63,6 +63,7 @@ def run_doctor(config: McpoyleConfig) -> DoctorResult:
     _check_orphaned_entries(config, result)
     _check_stale_configs(config, result)
     _check_drift(config, result)
+    _check_missing_tool_metadata(config, result)
 
     return result
 
@@ -193,9 +194,33 @@ def _check_drift(config: McpoyleConfig, result: DoctorResult) -> None:
                         drifted.append(name)
 
             if drifted:
-                names = ", ".join(sorted(drifted))
+                # Add origin context to drift messages
+                details = []
+                for name in sorted(drifted):
+                    server = config.get_server(name)
+                    if server and server.origin and server.origin.source:
+                        origin_str = f" (origin: {server.origin.source}"
+                        if server.origin.registry_id:
+                            origin_str += f", {server.origin.registry_id}"
+                        origin_str += ")"
+                        details.append(f"{name}{origin_str}")
+                    else:
+                        details.append(name)
+                names = ", ".join(details)
                 result.checks.append(Check(
                     severity="warning",
                     client=client_def.name,
                     message=f"{len(drifted)} entries modified outside mcpoyle: {names}",
                 ))
+
+
+def _check_missing_tool_metadata(config: McpoyleConfig, result: DoctorResult) -> None:
+    """Check for enabled servers with no tool metadata — informational only."""
+    missing = [s.name for s in config.servers if s.enabled and not s.tools]
+    if missing:
+        names = ", ".join(sorted(missing))
+        result.checks.append(Check(
+            severity="info",
+            client="central",
+            message=f"{len(missing)} server(s) have no tool metadata: {names} (run 'mcp registry show' to populate)",
+        ))
