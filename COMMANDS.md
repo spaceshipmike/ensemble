@@ -26,7 +26,7 @@ mcpoyle add my-server --command uvx --args my-mcp-server --env API_KEY=op://Dev/
 
 ### `mcpoyle remove <name>`
 
-Remove a server from the registry. Also removes it from any groups it belongs to.
+Remove a server from the registry. Also removes it from any groups it belongs to. If the server is not in mcpoyle's registry but exists as an orphaned `__mcpoyle`-marked entry in a client config, the error message will identify which clients contain the orphan and suggest `mcp import` to adopt it.
 
 ### `mcpoyle enable <name>`
 

@@ -14,7 +14,9 @@ from mcpoyle.clients import (
     CLIENTS,
     get_enabled_plugins,
     get_extra_marketplaces,
+    get_managed_servers,
     read_cc_settings,
+    read_client_config,
     set_enabled_plugins,
     set_extra_marketplaces,
     write_cc_settings,
@@ -108,9 +110,33 @@ def add_server(
     return ServerResult(server=server, messages=[f"Added server '{name}'."])
 
 
+def _find_orphaned_in_clients(name: str) -> list[str]:
+    """Check if a server name exists as a __mcpoyle-marked entry in any client config."""
+    found_in: list[str] = []
+    for client in CLIENTS.values():
+        for path in client.resolved_paths:
+            try:
+                config = read_client_config(path)
+            except Exception:
+                continue
+            managed = get_managed_servers(config, client.servers_key)
+            if name in managed:
+                found_in.append(f"{client.name} ({path})")
+    return found_in
+
+
 def remove_server(cfg: McpoyleConfig, name: str) -> ServerResult:
     server = cfg.get_server(name)
     if not server:
+        orphan_locations = _find_orphaned_in_clients(name)
+        if orphan_locations:
+            locations = ", ".join(orphan_locations)
+            return ServerResult(
+                ok=False,
+                error=f"Server '{name}' not found in mcpoyle registry, "
+                f"but exists as orphaned mcpoyle entry in: {locations}. "
+                f"Run 'mcp import' to adopt it, or remove it manually from the client config.",
+            )
         return ServerResult(ok=False, error=f"Server '{name}' not found.")
 
     cfg.servers.remove(server)
