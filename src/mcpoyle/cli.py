@@ -513,6 +513,105 @@ def init_cmd(ctx: click.Context, auto_mode: bool) -> None:
             _save(ctx)
             click.echo()
 
+    # Step 2.5: Scan and import existing skills from client skills directories
+    from mcpoyle.skills import list_skill_dirs, read_skill_md, write_skill_md
+    from mcpoyle.config import Skill, SKILLS_DIR
+    from pathlib import Path as _Path
+
+    skills_landscape: dict[str, set[str]] = {}  # skill_name -> set of client names
+    for client_id in installed_clients:
+        client_def = CLIENTS[client_id]
+        if not client_def.skills_dir:
+            continue
+        skills_dir = _Path(client_def.skills_dir).expanduser()
+        if not skills_dir.exists():
+            continue
+        for d in skills_dir.iterdir():
+            if d.is_dir() and (d / "SKILL.md").exists():
+                skills_landscape.setdefault(d.name, set()).add(client_def.name)
+
+    if skills_landscape:
+        click.echo(f"Skills landscape ({len(skills_landscape)} skills across clients):")
+        for name in sorted(skills_landscape.keys()):
+            clients_str = ", ".join(sorted(skills_landscape[name]))
+            in_mcpoyle = " (managed)" if cfg.get_skill(name) else ""
+            click.echo(f"  {name} → {clients_str}{in_mcpoyle}")
+        click.echo()
+
+        # Import discovered skills
+        imported_skills = 0
+        for skill_name, client_names in sorted(skills_landscape.items()):
+            if cfg.get_skill(skill_name):
+                continue  # Already managed
+            # Read from the first client that has it
+            for client_id in installed_clients:
+                client_def = CLIENTS[client_id]
+                if not client_def.skills_dir:
+                    continue
+                source_path = _Path(client_def.skills_dir).expanduser() / skill_name / "SKILL.md"
+                if source_path.exists():
+                    text = source_path.read_text()
+                    from mcpoyle.skills import frontmatter_to_skill
+                    skill, body = frontmatter_to_skill(text, name_override=skill_name)
+                    skill.origin = "import"
+                    # Write to canonical store
+                    write_skill_md(skill, body)
+                    skill.path = str(SKILLS_DIR / skill_name / "SKILL.md")
+                    cfg.skills.append(skill)
+                    imported_skills += 1
+                    click.echo(f"  + {skill_name} (imported from {client_def.name})")
+                    break
+
+        if imported_skills:
+            click.echo(f"  Imported {imported_skills} skill(s).")
+            _save(ctx)
+        click.echo()
+
+    # Step 2.75: Install mcpoyle-usage meta-skill
+    if not cfg.get_skill("mcpoyle-usage"):
+        meta_body = """\
+# mcpoyle-usage
+
+This skill teaches AI coding agents how to use the `mcp` CLI to manage
+MCP servers, plugins, and skills.
+
+## Key Commands
+
+- `mcp list` — List all servers with status
+- `mcp skills list` — List all skills
+- `mcp skills add <name>` — Add a new skill
+- `mcp sync` — Sync servers and skills to all clients
+- `mcp doctor` — Audit config health
+- `mcp search <query>` — Search servers and skills
+- `mcp pin <name>` / `mcp track <name>` — Control update behavior
+- `mcp groups list` — List groups
+- `mcp reference` — Full command reference
+
+## Config Location
+
+Central config: `~/.config/mcpoyle/config.json`
+Skills store: `~/.config/mcpoyle/skills/`
+
+## Rules
+
+- Additive sync only: never delete servers the user didn't create via mcpoyle
+- Secrets stay in 1Password: env values may contain `op://` references
+- Always run `mcp sync` after making changes to push to clients
+"""
+        meta_skill = Skill(
+            name="mcpoyle-usage",
+            enabled=True,
+            description="Teaches agents how to use the mcp CLI",
+            origin="builtin",
+            tags=["meta", "mcpoyle", "cli"],
+        )
+        write_skill_md(meta_skill, meta_body)
+        meta_skill.path = str(SKILLS_DIR / "mcpoyle-usage" / "SKILL.md")
+        cfg.skills.append(meta_skill)
+        _save(ctx)
+        click.echo(f"  Installed builtin skill: mcpoyle-usage")
+        click.echo()
+
     # Step 3: Create groups (skip in auto mode)
     if not auto_mode and cfg.servers:
         while click.confirm("Create a group?", default=False):
