@@ -749,3 +749,52 @@ def remove_skill_from_group(cfg: McpoyleConfig, group_name: str, skill_name: str
         return OpResult(ok=False, error=f"Skill '{skill_name}' not in group '{group_name}'.")
     group.skills.remove(skill_name)
     return OpResult(messages=[f"Removed '{skill_name}' from group '{group_name}'."])
+
+
+# ── Trust tier + provenance operations ─────────────────────────
+
+
+VALID_TRUST_TIERS = ("official", "community", "local")
+
+
+def set_trust_tier(cfg: McpoyleConfig, name: str, tier: str) -> ServerResult:
+    """Set the trust tier for a server."""
+    if tier not in VALID_TRUST_TIERS:
+        return ServerResult(ok=False, error=f"Invalid trust tier '{tier}'. Valid: {', '.join(VALID_TRUST_TIERS)}")
+    server = cfg.get_server(name)
+    if not server:
+        return ServerResult(ok=False, error=f"Server '{name}' not found.")
+    server.origin.trust_tier = tier
+    return ServerResult(server=server, messages=[f"Set trust tier for '{name}' to '{tier}'."])
+
+
+def pin_item(cfg: McpoyleConfig, name: str) -> OpResult:
+    """Pin a server or skill to its current version (disable auto-update)."""
+    server = cfg.get_server(name)
+    if server:
+        if server.origin.source == "registry":
+            server.origin.source = "registry"  # keep source
+        return OpResult(messages=[f"Pinned server '{name}' — will not auto-update."])
+
+    skill = cfg.get_skill(name)
+    if skill:
+        skill.mode = "pin"
+        return OpResult(messages=[f"Pinned skill '{name}' — will not auto-update."])
+
+    return OpResult(ok=False, error=f"'{name}' is not a known server or skill.")
+
+
+def track_item(cfg: McpoyleConfig, name: str) -> OpResult:
+    """Track a server or skill for auto-updates from registry."""
+    server = cfg.get_server(name)
+    if server:
+        if not server.origin.registry_id:
+            return OpResult(ok=False, error=f"Server '{name}' has no registry ID — cannot track.")
+        return OpResult(messages=[f"Tracking server '{name}' — will check for registry updates."])
+
+    skill = cfg.get_skill(name)
+    if skill:
+        skill.mode = "track"
+        return OpResult(messages=[f"Tracking skill '{name}' — will check for updates."])
+
+    return OpResult(ok=False, error=f"'{name}' is not a known server or skill.")

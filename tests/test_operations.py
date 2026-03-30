@@ -38,6 +38,7 @@ from mcpoyle.operations import (
     import_plugins,
     install_plugin,
     install_skill,
+    pin_item,
     remove_marketplace,
     remove_plugin_from_group,
     remove_rule,
@@ -45,6 +46,8 @@ from mcpoyle.operations import (
     remove_server_from_group,
     remove_skill_from_group,
     scope_item,
+    set_trust_tier,
+    track_item,
     unassign_client,
     uninstall_plugin,
     uninstall_skill,
@@ -404,3 +407,67 @@ def test_skill_not_found_for_group():
     cfg = McpoyleConfig(groups=[Group(name="g1")])
     result = add_skill_to_group(cfg, "g1", "missing")
     assert not result.ok
+
+
+# ── Trust tier + provenance operations ─────────────────────────
+
+
+def test_set_trust_tier():
+    from mcpoyle.config import ServerOrigin
+    cfg = McpoyleConfig(servers=[Server(name="s1", command="cmd", origin=ServerOrigin(source="registry"))])
+    result = set_trust_tier(cfg, "s1", "official")
+    assert result.ok
+    assert cfg.servers[0].origin.trust_tier == "official"
+
+
+def test_set_trust_tier_invalid():
+    cfg = McpoyleConfig(servers=[Server(name="s1", command="cmd")])
+    result = set_trust_tier(cfg, "s1", "bogus")
+    assert not result.ok
+
+
+def test_set_trust_tier_not_found():
+    cfg = McpoyleConfig()
+    result = set_trust_tier(cfg, "missing", "official")
+    assert not result.ok
+
+
+def test_pin_skill():
+    cfg = McpoyleConfig(skills=[Skill(name="sk1", mode="track")])
+    result = pin_item(cfg, "sk1")
+    assert result.ok
+    assert cfg.skills[0].mode == "pin"
+
+
+def test_track_skill():
+    cfg = McpoyleConfig(skills=[Skill(name="sk1", mode="pin")])
+    result = track_item(cfg, "sk1")
+    assert result.ok
+    assert cfg.skills[0].mode == "track"
+
+
+def test_pin_server():
+    from mcpoyle.config import ServerOrigin
+    cfg = McpoyleConfig(servers=[Server(name="s1", command="cmd", origin=ServerOrigin(source="registry"))])
+    result = pin_item(cfg, "s1")
+    assert result.ok
+
+
+def test_track_server_no_registry_id():
+    from mcpoyle.config import ServerOrigin
+    cfg = McpoyleConfig(servers=[Server(name="s1", command="cmd", origin=ServerOrigin(source="manual"))])
+    result = track_item(cfg, "s1")
+    assert not result.ok  # No registry_id
+
+
+def test_track_server_with_registry_id():
+    from mcpoyle.config import ServerOrigin
+    cfg = McpoyleConfig(servers=[Server(name="s1", command="cmd", origin=ServerOrigin(source="registry", registry_id="@org/server"))])
+    result = track_item(cfg, "s1")
+    assert result.ok
+
+
+def test_pin_track_not_found():
+    cfg = McpoyleConfig()
+    assert not pin_item(cfg, "missing").ok
+    assert not track_item(cfg, "missing").ok

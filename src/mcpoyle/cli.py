@@ -52,10 +52,15 @@ def list_servers(ctx: click.Context) -> None:
         return
     for s in cfg.servers:
         status = click.style("on", fg="green") if s.enabled else click.style("off", fg="red")
+        tier_tag = ""
+        if s.origin and s.origin.trust_tier and s.origin.trust_tier != "local":
+            tier_colors = {"official": "green", "community": "yellow"}
+            color = tier_colors.get(s.origin.trust_tier, "white")
+            tier_tag = f" {click.style(s.origin.trust_tier, fg=color)}"
         if s.transport in ("sse", "http", "streamable-http") and s.url:
-            click.echo(f"  {s.name} [{status}] — {s.url}")
+            click.echo(f"  {s.name} [{status}]{tier_tag} — {s.url}")
         else:
-            click.echo(f"  {s.name} [{status}] — {s.command} {' '.join(s.args)}")
+            click.echo(f"  {s.name} [{status}]{tier_tag} — {s.command} {' '.join(s.args)}")
 
 
 @cli.command()
@@ -139,6 +144,10 @@ def show(ctx: click.Context, name: str) -> None:
         elif server.origin.client:
             origin_parts.append(server.origin.client)
         click.echo(f"Origin:    {' / '.join(origin_parts)}")
+    if server.origin and server.origin.trust_tier != "local":
+        tier_colors = {"official": "green", "community": "yellow"}
+        color = tier_colors.get(server.origin.trust_tier, "white")
+        click.echo(f"Trust:     {click.style(server.origin.trust_tier, fg=color)}")
     if server.tools:
         click.echo(f"Tools:     {len(server.tools)} tool(s)")
         for t in server.tools[:5]:
@@ -581,6 +590,27 @@ def init_cmd(ctx: click.Context, auto_mode: bool) -> None:
 
     click.echo()
     click.echo("Setup complete. Run 'mcpoyle tui' to manage, or 'mcpoyle sync' after changes.")
+
+
+# ── Pin/Track commands ───────────────────────────────────────────
+
+
+@cli.command("pin")
+@click.argument("name")
+@click.pass_context
+def pin_cmd(ctx: click.Context, name: str) -> None:
+    """Pin a server or skill to its current version (disable auto-update)."""
+    result = ops.pin_item(ctx.obj["config"], name)
+    _handle(ctx, result)
+
+
+@cli.command("track")
+@click.argument("name")
+@click.pass_context
+def track_cmd(ctx: click.Context, name: str) -> None:
+    """Track a server or skill for auto-updates from registry."""
+    result = ops.track_item(ctx.obj["config"], name)
+    _handle(ctx, result)
 
 
 # ── Skill commands ───────────────────────────────────────────────
