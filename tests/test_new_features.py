@@ -406,21 +406,25 @@ class TestSettings:
 
 class TestDoctorEnhancements:
     def test_missing_tool_metadata_check(self):
+        from unittest.mock import patch
         from mcpoyle.doctor import run_doctor
         cfg = McpoyleConfig(servers=[
             Server(name="no-tools", command="npx", enabled=True),
             Server(name="has-tools", command="npx", enabled=True, tools=[ToolInfo(name="t1")]),
         ])
-        result = run_doctor(cfg)
+        with patch("mcpoyle.doctor.CLIENTS", {}):
+            result = run_doctor(cfg)
         info_checks = [c for c in result.checks if c.severity == "info" and "no tool metadata" in c.message]
         assert len(info_checks) == 1
         assert "no-tools" in info_checks[0].message
 
     def test_missing_tool_metadata_not_for_disabled(self):
+        from unittest.mock import patch
         from mcpoyle.doctor import run_doctor
         cfg = McpoyleConfig(servers=[
             Server(name="disabled-no-tools", command="npx", enabled=False),
         ])
-        result = run_doctor(cfg)
+        with patch("mcpoyle.doctor.CLIENTS", {}):
+            result = run_doctor(cfg)
         info_checks = [c for c in result.checks if c.severity == "info" and "no tool metadata" in c.message]
         assert len(info_checks) == 0

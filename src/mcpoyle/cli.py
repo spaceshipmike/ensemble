@@ -1363,21 +1363,42 @@ def doctor(ctx: click.Context, as_json: bool) -> None:
         return
 
     # Summary line
-    click.echo(f"✓ Central config valid ({result.server_count} servers, {result.group_count} groups, {result.plugin_count} plugins)")
+    items = [f"{result.server_count} servers", f"{result.group_count} groups",
+             f"{result.plugin_count} plugins", f"{result.skill_count} skills"]
+    click.echo(f"Central config: {', '.join(items)}")
 
-    # Per-check output
+    # Score bar
+    pct = result.score_pct
+    if pct >= 80:
+        score_color = "green"
+    elif pct >= 50:
+        score_color = "yellow"
+    else:
+        score_color = "red"
+    click.echo(f"Health score: {click.style(f'{pct}%', fg=score_color)} ({result.earned_score}/{result.max_score} points)")
+
+    # Category breakdown
+    for cat, (earned, maximum) in result.category_scores().items():
+        cat_pct = round(100 * earned / maximum) if maximum > 0 else 100
+        click.echo(f"  {cat}: {earned}/{maximum} ({cat_pct}%)")
+
+    # Per-check output (only non-info)
+    has_issues = False
     for check in result.checks:
         if check.severity == "error":
-            symbol = click.style("✗", fg="red")
+            symbol = click.style("x", fg="red")
         elif check.severity == "warning":
-            symbol = click.style("⚠", fg="yellow")
+            symbol = click.style("!", fg="yellow")
         else:
-            symbol = click.style("·", fg="blue")
-        click.echo(f"{symbol} {check.client}: {check.message}")
+            continue  # Skip info-level in default output
+        has_issues = True
+        click.echo(f"  {symbol} [{check.category}] {check.client}: {check.message}")
+        if check.fix:
+            click.echo(f"    fix: {check.fix}")
 
     # Footer
-    if result.errors or result.warnings:
-        click.echo(f"\n{result.errors} errors, {result.warnings} warnings")
+    if has_issues:
+        click.echo(f"\n{result.errors} error(s), {result.warnings} warning(s)")
     else:
         click.echo("\nAll checks passed.")
 

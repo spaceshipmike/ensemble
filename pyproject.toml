@@ -1,6 +1,6 @@
 [project]
 name = "mcpoyle"
-version = "0.5.15"
+version = "0.5.16"
 description = "Centrally manage MCP server configurations across AI clients"
 readme = "README.md"
 requires-python = ">=3.12"
