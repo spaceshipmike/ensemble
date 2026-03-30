@@ -1,68 +1,79 @@
 {
   "currentCommand": "execute",
-  "workflowStep": null,
-  "completedSteps": ["executor-build"],
-  "specVersion": "0.15.0",
-  "upgradeApplied": {
-    "from": "0.78.7",
-    "to": "0.78.10"
-  },
-  "agentOutputs": {
-    "spec-writer": {
-      "summary": "Incorporated 16 patterns from 8 external skill management references into spec 0.15.0."
-    },
-    "state-owner": {
-      "briefingDigest": "Full review scan of spec 0.15.0 vs codebase v0.5.8."
-    }
+  "completedSteps": ["state-owner-scan", "executor-plan"],
+  "workflowStep": "executor-build",
+  "scenarioScore": { "satisfied": 0, "total": 51 },
+  "specVersion": "1.0.0",
+  "projectClassification": "existing-no-ts-code",
+  "readinessSummary": {
+    "ready-to-build": 10,
+    "draft": 3,
+    "aligned": 0,
+    "total": 13
   },
   "sectionReadiness": {
-    "core-concepts": "aligned",
-    "problem": "aligned",
-    "solution": "aligned",
-    "cli-surface": "aligned",
-    "tui-surface": "aligned",
-    "config": "aligned",
-    "path-rules": "aligned",
-    "skills-management": "aligned",
-    "project-registry": "aligned",
-    "plugins": "aligned",
-    "marketplaces": "aligned",
-    "sync": "aligned",
-    "init": "aligned",
-    "doctor": "aligned",
-    "registry": "aligned",
-    "search": "aligned",
-    "supported-clients": "aligned",
-    "tech-stack": "aligned",
-    "non-goals": "aligned",
-    "architecture": "aligned",
-    "design-principles": "aligned",
-    "future": "aligned"
-  },
-  "buildRun": {
-    "runId": "run-1743350400000",
-    "status": "completed",
-    "startedAt": "2026-03-30T12:00:00Z",
-    "completedAt": "2026-03-30T13:00:00Z",
-    "plan": {
-      "totalChunks": 11,
-      "priorities": ["reliability-first"],
-      "prioritySource": "project",
-      "specVersion": "0.15.0"
+    "config": {
+      "readiness": "ready-to-build",
+      "notes": "Zod schemas + types + loadConfig/saveConfig. Python ref: config.py (358 lines). No dependencies except Zod."
     },
-    "chunks": [
-      {"id": 1, "name": "Skill Data Model + Config Storage", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 2, "name": "Canonical Store + SKILL.MD I/O", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 3, "name": "Client Skills Directory Mapping + Symlink Sync", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 4, "name": "Skills CLI Commands", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 5, "name": "Trust Tiers + Provenance Modes", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 6, "name": "Skills Tab in TUI", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 7, "name": "Init Flow — Skills Import + Meta-Skill", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 8, "name": "Doctor — Structured Scoring + Skills Health", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 9, "name": "Registry — Catalog, Quality Signals, Security Summary, Unified Parser", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 10, "name": "Advanced — Collision Detection, Dependencies, Profile-as-Plugin", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 11, "name": "Search + Docs Update", "status": "completed", "retryCount": 0, "maxRetries": 3}
-    ],
-    "lastCheckpoint": "2026-03-30T13:00:00Z"
+    "operations": {
+      "readiness": "ready-to-build",
+      "notes": "Pure functions over config. Python ref: operations.py (979 lines). Depends on: config, clients (types only)."
+    },
+    "clients": {
+      "readiness": "ready-to-build",
+      "notes": "18 client definitions, detection, format adapters, TOML writer. Python ref: clients.py (557 lines). Depends on: config."
+    },
+    "sync": {
+      "readiness": "ready-to-build",
+      "notes": "Resolve + write engine, drift detection, symlink fan-out. Python ref: sync.py (636 lines). Depends on: config, clients, operations."
+    },
+    "skills": {
+      "readiness": "ready-to-build",
+      "notes": "SKILL.md frontmatter parsing, canonical store CRUD. Python ref: skills.py (173 lines). Depends on: config."
+    },
+    "search": {
+      "readiness": "ready-to-build",
+      "notes": "BM25-style local search over servers + skills. Python ref: search.py (211 lines). Depends on: config."
+    },
+    "registry": {
+      "readiness": "ready-to-build",
+      "notes": "Registry adapter framework, Official + Glama backends, quality signals, caching. Python ref: registry.py (680 lines). Depends on: config."
+    },
+    "doctor": {
+      "readiness": "ready-to-build",
+      "notes": "Deterministic health audit, structured scoring, 5 categories. Python ref: doctor.py (470 lines). Depends on: config, clients, sync."
+    },
+    "projects": {
+      "readiness": "ready-to-build",
+      "notes": "Project registry reader via better-sqlite3. Python ref: projects.py (142 lines). Depends on: config."
+    },
+    "cli": {
+      "readiness": "ready-to-build",
+      "notes": "Commander.js CLI wrapping operations. Python ref: cli.py (1674 lines). Depends on: ALL other modules."
+    },
+    "init": {
+      "readiness": "draft",
+      "notes": "Guided onboarding flow. Complex interactive UX with multi-step wizard. Spec is detailed but implementation will need careful design for the non-interactive --auto path vs interactive flow."
+    },
+    "migration": {
+      "readiness": "draft",
+      "notes": "mcpoyle -> Ensemble migration. Spec describes behavior but no Python reference exists for this (it is new to v1.0.0). Needs design for: config copy, skills store move, symlink update, marker replacement."
+    },
+    "profile-as-plugin": {
+      "readiness": "draft",
+      "notes": "groups export --as-plugin. Spec describes the concept but implementation details for generating CC plugin packages are thin. Complex feature with unclear CC plugin manifest format requirements."
+    }
+  },
+  "agentOutputs": {
+    "state-owner": {
+      "briefingDigest": "Greenfield TS build. 0/51 scenarios satisfied. 13 spec sections identified. 10 ready-to-build, 3 draft. Python reference impl is 6,435 lines across 12 modules. Recommended build order: config -> clients -> operations -> skills -> search -> registry -> sync -> doctor -> projects -> cli.",
+      "relevanceManifest": {
+        "pythonReference": "src/mcpoyle/ (12 modules, 6435 lines total)",
+        "specSections": 13,
+        "scenarioFeatures": 13,
+        "buildDependencyRoot": "config.ts (schemas + types)"
+      }
+    }
   }
 }

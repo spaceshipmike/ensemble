@@ -4,14 +4,9 @@
       "current": "0.5.19",
       "propagationTargets": [
         {
-          "file": "pyproject.toml",
+          "file": "package.json",
           "type": "field",
-          "path": "project.version"
-        },
-        {
-          "file": "src/mcpoyle/__init__.py",
-          "type": "pattern",
-          "pattern": "__version__"
+          "path": "version"
         }
       ],
       "incrementRules": {
@@ -21,7 +16,7 @@
       }
     },
     "spec": {
-      "current": "0.15.0",
+      "current": "1.0.0",
       "incrementRules": {
         "minor": "auto-on-evolve"
       }

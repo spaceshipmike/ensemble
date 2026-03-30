@@ -1,429 +1,911 @@
-# mcpoyle Scenarios
+# Scenarios — Ensemble
 
-## S1: Plugin Lifecycle
+> These scenarios serve as the convergence harness for autonomous
+> development. They are the holdout set — stored outside the codebase,
+> evaluated by LLM-as-judge, measuring satisfaction not pass/fail.
+> Scenarios are organized by feature — each feature is a named
+> experience with its own scenarios, dependencies, and priority tiers.
 
-**As a** user managing Claude Code plugins,
-**I can** install, enable, disable, uninstall, and list plugins through mcpoyle,
-**so that** I don't have to manually edit `~/.claude/settings.json`.
+## Feature Index
 
-### Satisfaction criteria
-- `mcpoyle plugins install clangd-lsp` adds the plugin to `enabledPlugins` in `~/.claude/settings.json` and to the mcpoyle registry
-- `mcpoyle plugins disable clangd-lsp` sets the plugin to `false` in `enabledPlugins`
-- `mcpoyle plugins enable clangd-lsp` sets the plugin back to `true`
-- `mcpoyle plugins uninstall clangd-lsp` removes from `enabledPlugins` and mcpoyle registry
-- `mcpoyle plugins list` shows all tracked plugins with enabled/disabled state and marketplace
-- `mcpoyle plugins show clangd-lsp` shows full plugin details
-- `mcpoyle plugins import` imports existing plugins from `enabledPlugins` into mcpoyle's registry
-
-## S2: Marketplace Management
-
-**As a** user with custom plugin sources,
-**I can** register, list, and remove marketplaces,
-**so that** I can install plugins from GitHub repos or local directories.
-
-### Satisfaction criteria
-- `mcpoyle marketplaces add my-plugins --path /local/dir` registers in mcpoyle config AND writes to `extraKnownMarketplaces` in `~/.claude/settings.json`
-- `mcpoyle marketplaces add my-plugins --repo myorg/claude-plugins` registers a GitHub marketplace
-- `mcpoyle marketplaces list` shows all marketplaces with source type
-- `mcpoyle marketplaces show my-plugins` shows details and available plugins
-- `mcpoyle marketplaces remove my-plugins` removes from both mcpoyle config and `extraKnownMarketplaces`
-- Reserved marketplace names (`claude-plugins-official`, etc.) are rejected on add
-
-## S3: Groups with Plugins
-
-**As a** user organizing servers and plugins into groups,
-**I can** add and remove plugins from groups,
-**so that** different clients get different plugin sets when synced.
-
-### Satisfaction criteria
-- Group dataclass supports a `plugins` field
-- `mcpoyle groups add-plugin dev-tools clangd-lsp` adds a plugin to a group
-- `mcpoyle groups remove-plugin dev-tools clangd-lsp` removes it
-- `mcpoyle groups show dev-tools` lists both servers and plugins
-- `mcpoyle sync claude-code` syncs plugins from the assigned group to `enabledPlugins`
-- Plugin entries in groups are silently ignored for non-Claude Code clients
-
-## S4: Plugin-Aware Sync
-
-**As a** user syncing configs,
-**I can** run `mcpoyle sync` and have both server and plugin configs updated,
-**so that** sync is a single command for the full configuration.
-
-### Satisfaction criteria
-- `mcpoyle sync claude-code` writes both MCP servers and plugin state
-- `mcpoyle sync --dry-run` shows both server and plugin changes
-- Non-Claude Code clients ignore plugin assignments silently
-- Plugin sync uses `enabledPlugins` format in `~/.claude/settings.json`
-- Marketplace registrations are synced to `extraKnownMarketplaces`
-
-## S5: Config Schema Complete
-
-**As a** developer,
-**the** central config at `~/.config/mcpoyle/config.json` includes all spec-defined fields,
-**so that** plugins, marketplaces, and settings are persisted.
-
-### Satisfaction criteria
-- Config includes `plugins` list with Plugin dataclass (name, marketplace, enabled, managed)
-- Config includes `marketplaces` list with Marketplace dataclass (name, source)
-- Config includes `settings.adopt_unmanaged_plugins` toggle
-- Full JSON round-trip for all new fields
-- Existing server/group/client data is preserved on migration
-
-## S6: Existing Tests Pass
-
-**As a** developer,
-**all** existing tests continue to pass after plugin/marketplace additions,
-**so that** the server management foundation remains stable.
-
-### Satisfaction criteria
-- All 19 existing tests pass without modification
-- No breaking changes to existing CLI commands
-- Config files without plugin/marketplace fields load with sensible defaults
+| Category | Feature | Scenarios | Depends on |
+|----------|---------|-----------|------------|
+| Core | Library API Surface | 5 | — |
+| Core | Schema Validation | 4 | — |
+| Core | Config Lifecycle | 4 | Library API Surface |
+| Core | Server Operations | 4 | Config Lifecycle |
+| Core | Client Resolution and Sync | 5 | Server Operations |
+| Core | Plugin Lifecycle | 4 | Config Lifecycle |
+| Core | Marketplace Management | 3 | Plugin Lifecycle |
+| Core | Group Organization | 4 | Server Operations, Plugin Lifecycle |
+| Core | Skill Management | 4 | Config Lifecycle |
+| Core | Registry and Discovery | 4 | Library API Surface |
+| CLI | CLI Surface | 4 | Library API Surface |
+| System Quality | Operations Layer | 3 | Library API Surface |
+| System Quality | Additive Sync Safety | 3 | Client Resolution and Sync |
 
 ---
 
-# TUI
+# Core
 
-## Feature: TUI Dashboard
-> I launch the TUI and see my entire mcpoyle configuration at a glance — servers, plugins, marketplaces, groups, and detected clients — without running multiple CLI commands.
+## Feature: Library API Surface
+> I import Ensemble into my application and call operations directly without touching the CLI.
 
-Category: Viewer | Depends on: —
+Category: Core | Depends on: —
 
 ### Critical
 
-#### Scenario: Launch TUI and See Full Dashboard
+#### Scenario: Consumer Loads Config and Calls Operations
 
-> **Given** the user has a populated mcpoyle config with servers, plugins, marketplaces, groups, and at least one detected client
-> **When** the user runs `mcp tui`
-> **Then** the TUI launches and presents a dashboard with distinct panels showing servers (with enabled/disabled state), plugins, marketplaces, groups, and detected clients. All data is visible without scrolling through CLI output.
+> **Given** a consumer application (like Chorus) has installed Ensemble as an npm dependency
+> **When** the consumer imports `loadConfig` from Ensemble, reads the config from disk, calls `addServer(config, serverDef)` to add a new server, and then writes the updated config back to disk
+> **Then** the consumer has full control over the load-mutate-save cycle, the returned config object contains the new server, and the written file is valid Ensemble config JSON.
 
-**Satisfied when:** The user can see their servers, plugins, groups, marketplaces, and detected clients all represented in the dashboard within 2 seconds of launch, each in a visually distinct panel or tab, with accurate counts and states matching the CLI output of the equivalent list commands.
+**Satisfied when:**
+- `loadConfig(path)` returns a typed config object without side effects (no implicit file writes)
+- `addServer(config, serverDef)` returns a new config object with the server added, leaving the original unchanged
+- The consumer decides when and where to persist — Ensemble never writes to disk on its own during operations
+- TypeScript types are fully inferred without manual casting
 
-Validates: TUI Dashboard (new feature)
+Difficulty: medium
+Validates: `#library-api` (Architecture)
 
-#### Scenario: Dashboard Reflects Current Config State
+#### Scenario: All Operations Are Pure Functions Over Config
 
-> **Given** the user has just made changes via the CLI (e.g., disabled a server, added a plugin)
-> **When** the user launches `mcp tui`
-> **Then** the dashboard reflects the current state of the config — the disabled server shows as disabled, the new plugin appears in the plugin panel.
+> **Given** a consumer has loaded an Ensemble config object
+> **When** the consumer calls any operation — `addServer`, `removeServer`, `enableServer`, `disableServer`, `addPlugin`, `removePlugin`, `assignGroup`, `syncResolve` — passing the config as the first argument
+> **Then** every operation returns a new config object (or a result containing one) without mutating the input and without performing I/O.
 
-**Satisfied when:** Every item visible in the TUI dashboard matches the state that would be shown by the corresponding CLI list/show commands, with no stale or missing data.
+**Satisfied when:**
+- Operations are pure functions: `(config, ...args) => newConfig` or `(config, ...args) => Result<newConfig>`
+- The original config object is not mutated by any operation
+- No operation reads from or writes to the filesystem, network, or environment
+- The pattern is consistent across all operation categories (servers, plugins, skills, groups, clients)
 
-Validates: TUI Dashboard (new feature)
+Difficulty: medium
+Validates: `#library-api` (Architecture)
 
 ### Edge Cases
 
-#### Scenario: Empty Config Dashboard
+#### Scenario: Consumer Passes Invalid Arguments to Operations
 
-> **Given** the user has a fresh mcpoyle installation with no servers, plugins, groups, or marketplaces configured
-> **When** the user runs `mcp tui`
-> **Then** the TUI launches successfully and shows empty panels with clear indication that no items exist yet, rather than crashing or showing a blank screen.
+> **Given** a consumer calls `addServer` with a server definition missing required fields (no `name`, or no `command` for a stdio transport)
+> **When** the operation validates its input
+> **Then** the operation throws a typed error or returns an error result with a clear message — it does not silently produce invalid config.
 
-**Satisfied when:** The TUI renders without error and each panel communicates its empty state in a way that is informative rather than confusing — the user understands there is nothing configured yet.
+**Satisfied when:**
+- Invalid inputs are rejected before any mutation occurs
+- Error messages identify which field is missing or invalid
+- The original config is untouched when validation fails
+- Errors are typed (not generic `Error`) so consumers can handle them programmatically
 
-Validates: TUI Dashboard (new feature)
+Difficulty: easy
+Validates: `#library-api` (Architecture)
 
-#### Scenario: Large Config Dashboard
+#### Scenario: Consumer Works With Empty Config
 
-> **Given** the user has 20+ servers, 15+ plugins, and 10+ groups
-> **When** the user launches `mcp tui`
-> **Then** the panels handle overflow gracefully with scrolling. Items remain readable and navigable.
+> **Given** a consumer creates a fresh empty config via `createConfig()` or equivalent
+> **When** the consumer performs operations on the empty config — adding the first server, creating the first group, assigning a client
+> **Then** all operations succeed without null-reference errors or unexpected defaults. The config grows incrementally from empty.
 
-**Satisfied when:** All items are accessible through scrolling within their respective panels, and the layout does not break or become unreadable with high item counts.
+**Satisfied when:**
+- An empty config is a valid starting state for all operations
+- No operation assumes pre-existing data (servers, groups, clients) unless that data is its explicit input
+- The consumer can build up a complete config from scratch using only Ensemble operations
 
-Validates: TUI Dashboard (new feature)
+Difficulty: easy
+Validates: `#library-api` (Architecture)
 
 ### Polish
 
-#### Scenario: Dashboard Visual Hierarchy
+#### Scenario: TypeScript Autocompletion Guides the Consumer
 
-> **Given** the user launches the TUI
-> **When** they scan the dashboard
-> **Then** the layout uses clear visual hierarchy — panel headers, borders, and color to distinguish sections. Enabled items are visually distinct from disabled items.
+> **Given** a consumer is writing code that uses Ensemble in a TypeScript-aware editor
+> **When** they type an import from `ensemble/operations` or `ensemble/schemas` or access fields on a config object
+> **Then** the editor provides accurate autocompletion for all public API functions, their parameters, and return types.
 
-**Satisfied when:** A user can quickly identify which panel they are looking at and which items are enabled vs disabled without reading every label, through consistent use of color, spacing, or other visual cues.
+**Satisfied when:**
+- All public API functions have explicit TypeScript signatures (not `any`)
+- Config objects, server definitions, plugin definitions, and group definitions are fully typed
+- Union types (transport types, trust tiers, origin sources) narrow correctly
+- JSDoc or TSDoc comments appear on hover for key functions
 
-Validates: TUI Dashboard (new feature)
+Difficulty: easy
+Validates: `#library-api` (Architecture)
 
 ---
 
-## Feature: TUI Navigation
-> I move between panels and interact with items using keyboard navigation that feels natural and predictable.
+## Feature: Schema Validation
+> I use Ensemble's exported Zod schemas to validate MCP configurations from untrusted sources.
 
-Category: Viewer | Depends on: TUI Dashboard
+Category: Core | Depends on: —
 
 ### Critical
 
-#### Scenario: Navigate Between Panels with Tab
+#### Scenario: Validate External MCP Config with Zod Schema
 
-> **Given** the TUI is running and the user is focused on the servers panel
-> **When** the user presses Tab
-> **Then** focus moves to the next panel. Pressing Tab again continues cycling through panels. The currently focused panel is visually highlighted.
+> **Given** a consumer has received an MCP server configuration from an external source (user input, API response, file import)
+> **When** the consumer imports the server schema from `ensemble/schemas` and calls `.parse()` or `.safeParse()` on the external data
+> **Then** valid configs parse successfully into typed objects, and invalid configs produce structured Zod errors identifying exactly which fields failed.
 
-**Satisfied when:** The user can reach every panel using Tab, the focused panel is clearly indicated, and Shift+Tab reverses direction through the panels.
+**Satisfied when:**
+- `serverSchema.safeParse(data)` returns `{ success: true, data: Server }` for valid input
+- `serverSchema.safeParse(data)` returns `{ success: false, error: ZodError }` for invalid input with field-level detail
+- Schemas are exported from a dedicated path (`ensemble/schemas`) so consumers can import them independently of operations
+- Schemas cover all config entity types: servers, plugins, skills, groups, marketplaces, clients
 
-Validates: TUI Navigation (new feature)
+Difficulty: easy
+Validates: `#schema-validation` (Architecture)
 
-#### Scenario: Navigate Items with Arrow Keys and Select with Enter
+#### Scenario: Schema Enforces Transport-Specific Requirements
 
-> **Given** the user is focused on the servers panel which contains multiple servers
-> **When** the user presses Up/Down arrow keys to highlight a server, then presses Enter
-> **Then** the highlighted server's detail view or action menu appears. Pressing Esc returns to the panel.
+> **Given** a consumer is validating a server definition
+> **When** the server has `transport: "stdio"` but is missing the `command` field, or has `transport: "http"` but is missing the `url` field
+> **Then** the schema rejects the definition with an error pointing to the missing transport-specific field.
 
-**Satisfied when:** Arrow keys move a visible highlight through items in the focused panel, Enter opens a context for the highlighted item, and Esc reliably returns to the previous view without losing place.
+**Satisfied when:**
+- stdio transport requires `command` (and optionally `args`)
+- http/sse/streamable-http transports require `url`
+- Auth fields (`auth_type`, `auth_ref`) are only valid on http transports
+- The error message makes it clear which fields are required for the given transport
 
-Validates: TUI Navigation (new feature)
+Difficulty: medium
+Validates: `#schema-validation` (Architecture)
 
 ### Edge Cases
 
-#### Scenario: Navigation in Empty Panel
+#### Scenario: Schema Handles Partial and Extra Fields Gracefully
 
-> **Given** the user is focused on a panel that contains no items (e.g., no plugins configured)
-> **When** the user presses arrow keys or Enter
-> **Then** nothing breaks — the TUI handles the empty state gracefully without errors or unexpected behavior.
+> **Given** a consumer parses data that has extra unknown fields alongside the required ones
+> **When** the schema processes the data
+> **Then** extra fields are stripped (not passed through) and the result contains only known fields. The parse does not fail due to extra properties.
 
-**Satisfied when:** Arrow keys and Enter do not cause errors, crashes, or focus jumps when used in an empty panel.
+**Satisfied when:**
+- Unknown fields do not cause validation failure
+- The parsed output contains only fields defined in the schema
+- Optional fields that are absent come through as `undefined`, not with invented defaults
 
-Validates: TUI Navigation (new feature)
+Difficulty: easy
+Validates: `#schema-validation` (Architecture)
 
-### Polish
+#### Scenario: Full Config Schema Round-Trip
 
-#### Scenario: Focus Indicator is Always Visible
+> **Given** a consumer has a complete Ensemble config object produced by operations
+> **When** the consumer serializes it to JSON and then parses it back through `configSchema.parse()`
+> **Then** the round-tripped config is identical to the original — no data loss, no field mutations.
 
-> **Given** the user is navigating the TUI
-> **When** they switch panels or scroll through items
-> **Then** there is always a clear visual indicator of what is currently focused — both at the panel level and at the item level within a panel.
+**Satisfied when:**
+- `configSchema.parse(JSON.parse(JSON.stringify(config)))` produces a deep-equal result
+- All nested structures (servers, plugins, skills, groups, clients, rules, marketplaces, settings) survive the round trip
+- Origin metadata, tool metadata, and dependency arrays are preserved
 
-**Satisfied when:** At no point during navigation does the user lose track of where keyboard focus is. The focus indicator is visible and unambiguous in all panels.
-
-Validates: TUI Navigation (new feature)
+Difficulty: easy
+Validates: `#schema-validation` (Architecture)
 
 ---
 
-## Feature: TUI Toggle Actions
-> I can enable, disable, and remove servers and plugins directly from the TUI without dropping to the CLI.
+## Feature: Config Lifecycle
+> I load, create, migrate, and persist Ensemble configs without worrying about format details.
 
-Category: Viewer | Depends on: TUI Navigation
+Category: Core | Depends on: Library API Surface
 
 ### Critical
 
-#### Scenario: Toggle Server Enabled State
+#### Scenario: Load Existing Config from Disk
 
-> **Given** the user is viewing the servers panel with a server currently enabled
-> **When** the user highlights the server and triggers the toggle action (e.g., Enter or a keybinding)
-> **Then** the server state flips to disabled. The panel updates immediately to reflect the change. The underlying config file is updated.
+> **Given** a valid Ensemble config JSON file exists on disk
+> **When** a consumer calls the config loading function with the file path
+> **Then** the function reads the file, validates it against the schema, and returns a fully typed config object.
 
-**Satisfied when:** After toggling, the server's visual state in the TUI matches the new state, and running `mcp list` in a separate terminal confirms the change persisted to the config file.
+**Satisfied when:**
+- The loader reads from a caller-specified path (not hardcoded)
+- The returned object is fully typed with all Ensemble data model types
+- Invalid JSON or schema-violating content produces a clear error, not a partial object
 
-Validates: TUI Toggle Actions (new feature)
+Difficulty: easy
+Validates: `#config` (Config)
 
-#### Scenario: Toggle Plugin Enabled State
+#### Scenario: Create Fresh Config
 
-> **Given** the user is viewing the plugins panel with a plugin currently disabled
-> **When** the user highlights the plugin and triggers the toggle action
-> **Then** the plugin state flips to enabled. The panel updates immediately and the change persists to the config.
+> **Given** no config file exists yet
+> **When** a consumer calls the config creation function
+> **Then** a valid empty config object is returned with sensible defaults (empty arrays for servers, groups, plugins, skills, clients; default settings values).
 
-**Satisfied when:** The plugin's visual state updates in the TUI, and the change is reflected in both mcpoyle's config and the relevant Claude Code settings file.
+**Satisfied when:**
+- The created config passes schema validation
+- All collection fields are initialized as empty arrays, not null or undefined
+- Settings have documented defaults (e.g., `adopt_unmanaged_plugins: false`)
 
-Validates: TUI Toggle Actions (new feature)
-
-#### Scenario: Assign Server to Group from TUI
-
-> **Given** the user is viewing a server in the TUI and groups exist in the config
-> **When** the user selects an "assign to group" action for that server
-> **Then** a group selection interface appears, the user picks a group, and the server is added to that group. The groups panel reflects the change.
-
-**Satisfied when:** The server appears in the selected group's member list in the TUI, and `mcp groups show <group>` confirms the assignment persisted.
-
-Validates: TUI Toggle Actions (new feature)
+Difficulty: easy
+Validates: `#config` (Config)
 
 ### Edge Cases
 
-#### Scenario: Toggle with Concurrent CLI Change
+#### Scenario: Config With Missing Optional Fields Loads Successfully
 
-> **Given** the user has the TUI open and another terminal session changes the config (e.g., disables a server via CLI)
-> **When** the user attempts to toggle that same server in the TUI
-> **Then** the operation either succeeds based on the latest config state or the TUI refreshes to show the current state without corrupting the config file.
+> **Given** an older config file that lacks newer optional fields (no `skills` array, no `rules`, no `settings` block)
+> **When** the config loader processes it
+> **Then** missing optional fields are filled with defaults and the config is usable — the consumer does not need to handle a migration step.
 
-**Satisfied when:** The config file is not corrupted by concurrent access, and the TUI either reflects the latest state or handles the conflict without data loss.
+**Satisfied when:**
+- A config with only `servers` and `groups` loads without error
+- Missing `skills`, `plugins`, `marketplaces`, `rules`, and `settings` are populated with defaults
+- Existing data is preserved exactly — no rewriting of present fields
 
-Validates: TUI Toggle Actions (new feature)
+Difficulty: easy
+Validates: `#config` (Config)
 
-### Polish
+#### Scenario: Config Preserves Unknown Fields for Forward Compatibility
 
-#### Scenario: Immediate Visual Feedback on Toggle
+> **Given** a config file contains fields that the current version of Ensemble does not recognize (added by a newer version)
+> **When** the config is loaded, modified via operations, and saved back
+> **Then** the unknown fields are preserved in the output — Ensemble does not strip data it does not understand.
 
-> **Given** the user toggles a server or plugin
-> **When** the action completes
-> **Then** the state change is reflected visually within the same frame — there is no perceptible delay between the action and the visual update.
+**Satisfied when:**
+- A config with an extra top-level field (e.g., `"experimentalFeature": {}`) survives a load-modify-save cycle
+- The preservation applies at the top level of the config structure
+- Operations that modify known fields do not interfere with unknown fields
 
-**Satisfied when:** The toggle feels instant — the user does not see a loading state or stale value after pressing the toggle key.
-
-Validates: TUI Toggle Actions (new feature)
+Difficulty: medium
+Validates: `#config` (Config)
 
 ---
 
-## Feature: Sync Preview Panel
-> I see exactly what sync would write to each client's config before I confirm, so I can sync with confidence.
+## Feature: Server Operations
+> I add, remove, enable, disable, and inspect servers through Ensemble's operations.
 
-Category: Viewer | Depends on: TUI Dashboard
+Category: Core | Depends on: Config Lifecycle
 
 ### Critical
 
-#### Scenario: View Dry-Run Sync Preview
+#### Scenario: Full Server CRUD Lifecycle
 
-> **Given** the user has servers and plugins assigned to clients with pending changes (e.g., a newly enabled server that hasn't been synced yet)
-> **When** the user opens the sync preview panel in the TUI
-> **Then** a dry-run view appears showing, for each affected client, what changes sync would make — servers to add/remove/update, plugins to enable/disable, marketplace entries to write.
+> **Given** a consumer has a loaded Ensemble config
+> **When** the consumer adds a server with a name, command, args, and env; then disables it; then re-enables it; then removes it
+> **Then** each operation returns an updated config reflecting the change, and the final config has no trace of the removed server.
 
-**Satisfied when:** The preview shows the same information as `mcp sync --dry-run` but organized by client in a readable panel layout, with additions, removals, and modifications clearly distinguished.
+**Satisfied when:**
+- `addServer` adds the server to the servers list with `enabled: true` by default
+- `disableServer` sets the server's `enabled` to `false` without removing it
+- `enableServer` sets it back to `true`
+- `removeServer` completely removes the server from the servers list and from any groups that reference it
+- Each step is independently verifiable on the returned config
 
-Validates: Sync Preview Panel (new feature)
+Difficulty: easy
+Validates: `#server-operations` (CLI Surface, Architecture)
 
-#### Scenario: Confirm and Execute Sync from Preview
+#### Scenario: Add Server with Origin Tracking
 
-> **Given** the user is viewing the sync preview and the changes look correct
-> **When** the user confirms the sync (e.g., presses Enter or a confirm keybinding)
-> **Then** the sync executes, client configs are written, and the preview updates to show a success state. The dashboard reflects the synced state.
+> **Given** a consumer adds a server and provides origin metadata (source, client, registry ID, timestamp, trust tier)
+> **When** the server is added
+> **Then** the origin metadata is stored with the server and accessible via show/inspect operations.
 
-**Satisfied when:** After confirmation, the client config files contain the expected changes, the TUI shows sync completion, and the dashboard's last-synced timestamps update.
+**Satisfied when:**
+- Origin metadata is an optional parameter on `addServer`
+- When provided, origin data is preserved on the server object
+- The origin includes `source`, optional `client`, optional `registry_id`, `timestamp`, and optional `trust_tier`
 
-Validates: Sync Preview Panel (new feature)
+Difficulty: easy
+Validates: `#server-operations` (Server Model Fields)
 
 ### Edge Cases
 
-#### Scenario: Sync Preview with No Pending Changes
+#### Scenario: Add Server with Duplicate Name
 
-> **Given** all clients are already in sync with the mcpoyle config
-> **When** the user opens the sync preview panel
-> **Then** the panel clearly communicates that everything is in sync — no changes pending.
+> **Given** a config already contains a server named "my-server"
+> **When** the consumer attempts to add another server with the same name
+> **Then** the operation rejects the duplicate with a clear error identifying the name conflict.
 
-**Satisfied when:** The user sees a clear "nothing to sync" state rather than an empty panel or confusing output.
+**Satisfied when:**
+- The add operation fails before mutating the config
+- The error identifies the conflicting server name
+- The original config is unchanged
 
-Validates: Sync Preview Panel (new feature)
+Difficulty: easy
+Validates: `#server-operations` (CLI Surface)
 
-#### Scenario: Sync Preview Shows Plugin-Only Changes for Claude Code
+#### Scenario: Remove Server Cascades to Group Membership
 
-> **Given** a group assigned to Claude Code has plugin changes but no server changes, and a group assigned to Cursor has no changes
-> **When** the user opens the sync preview
-> **Then** only Claude Code appears with pending plugin changes. Cursor either does not appear or shows "no changes." Plugin changes are not shown for non-Claude Code clients.
+> **Given** a server "ctx" belongs to groups "dev-tools" and "work"
+> **When** the consumer removes the server
+> **Then** the server is removed from both groups' server lists as well as from the top-level servers array.
 
-**Satisfied when:** The preview correctly scopes plugin changes to Claude Code only and does not misleadingly show plugin-related changes for clients that do not support plugins.
+**Satisfied when:**
+- After removal, no group's `servers` array contains the removed server name
+- The groups themselves still exist with their other members intact
+- Client assignments referencing those groups are unaffected
 
-Validates: Sync Preview Panel (new feature)
-
-### Polish
-
-#### Scenario: Sync Preview Diff Readability
-
-> **Given** the sync preview contains multiple changes across multiple clients
-> **When** the user reads the preview
-> **Then** additions, removals, and modifications are visually distinguished (e.g., through color or symbols), and the layout groups changes by client for easy scanning.
-
-**Satisfied when:** A user can quickly scan the preview and understand what will change for each client without reading every line in detail.
-
-Validates: Sync Preview Panel (new feature)
+Difficulty: medium
+Validates: `#server-operations` (Architecture)
 
 ---
 
-## Feature: Command Palette
-> I use a searchable command palette to quickly perform any action without memorizing keybindings or navigating to the right panel.
+## Feature: Client Resolution and Sync
+> I resolve the correct set of servers, skills, and plugins for any client, respecting groups, rules, and project assignments.
 
-Category: Viewer | Depends on: TUI Dashboard
+Category: Core | Depends on: Server Operations
 
 ### Critical
 
-#### Scenario: Open Command Palette and Search
+#### Scenario: Resolve Servers for a Client with Group Assignment
 
-> **Given** the TUI is running on any screen
-> **When** the user presses Ctrl+P
-> **Then** a command palette overlay appears with a search input. The user can type to filter available commands (e.g., "sync", "add server", "assign group"). Selecting a command executes it or opens the relevant interface.
+> **Given** a config has client "cursor" assigned to group "dev-tools", and "dev-tools" contains servers "ctx" and "prm"
+> **When** the consumer calls the resolution function for client "cursor"
+> **Then** the result contains exactly the servers in the "dev-tools" group that are enabled.
 
-**Satisfied when:** Ctrl+P opens the palette from any panel, typing filters the command list in real time, and selecting a command performs the expected action or navigation.
+**Satisfied when:**
+- Resolution returns only servers belonging to the assigned group
+- Disabled servers within the group are excluded from the result
+- The result is a list of fully resolved server definitions (not just names)
 
-Validates: Command Palette (new feature)
+Difficulty: medium
+Validates: `#sync` (Sync)
 
-#### Scenario: Command Palette Covers Key Actions
+#### Scenario: Resolve Servers for Client with No Group (Default All)
 
-> **Given** the command palette is open
-> **When** the user searches for common operations
-> **Then** the palette includes at least: sync (all and per-client), server enable/disable, plugin enable/disable, assign group, open sync preview.
+> **Given** a config has client "cursor" with no group assignment (group is null)
+> **When** the consumer resolves servers for "cursor"
+> **Then** the result contains all enabled servers from the registry.
 
-**Satisfied when:** The core actions available through panel navigation are also discoverable and executable through the command palette, providing a consistent alternative interaction path.
+**Satisfied when:**
+- A null group assignment means "receive all enabled servers"
+- Disabled servers are excluded
+- The behavior matches the spec: "When group is null, the client receives all enabled servers"
 
-Validates: Command Palette (new feature)
+Difficulty: easy
+Validates: `#sync` (Sync)
+
+#### Scenario: Resolve with Project-Level Override
+
+> **Given** client "claude-code" has global group "dev-tools" and project-level group "work" for path "~/Code/myapp"
+> **When** the consumer resolves servers for "claude-code" at the project level for "~/Code/myapp"
+> **Then** the project-level group "work" takes precedence over the global group.
+
+**Satisfied when:**
+- Project-level resolution returns servers from the "work" group, not "dev-tools"
+- Global resolution (without project path) still returns "dev-tools" servers
+- The resolution order matches: explicit assignment > path rules > default
+
+Difficulty: medium
+Validates: `#sync` (Project-Level Assignments)
 
 ### Edge Cases
 
-#### Scenario: Command Palette with No Matching Results
+#### Scenario: Path Rule Resolution for Unassigned Projects
 
-> **Given** the command palette is open
-> **When** the user types a query that matches no commands
-> **Then** the palette shows a clear "no results" message rather than an empty list.
+> **Given** a config has a path rule: `~/Code/work` maps to group "work", and a Claude Code project at `~/Code/work/myapp` has no explicit assignment
+> **When** the consumer resolves servers for that project
+> **Then** the path rule fires and the project receives the "work" group's servers.
 
-**Satisfied when:** The user receives clear feedback that their search had no matches, and can either refine their query or dismiss the palette with Esc.
+**Satisfied when:**
+- Path prefix matching works with tilde expansion
+- The most specific (longest) matching prefix wins when rules overlap
+- Explicit project assignments take precedence over path rules
 
-Validates: Command Palette (new feature)
+Difficulty: medium
+Validates: `#path-rules` (Path Rules)
 
-### Polish
+#### Scenario: Sync Produces Client-Native Format
 
-#### Scenario: Command Palette Feels Responsive
+> **Given** a consumer has resolved servers for a specific client
+> **When** the consumer requests the client-native config format
+> **Then** Ensemble produces the correct JSON structure for that client's config file format (e.g., Claude Desktop's `mcpServers` format, Cursor's format, Claude Code's `~/.claude.json` format).
 
-> **Given** the command palette is open
-> **When** the user types characters to filter
-> **Then** the filtered results update with each keystroke without perceptible lag.
+**Satisfied when:**
+- Each client's output format matches its native config schema
+- Server fields are mapped correctly (e.g., `env` handling, transport-specific fields)
+- The `__mcpoyle` marker is included for managed entries so additive sync can identify them later
 
-**Satisfied when:** Filtering feels instantaneous — there is no visible delay between typing and the results list updating.
-
-Validates: Command Palette (new feature)
+Difficulty: hard
+Validates: `#sync` (Sync)
 
 ---
+
+## Feature: Plugin Lifecycle
+> I install, enable, disable, uninstall, and inspect Claude Code plugins through Ensemble operations.
+
+Category: Core | Depends on: Config Lifecycle
+
+### Critical
+
+#### Scenario: Plugin Install and Enable Lifecycle
+
+> **Given** a consumer has a loaded config
+> **When** the consumer installs a plugin by name and marketplace, then disables it, then re-enables it, then uninstalls it
+> **Then** each operation updates the config's plugin registry appropriately, and uninstall removes the plugin from both the registry and any groups.
+
+**Satisfied when:**
+- Install adds a plugin entry with `enabled: true` and `managed: true`
+- Disable sets `enabled: false` without removing the entry
+- Enable sets `enabled: true`
+- Uninstall removes the plugin from the registry and from all groups' `plugins` arrays
+- Each operation returns the updated config without I/O
+
+Difficulty: easy
+Validates: `#plugins` (Plugins)
+
+#### Scenario: Plugin Resolution for enabledPlugins Format
+
+> **Given** a config has plugins with marketplace associations
+> **When** the consumer resolves plugin state for Claude Code sync
+> **Then** the result is in Claude Code's native `enabledPlugins` format: `"name@marketplace": true|false`
+
+**Satisfied when:**
+- Enabled plugins produce `"name@marketplace": true`
+- Disabled plugins produce `"name@marketplace": false`
+- The format matches what Claude Code expects in `~/.claude/settings.json`
+
+Difficulty: easy
+Validates: `#plugins` (Plugins, Source of Truth)
+
+### Edge Cases
+
+#### Scenario: Plugin Import from Existing Settings
+
+> **Given** a consumer provides an existing `enabledPlugins` object from Claude Code settings
+> **When** the consumer calls the import operation
+> **Then** plugins not already in the Ensemble registry are added with `managed: false`, and existing plugins are left unchanged.
+
+**Satisfied when:**
+- Import is purely additive to the Ensemble config
+- Imported plugins are marked `managed: false`
+- Plugins already in the registry are not duplicated or overwritten
+- The plugin name and marketplace are correctly parsed from the `"name@marketplace"` key format
+
+Difficulty: medium
+Validates: `#plugins` (Import)
+
+#### Scenario: Plugins Silently Ignored for Non-Claude Code Clients
+
+> **Given** a group "dev-tools" contains both servers and plugins, and the consumer resolves this group for client "cursor"
+> **When** the resolution computes the sync payload
+> **Then** servers are included in the result, but plugins are silently excluded — no error, no warning.
+
+**Satisfied when:**
+- Resolution for non-Claude Code clients never includes plugin data
+- No error is thrown when a group with plugins is resolved for a non-plugin client
+- The behavior is symmetric with skills: skills are excluded for clients without `skills_dir`
+
+Difficulty: easy
+Validates: `#sync` (Sync)
+
+---
+
+## Feature: Marketplace Management
+> I register custom plugin marketplaces and have them synced to Claude Code's settings.
+
+Category: Core | Depends on: Plugin Lifecycle
+
+### Critical
+
+#### Scenario: Add and Remove Marketplace
+
+> **Given** a consumer has a loaded config
+> **When** the consumer adds a marketplace with a name and source (GitHub repo or local directory path), then later removes it
+> **Then** the config's marketplaces list reflects the additions and removals.
+
+**Satisfied when:**
+- Adding a GitHub marketplace stores `{ source: "github", repo: "owner/repo" }`
+- Adding a local marketplace stores `{ source: "directory", path: "/absolute/path" }`
+- Removal deletes the marketplace entry from the config
+- Removal does not cascade-uninstall plugins from that marketplace
+
+Difficulty: easy
+Validates: `#marketplaces` (Marketplaces)
+
+### Edge Cases
+
+#### Scenario: Reserved Marketplace Names Rejected
+
+> **Given** a consumer attempts to add a marketplace with a reserved name ("claude-plugins-official", "anthropic-marketplace", etc.)
+> **When** the add operation validates the name
+> **Then** the operation is rejected with an error identifying the reserved name.
+
+**Satisfied when:**
+- All Claude Code reserved marketplace names are checked
+- The error names the reserved name and suggests choosing a different one
+- The config is not modified on rejection
+
+Difficulty: easy
+Validates: `#marketplaces` (Reserved Names)
+
+#### Scenario: Marketplace Resolution for extraKnownMarketplaces Format
+
+> **Given** a config has custom marketplaces registered
+> **When** the consumer resolves marketplace state for Claude Code sync
+> **Then** the result is in Claude Code's native `extraKnownMarketplaces` format with the correct source structure.
+
+**Satisfied when:**
+- Each marketplace produces the nested `{ name: { source: { source, repo|path } } }` structure
+- The official marketplace (`claude-plugins-official`) is excluded from the output (built-in to Claude Code)
+- Both GitHub and directory source types are correctly formatted
+
+Difficulty: easy
+Validates: `#marketplaces` (Marketplaces)
+
+---
+
+## Feature: Group Organization
+> I organize servers, plugins, and skills into named groups and assign groups to clients.
+
+Category: Core | Depends on: Server Operations, Plugin Lifecycle
+
+### Critical
+
+#### Scenario: Group CRUD and Membership
+
+> **Given** a consumer has a config with servers and plugins
+> **When** the consumer creates a group, adds servers and plugins to it, shows its membership, then removes a member
+> **Then** the group tracks membership accurately, and removing a member from the group does not delete the underlying server or plugin.
+
+**Satisfied when:**
+- `createGroup` adds a group with a name, description, and empty member lists
+- `addServerToGroup` and `addPluginToGroup` add members by name reference
+- Removing a server from a group leaves the server in the top-level registry
+- Group show/inspect returns the full list of server names, plugin names, and skill names
+
+Difficulty: easy
+Validates: `#groups` (Core Concepts)
+
+#### Scenario: Assign and Unassign Groups to Clients
+
+> **Given** groups "dev-tools" and "work" exist in the config
+> **When** the consumer assigns "dev-tools" to client "cursor", then reassigns to "work", then unassigns entirely
+> **Then** the client's group assignment updates at each step, and unassigning reverts to null (receive all servers).
+
+**Satisfied when:**
+- After assignment, the client entry in config shows the assigned group name
+- Reassignment replaces the previous group
+- Unassignment sets the group to null
+- The client entry is created if it does not already exist
+
+Difficulty: easy
+Validates: `#groups` (CLI Surface)
+
+### Edge Cases
+
+#### Scenario: Add Nonexistent Server to Group
+
+> **Given** a group "dev-tools" exists but no server named "phantom" is in the registry
+> **When** the consumer tries to add "phantom" to the group
+> **Then** the operation fails with an error identifying that the server does not exist.
+
+**Satisfied when:**
+- The error is raised before modifying the group
+- The message identifies the missing server by name
+- The group's existing membership is unchanged
+
+Difficulty: easy
+Validates: `#groups` (Architecture)
+
+#### Scenario: Delete Group Cascades to Client Assignments
+
+> **Given** group "dev-tools" is assigned to clients "cursor" and "claude-desktop"
+> **When** the consumer deletes the group
+> **Then** both clients' group assignments revert to null, and the group is removed from the config.
+
+**Satisfied when:**
+- After deletion, no client references the deleted group name
+- Clients with reverted assignments fall back to receiving all enabled servers on next resolution
+- Servers and plugins that were in the group still exist in the top-level registry
+
+Difficulty: medium
+Validates: `#groups` (Architecture)
+
+---
+
+## Feature: Skill Management
+> I manage agent skills — adding, removing, and resolving them for clients that support skills directories.
+
+Category: Core | Depends on: Config Lifecycle
+
+### Critical
+
+#### Scenario: Skill CRUD Lifecycle
+
+> **Given** a consumer has a loaded config
+> **When** the consumer adds a skill with name, description, path, and origin metadata; then disables it; then removes it
+> **Then** each operation updates the config's skills list, and removal also cleans up group membership.
+
+**Satisfied when:**
+- `addSkill` adds a skill entry with the provided metadata and `enabled: true` by default
+- `disableSkill` sets `enabled: false`
+- `removeSkill` removes the skill from the registry and from all groups' `skills` arrays
+- Skill entries include optional fields: `dependencies`, `tags`, `mode` (pin/track)
+
+Difficulty: easy
+Validates: `#skills` (Skills Management)
+
+#### Scenario: Skill Resolution Respects Client Support
+
+> **Given** a group contains skills, and the consumer resolves it for a client with skills support (Claude Code) and a client without (a client lacking `skills_dir`)
+> **When** resolution runs for each client
+> **Then** the skills-capable client receives skill data, and the non-skills client silently receives none.
+
+**Satisfied when:**
+- Resolution for Claude Code includes the skills from the assigned group
+- Resolution for a client without `skills_dir` omits skills entirely — no error, no warning
+- The skill resolution returns paths suitable for symlink fan-out (canonical store paths)
+
+Difficulty: medium
+Validates: `#skills` (Skills Management, Client Skills Directory Mapping)
+
+### Edge Cases
+
+#### Scenario: Skill with Missing Dependencies
+
+> **Given** a skill "git-workflow" declares a dependency on server "github-mcp", but "github-mcp" is not in the config
+> **When** the consumer adds the skill or inspects its dependency status
+> **Then** the skill is added successfully (dependencies are advisory), but inspection reveals the unresolved dependency.
+
+**Satisfied when:**
+- Adding a skill with missing dependencies succeeds — dependencies do not block install
+- A dependency check function returns which dependencies are present and which are missing
+- The missing dependency is identified by name
+
+Difficulty: easy
+Validates: `#skills` (Dependency Intelligence)
+
+#### Scenario: Skill Collision Detection
+
+> **Given** a skill "git-workflow" exists at both user scope (canonical store) and project scope (`.claude/skills/`)
+> **When** the consumer runs sync resolution for that client
+> **Then** the collision is surfaced in the resolution result so the consumer can decide how to handle it.
+
+**Satisfied when:**
+- The sync resolution result includes collision metadata when a skill exists at multiple scopes
+- The collision identifies both the canonical path and the conflicting path
+- The consumer can choose force-overwrite, skip, or other strategy — Ensemble surfaces the conflict but does not decide
+
+Difficulty: hard
+Validates: `#skills` (Collision Detection)
+
+---
+
+## Feature: Registry and Discovery
+> I search MCP registries and skills catalogs programmatically, discovering servers and skills without the CLI.
+
+Category: Core | Depends on: Library API Surface
+
+### Critical
+
+#### Scenario: Search Registries Programmatically
+
+> **Given** a consumer wants to find MCP servers matching a capability
+> **When** the consumer calls the registry search function with a query string
+> **Then** the function returns structured results with server names, descriptions, trust tiers, and install metadata — the same data the CLI search would show.
+
+**Satisfied when:**
+- Search returns an array of typed result objects, not formatted strings
+- Results include `name`, `description`, `trust_tier`, and source registry identifier
+- The consumer can filter or sort results programmatically
+- Network errors produce typed errors, not unhandled rejections
+
+Difficulty: medium
+Validates: `#registry` (Registry)
+
+#### Scenario: Local Capability Search
+
+> **Given** a consumer has a config with servers that have cached tool metadata
+> **When** the consumer calls the local search function with a query
+> **Then** the search matches against server names, descriptions, and tool names/descriptions, returning ranked results.
+
+**Satisfied when:**
+- Search covers server names, tool names, and tool descriptions
+- Results are ranked by relevance (BM25 or similar scoring)
+- Search is purely local — no network calls
+- Skills are also included in local search results (name, description, tags)
+
+Difficulty: medium
+Validates: `#search` (CLI Surface)
+
+### Edge Cases
+
+#### Scenario: Registry Search with No Results
+
+> **Given** a consumer searches registries with a very specific query that matches nothing
+> **When** the search completes
+> **Then** the result is an empty array, not an error or null.
+
+**Satisfied when:**
+- An empty result set is a normal return value (empty array), not an error condition
+- The consumer does not need to check for null or handle exceptions for zero results
+
+Difficulty: easy
+Validates: `#registry` (Registry)
+
+#### Scenario: Registry Backend Unavailable
+
+> **Given** a consumer attempts a registry search but the registry API is unreachable (network error, timeout)
+> **When** the search function handles the failure
+> **Then** the error is surfaced as a typed error with enough context for the consumer to display a meaningful message.
+
+**Satisfied when:**
+- Network errors are caught and wrapped in a typed error (not raw fetch errors)
+- The error indicates which registry backend failed
+- Other backends that did succeed still return their results (partial success when multiple backends are queried)
+
+Difficulty: medium
+Validates: `#registry` (Registry)
+
+---
+
+# CLI
+
+## Feature: CLI Surface
+> I use the `ensemble` CLI (or `ens` alias) to manage configs from the terminal with the same operations available to library consumers.
+
+Category: CLI | Depends on: Library API Surface
+
+### Critical
+
+#### Scenario: Core Server Commands via CLI
+
+> **Given** a user has Ensemble installed globally and a config file exists
+> **When** the user runs `ensemble list`, `ensemble add my-server --command node --args server.js`, `ensemble disable my-server`, `ensemble enable my-server`, `ensemble remove my-server`
+> **Then** each command produces the expected output and config mutation, using the same operations library that a programmatic consumer would use.
+
+**Satisfied when:**
+- `ensemble list` displays all servers with enabled/disabled state
+- `ensemble add` creates a server in the config
+- `ensemble enable`/`ensemble disable` toggle state
+- `ensemble remove` deletes the server and cleans up group membership
+- All commands use Commander.js and exit with appropriate codes (0 success, 1 error)
+
+Difficulty: easy
+Validates: `#cli-surface` (CLI Surface)
+
+#### Scenario: Sync Command Writes Client Configs
+
+> **Given** a user has servers assigned to clients in the config
+> **When** the user runs `ensemble sync cursor`
+> **Then** Ensemble writes the resolved servers to Cursor's native config file, and `ensemble sync --dry-run cursor` previews the changes without writing.
+
+**Satisfied when:**
+- Sync writes to the correct client config path
+- Dry-run shows what would be written without modifying any files
+- The `__mcpoyle` marker (or equivalent) identifies managed entries
+- Non-managed entries in the client config are preserved (additive sync)
+
+Difficulty: medium
+Validates: `#cli-surface` (CLI Surface, Sync)
+
+### Edge Cases
+
+#### Scenario: CLI Handles Missing Config Gracefully
+
+> **Given** no Ensemble config file exists at the expected path
+> **When** the user runs `ensemble list`
+> **Then** the CLI either creates a default config and shows the empty state, or shows a clear message directing the user to run `ensemble init`.
+
+**Satisfied when:**
+- The CLI does not crash with an unhandled filesystem error
+- The user understands what happened and what to do next
+- If auto-creating a config, it is valid and minimal
+
+Difficulty: easy
+Validates: `#cli-surface` (CLI Surface)
+
+#### Scenario: The ens Alias Works Identically
+
+> **Given** a user has Ensemble installed
+> **When** the user runs `ens list` instead of `ensemble list`
+> **Then** the output is identical — `ens` is a complete alias for `ensemble`.
+
+**Satisfied when:**
+- Every command available under `ensemble` is available under `ens`
+- Output and behavior are identical regardless of which name is used
+- Help text (`ens --help`) shows the full command reference
+
+Difficulty: easy
+Validates: `#cli-surface` (CLI Surface)
+
+---
+
+# System Quality
 
 ## Feature: Operations Layer
-> The CLI and TUI share the same business logic, so any action I perform has identical results regardless of which interface I use.
+> All mutations flow through a shared operations layer — the CLI is a thin wrapper, library consumers call the same functions.
 
-Category: System Quality | Depends on: —
+Category: System Quality | Depends on: Library API Surface
 
 ### Critical
 
-#### Scenario: CLI and TUI Produce Identical Config Changes
+#### Scenario: CLI and Library Produce Identical Results
 
-> **Given** the user has the same starting config
-> **When** they perform the same action via CLI (e.g., `mcp disable my-server`) and via TUI (navigating to the server and toggling it off)
-> **Then** the resulting config file is byte-identical in both cases.
+> **Given** the same starting config
+> **When** a user runs `ensemble disable my-server` via CLI, and separately a consumer calls `disableServer(config, "my-server")` via library
+> **Then** the resulting config is identical in both cases — the CLI is just a presentation layer over the operations.
 
-**Satisfied when:** For toggle, enable, disable, assign-group, and sync operations, the config file mutations are identical whether triggered from CLI or TUI, confirming they share the same operations layer.
+**Satisfied when:**
+- The CLI delegates to the same operation functions the library exports
+- No business logic exists in the CLI layer (Commander handlers are thin: parse args, load config, call operation, save config, format output)
+- The operation function's return value fully determines the new config state
 
-Validates: Operations Layer (new feature, spec Architecture section)
+Difficulty: medium
+Validates: `#operations-layer` (Architecture)
 
-#### Scenario: Operations Layer Returns Structured Results
+#### Scenario: Operations Return Structured Results
 
-> **Given** the operations layer processes a request (e.g., toggle server, sync client)
+> **Given** a consumer calls any operation
 > **When** the operation completes
-> **Then** it returns a structured result object (not printed text) that both CLI and TUI can format for their respective presentations.
+> **Then** it returns a typed result object — the new config, plus any metadata the consumer needs (what changed, warnings, etc.).
 
-**Satisfied when:** The operations module's public functions return dataclasses or typed dicts rather than strings or None, and neither the CLI nor TUI layer needs to duplicate business logic.
+**Satisfied when:**
+- Operations return typed result objects (not void, not printed text)
+- Results include the new config object
+- Results optionally include warnings (e.g., drift detected), change descriptions, or other metadata
+- The CLI formats these results for terminal display; a GUI consumer formats them differently
 
-Validates: Operations Layer (new feature, spec Architecture section)
-
-#### Scenario: CLI Commands Still Work After Operations Extraction
-
-> **Given** the operations layer has been extracted from cli.py into a shared module
-> **When** the user runs any existing CLI command (list, add, remove, enable, disable, sync, groups, plugins, marketplaces)
-> **Then** every command produces the same output and behavior as before the extraction.
-
-**Satisfied when:** All existing CLI tests pass without modification, and the CLI commands produce identical output for the same inputs as they did before the refactor.
-
-Validates: Operations Layer (new feature, spec Architecture section)
+Difficulty: medium
+Validates: `#operations-layer` (Architecture)
 
 ### Edge Cases
 
-#### Scenario: Operations Layer Handles Config Lock Contention
+#### Scenario: Operation Error Does Not Corrupt Config
 
-> **Given** the operations layer uses file locking to prevent concurrent config writes
-> **When** both the CLI and TUI attempt to write to the config simultaneously
-> **Then** one operation acquires the lock and completes, the other waits or fails gracefully with a clear error — the config is never left in a corrupt state.
+> **Given** a consumer calls an operation that fails partway through (e.g., removing a server that is referenced in a group, and the cascade encounters an unexpected state)
+> **When** the error occurs
+> **Then** the original config is unchanged — either the full operation succeeds or none of it takes effect.
 
-**Satisfied when:** Concurrent operations from CLI and TUI do not corrupt the config file, and the user receives clear feedback if a lock contention occurs.
+**Satisfied when:**
+- Operations are atomic: they produce a new config or throw, never a half-mutated config
+- The original config object passed to the operation is never modified
+- Error recovery does not require the consumer to reload from disk
 
-Validates: Operations Layer (new feature, spec Design Principles)
+Difficulty: medium
+Validates: `#operations-layer` (Architecture)
+
+---
+
+## Feature: Additive Sync Safety
+> Sync never deletes servers or plugins that the user did not create through Ensemble.
+
+Category: System Quality | Depends on: Client Resolution and Sync
+
+### Critical
+
+#### Scenario: Sync Preserves Unmanaged Servers
+
+> **Given** a client config file contains servers that were added manually (not through Ensemble — no `__mcpoyle` marker)
+> **When** the consumer runs sync for that client
+> **Then** the manually-added servers are preserved in the client config. Only Ensemble-managed entries are written or updated.
+
+**Satisfied when:**
+- Servers without the Ensemble management marker are untouched during sync
+- New Ensemble-managed servers are added alongside existing ones
+- The sync result communicates which entries were added, updated, and which were left alone (unmanaged)
+
+Difficulty: medium
+Validates: `#sync` (Sync, Additive Sync)
+
+### Edge Cases
+
+#### Scenario: Sync Handles Drift on Managed Entries
+
+> **Given** a managed server was modified outside Ensemble (its content hash differs from what Ensemble last wrote)
+> **When** sync runs and detects the drift
+> **Then** the drift is reported with provenance context and the entry is not silently overwritten. The consumer chooses the resolution strategy (force, adopt, skip).
+
+**Satisfied when:**
+- Drift detection compares SHA-256 hashes of managed entries
+- The drift report includes which entry drifted and its origin metadata
+- Default behavior is to skip (warn, do not overwrite)
+- Force and adopt are explicit options the consumer selects
+
+Difficulty: hard
+Validates: `#sync` (Drift Detection)
+
+#### Scenario: Sync of Empty Group Does Not Clear Client Config
+
+> **Given** a client is assigned to an empty group (no servers, no plugins)
+> **When** sync runs for that client
+> **Then** Ensemble removes its own previously-managed entries (if any) but does not touch unmanaged entries. The client config is not wiped clean.
+
+**Satisfied when:**
+- Previously managed entries that are no longer in the group are removed (or disabled)
+- Unmanaged entries are unaffected
+- An empty group assignment results in only Ensemble-managed entries being cleaned up, not a blank config
+
+Difficulty: medium
+Validates: `#sync` (Sync, Additive Sync)

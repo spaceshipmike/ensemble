@@ -1,8 +1,17 @@
+# Python (legacy)
 __pycache__/
 *.pyc
 .venv/
 *.egg-info/
-dist/
-build/
 .pytest_cache/
+
+# TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Build
+build/
+
+# OS
 .DS_Store
