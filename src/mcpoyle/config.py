@@ -11,6 +11,7 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "mcpoyle"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 LOCK_PATH = CONFIG_DIR / "config.lock"
+SKILLS_DIR = CONFIG_DIR / "skills"
 
 
 @dataclass
@@ -20,6 +21,7 @@ class ServerOrigin:
     client: str = ""  # client id if imported
     registry_id: str = ""  # registry identifier if from registry
     timestamp: str = ""  # ISO 8601
+    trust_tier: str = "local"  # "official", "community", "local"
 
     @classmethod
     def from_dict(cls, d: dict) -> ServerOrigin:
@@ -130,11 +132,29 @@ class Settings:
 
 
 @dataclass
+class Skill:
+    """A skill definition managed by mcpoyle."""
+    name: str
+    enabled: bool = True
+    description: str = ""
+    path: str = ""  # path to SKILL.md in canonical store
+    origin: str = ""  # "manual", "import", "registry", "builtin"
+    dependencies: list[str] = field(default_factory=list)  # server names this skill needs
+    tags: list[str] = field(default_factory=list)
+    mode: str = "pin"  # "pin" (manual/locked) or "track" (auto-update from registry)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Skill:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
 class Group:
     name: str
     description: str = ""
     servers: list[str] = field(default_factory=list)
     plugins: list[str] = field(default_factory=list)
+    skills: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> Group:
@@ -212,6 +232,7 @@ class McpoyleConfig:
     plugins: list[Plugin] = field(default_factory=list)
     marketplaces: list[Marketplace] = field(default_factory=list)
     rules: list[PathRule] = field(default_factory=list)
+    skills: list[Skill] = field(default_factory=list)
     settings: Settings = field(default_factory=Settings)
 
     @classmethod
@@ -223,6 +244,7 @@ class McpoyleConfig:
             plugins=[Plugin.from_dict(p) for p in d.get("plugins", [])],
             marketplaces=[Marketplace.from_dict(m) for m in d.get("marketplaces", [])],
             rules=[PathRule.from_dict(r) for r in d.get("rules", [])],
+            skills=[Skill.from_dict(s) for s in d.get("skills", [])],
             settings=Settings.from_dict(d.get("settings", {})),
         )
 
@@ -249,6 +271,9 @@ class McpoyleConfig:
 
     def get_plugin(self, name: str) -> Plugin | None:
         return next((p for p in self.plugins if p.name == name or p.qualified_name == name), None)
+
+    def get_skill(self, name: str) -> Skill | None:
+        return next((s for s in self.skills if s.name == name), None)
 
     def get_marketplace(self, name: str) -> Marketplace | None:
         return next((m for m in self.marketplaces if m.name == name), None)
@@ -289,6 +314,20 @@ class McpoyleConfig:
                 return []
             return [p for p in self.plugins if p.enabled and p.name in group.plugins]
         return [p for p in self.plugins if p.enabled]
+
+    def resolve_skills(self, client_id: str, group_name: str | None = None) -> list[Skill]:
+        """Get the skills a client should receive."""
+        if group_name is None:
+            assignment = self.get_client(client_id)
+            if assignment and assignment.group:
+                group_name = assignment.group
+
+        if group_name:
+            group = self.get_group(group_name)
+            if not group:
+                return []
+            return [s for s in self.skills if s.enabled and s.name in group.skills]
+        return [s for s in self.skills if s.enabled]
 
 
 def compute_entry_hash(entry: dict) -> str:

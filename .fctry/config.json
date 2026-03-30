@@ -1,7 +1,7 @@
 {
   "versions": {
     "external": {
-      "current": "0.5.8",
+      "current": "0.5.9",
       "propagationTargets": [
         {
           "file": "pyproject.toml",
@@ -21,7 +21,7 @@
       }
     },
     "spec": {
-      "current": "0.14.0",
+      "current": "0.15.0",
       "incrementRules": {
         "minor": "auto-on-evolve"
       }
@@ -33,7 +33,7 @@
       "action": "suggest external minor bump"
     }
   },
-  "formatVersion": "0.76.19",
+  "formatVersion": "0.78.10",
   "modelRouting": {
     "interviewer": "claude",
     "stateOwner": "codex",
