@@ -127,6 +127,10 @@ export { parseFrontmatter, formatFrontmatter, skillToFrontmatter, frontmatterToS
 export { listProjects, getProject, resolveProjectPath } from "./projects.js";
 export type { RegistryProject } from "./projects.js";
 
+// Export
+export { exportGroupAsPlugin } from "./export.js";
+export type { ExportResult } from "./export.js";
+
 // Migration
 export { migrate, needsMigration } from "./migration.js";
 export type { MigrationResult, MigrationAction } from "./migration.js";
