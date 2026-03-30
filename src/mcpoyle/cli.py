@@ -903,27 +903,39 @@ def groups_remove_skill(ctx: click.Context, group_name: str, skill_name: str) ->
 @click.option("--limit", default=20, help="Maximum results to show")
 @click.pass_context
 def search_cmd(ctx: click.Context, query: str, limit: int) -> None:
-    """Search installed servers by name, tools, and descriptions."""
-    from mcpoyle.search import search_servers
+    """Search installed servers and skills by name, tools, tags, and descriptions."""
+    from mcpoyle.search import search_all
 
     cfg: McpoyleConfig = ctx.obj["config"]
-    results = search_servers(cfg, query, limit=limit)
+    results = search_all(cfg, query, limit=limit)
 
     if not results:
-        click.echo(f"No servers matching '{query}'.")
+        click.echo(f"No results matching '{query}'.")
         return
 
     for r in results:
-        server = cfg.get_server(r.server_name)
-        status = click.style("on", fg="green") if server and server.enabled else click.style("off", fg="red")
-        score = click.style(f"{r.score:.1f}", fg="cyan")
-        click.echo(f"  {r.server_name} [{status}] (score: {score})")
+        if r.result_type == "skill":
+            skill = cfg.get_skill(r.server_name)
+            status = click.style("on", fg="green") if skill and skill.enabled else click.style("off", fg="red")
+            score = click.style(f"{r.score:.1f}", fg="cyan")
+            click.echo(f"  {r.server_name} [{status}] [skill] (score: {score})")
+        else:
+            server = cfg.get_server(r.server_name)
+            status = click.style("on", fg="green") if server and server.enabled else click.style("off", fg="red")
+            score = click.style(f"{r.score:.1f}", fg="cyan")
+            click.echo(f"  {r.server_name} [{status}] [server] (score: {score})")
 
+        matched = []
         if "name" in r.matched_fields:
-            click.echo(f"    matched: server name")
+            matched.append("name")
+        if "tags" in r.matched_fields:
+            matched.append("tags")
+        if "description" in r.matched_fields:
+            matched.append("description")
         if r.matched_tools:
-            tools_str = ", ".join(r.matched_tools)
-            click.echo(f"    matched tools: {tools_str}")
+            matched.append(f"tools: {', '.join(r.matched_tools)}")
+        if matched:
+            click.echo(f"    matched: {', '.join(matched)}")
 
 
 # ── Scope command ────────────────────────────────────────────────
@@ -1496,24 +1508,46 @@ FULL_HELP = """\
 mcp — Centrally manage MCP server configurations across AI clients.
 
 SERVERS
-  mcp list                              List all servers with status and command.
+  mcp list                              List all servers with status, trust tier, and command.
   mcp add <name> --command <cmd>        Add a server. Options:
         [--args <arg> ...]                --args (repeatable), --env KEY=VAL (repeatable),
         [--env KEY=VAL ...]               --transport <type> (default: stdio)
   mcp remove <name>                     Remove a server (also removes from groups).
   mcp enable <name>                     Enable a server.
   mcp disable <name>                    Disable a server.
-  mcp show <name>                       Show full server details and group membership.
+  mcp show <name>                       Show full server details, trust tier, and group membership.
+
+SKILLS
+  mcp skills list                       List all skills with status and tags.
+  mcp skills add <name>                 Add a skill. Options: --description, --tags csv, --depends csv
+  mcp skills remove <name>              Remove a skill and delete from canonical store.
+  mcp skills show <name>                Show skill details and SKILL.md body.
+  mcp skills enable <name>              Enable a skill.
+  mcp skills disable <name>             Disable a skill.
+  mcp skills sync [<client>]            Sync skills to client skills dirs via symlinks.
+        [--dry-run]                       Preview changes without writing.
+  mcp skills search <query>             Search skills by name, description, and tags.
+
+  Canonical store: ~/.config/mcpoyle/skills/<name>/SKILL.md
+  Client skills dirs: symlinked from canonical store during sync.
+
+PIN / TRACK
+  mcp pin <name>                        Pin a server or skill (disable auto-update).
+  mcp track <name>                      Track a server or skill for registry auto-updates.
 
 GROUPS
-  mcp groups list                       List all groups.
+  mcp groups list                       List all groups with server/plugin/skill counts.
   mcp groups create <name>              Create a group. Options: --description <text>
   mcp groups delete <name>              Delete a group (clients revert to all servers).
-  mcp groups show <name>                Show group members and their status.
+  mcp groups show <name>                Show group members (servers, plugins, skills).
   mcp groups add-server <group> <srv>   Add a server to a group.
   mcp groups remove-server <group> <srv>  Remove a server from a group.
   mcp groups add-plugin <group> <plg>   Add a plugin to a group.
   mcp groups remove-plugin <group> <plg>  Remove a plugin from a group.
+  mcp groups add-skill <group> <skill>  Add a skill to a group.
+  mcp groups remove-skill <group> <skill>  Remove a skill from a group.
+  mcp groups export <name>              Export group as Claude Code plugin directory.
+        [--output <dir>]                  Custom output directory.
 
 CLIENTS
   mcp clients                           Detect installed clients, show assignments and
@@ -1521,7 +1555,8 @@ CLIENTS
                                         for Claude Code.
 
   Supported clients: claude-desktop, claude-code, cursor, vscode, windsurf, zed,
-    jetbrains, gemini-cli, codex-cli, mcpx, copilot-cli, copilot-jetbrains, amazon-q, cline, roo-code
+    jetbrains, gemini-cli, codex-cli, mcpx, copilot-cli, copilot-jetbrains,
+    amazon-q, cline, roo-code, opencode, amp
 
 ASSIGNMENTS
   mcp assign <client> <group>           Assign a group to a client.
@@ -1537,23 +1572,25 @@ RULES
   mcp rules add <path> <group>          Add a rule: projects under <path> get <group>.
   mcp rules remove <path>               Remove a path rule.
 
-  Rules auto-assign groups to Claude Code projects based on their path.
-  Explicit assignments override rules. Most specific prefix wins.
-
 SEARCH
-  mcp search <query>                    Search installed servers by name, tools,
-        [--limit <n>]                     and descriptions. BM25-style ranking.
+  mcp search <query>                    Search servers and skills by name, tools,
+        [--limit <n>]                     tags, and descriptions. BM25-style ranking.
 
 SCOPE
   mcp scope <name> --project <path>     Move a server or plugin from global to
                                         project-only. Auto-creates groups if needed.
-                                        Run 'mcp sync claude-code' after to apply.
+
+COLLISIONS
+  mcp collisions                        Detect scope conflicts between global and
+                                        project-level group assignments.
+
+DEPENDENCIES
+  mcp deps                              Show skill dependency status (satisfied/missing/disabled).
 
 INIT
-  mcp init                              Guided first-run setup: detect clients,
-                                        import servers, create groups, assign, sync.
+  mcp init                              Guided first-run setup: detect clients, import
+                                        servers and skills, install meta-skill, sync.
   mcp init --auto                       Non-interactive: import all, skip groups, sync.
-                                        Safe to re-run — skips already-done steps.
 
 SYNC
   mcp sync                              Sync all detected clients.
@@ -1563,22 +1600,8 @@ SYNC
   mcp sync --force                      Overwrite entries modified outside mcpoyle.
   mcp sync --adopt                      Update mcpoyle registry to match manual edits.
 
-  Sync is additive-only: servers not managed by mcp are never touched.
-  Managed entries are tagged with a __mcpoyle marker in the client config.
-  Client configs are backed up before each write.
-  Sync detects manual edits via content hashing — drifted entries are
-  warned about and skipped by default. Use --force to overwrite or
-  --adopt to accept the manual changes into mcpoyle's registry.
-  Sync is idempotent — running it twice produces the same result.
-  For Claude Code, sync also updates plugins and marketplaces.
-  Project-level plugins write to <project>/.claude/settings.local.json
-  (personal, gitignored) with auto-workaround for CC bug #27247.
-
 IMPORT
-  mcp import <client>                   Import servers from a client's existing config
-                                        into the central registry. Skips duplicates and
-                                        already-managed entries. For Claude Code, also
-                                        scans all project-level mcpServers.
+  mcp import <client>                   Import servers from a client's existing config.
 
 PLUGINS (Claude Code)
   mcp plugins list                      List all tracked plugins with status.
@@ -1589,9 +1612,6 @@ PLUGINS (Claude Code)
   mcp plugins show <name>               Show plugin details and group membership.
   mcp plugins import                    Import existing plugins from Claude Code settings.
 
-  User-level: writes to ~/.claude/settings.json → enabledPlugins
-  Project-level: writes to <project>/.claude/settings.local.json (via sync)
-
 MARKETPLACES (Claude Code)
   mcp marketplaces list                 List all registered marketplaces.
   mcp marketplaces add <name>           Register a marketplace. Options:
@@ -1601,49 +1621,43 @@ MARKETPLACES (Claude Code)
   mcp marketplaces show <name>          Show marketplace details and plugins.
 
 DOCTOR
-  mcp doctor                            Audit config health across all clients.
+  mcp doctor                            Audit config health with structured scoring.
   mcp doctor --json                     Structured JSON output for scripting.
 
-  Checks: missing env vars, unreachable binaries, orphaned entries,
-  stale (never-synced) configs, JSON parse errors, drift detection.
+  Categories: existence, freshness, grounding, parity, skills-health.
+  Shows aggregate score percentage and per-category breakdown.
 
 TUI
   mcp tui                               Open the interactive TUI dashboard.
+                                        Tabs: 1=Servers, 2=Skills, 3=Groups,
+                                        4=Clients, 5=Marketplaces, 6=Projects
 
 REGISTRY
   mcp registry search <query>           Search MCP server registries (Official + Glama).
         [--no-cache]                      Bypass the response cache.
-  mcp registry show <id>                Show server details from registry.
-        [--no-cache]                      Bypass the response cache.
+  mcp registry show <id>                Show server details with quality signals and
+        [--no-cache]                      security summary.
   mcp registry add <id>                 Install a server from the registry. Options:
         [--env KEY=VAL ...]               Environment variables (repeatable).
-                                          Prompts for required vars not provided.
   mcp registry backends                 List available registry backends.
   mcp registry cache-clear              Clear the registry response cache.
 
 CONFIG
   Central config: ~/.config/mcpoyle/config.json (created automatically).
-
-  Servers:      ~/.claude.json → mcpServers (global)
-                ~/.claude.json → projects.<path>.mcpServers (per-project)
-  Plugins:      ~/.claude/settings.json → enabledPlugins (global)
-                <project>/.claude/settings.local.json → enabledPlugins (per-project)
-  Marketplaces: ~/.claude/settings.json → extraKnownMarketplaces
+  Skills store:   ~/.config/mcpoyle/skills/<name>/SKILL.md
 
 EXAMPLES
   mcp init                                           Guided first-run setup
-  mcp init --auto                                    Non-interactive setup
-  mcp import claude-desktop                          Import existing servers
-  mcp groups create dev-tools --description "Dev"    Create a group
-  mcp groups add-server dev-tools ctx                Add server to group
-  mcp assign claude-desktop dev-tools                Assign group to client
-  mcp assign claude-code minimal --project ~/Code/x  Per-project assignment
-  mcp sync                                           Sync everything
-  mcp sync --dry-run                                 Preview first
-  mcp plugins install clangd-lsp                     Install a plugin
-  mcp marketplaces add home --path ~/Code/my-mkt     Register local marketplace
-  mcp scope ctx --project ~/Code/myapp               Move ctx to project-only
-  mcp tui                                            Open TUI dashboard\
+  mcp skills add git-workflow --tags "git"            Add a skill
+  mcp skills sync                                    Sync skills to all clients
+  mcp groups add-skill dev-tools git-workflow         Add skill to group
+  mcp groups export dev-tools                         Export group as plugin
+  mcp pin my-server                                   Pin to current version
+  mcp collisions                                      Check for scope conflicts
+  mcp deps                                            Check skill dependencies
+  mcp search "workflow"                               Search servers and skills
+  mcp doctor                                          Health check with scoring
+  mcp tui                                             Open TUI dashboard\
 """
 
 

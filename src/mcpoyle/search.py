@@ -6,7 +6,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from mcpoyle.config import McpoyleConfig, Server
+from mcpoyle.config import McpoyleConfig, Server, Skill
 
 
 @dataclass
@@ -17,6 +17,7 @@ class SearchResult:
     matched_fields: list[str] = field(default_factory=list)
     # Matched tool names (if query matched tools)
     matched_tools: list[str] = field(default_factory=list)
+    result_type: str = "server"  # "server" or "skill"
 
 
 def _tokenize(text: str) -> list[str]:
@@ -121,3 +122,90 @@ def search_servers(cfg: McpoyleConfig, query: str, limit: int = 20) -> list[Sear
     # Sort by score descending
     results.sort(key=lambda r: r.score, reverse=True)
     return results[:limit]
+
+
+def search_skills(cfg: McpoyleConfig, query: str, limit: int = 20) -> list[SearchResult]:
+    """Search across all skills by name, description, and tags.
+
+    Uses BM25-style scoring with field boosting:
+      - Skill name: 3x boost
+      - Tag: 2x boost
+      - Description: 1x boost
+    """
+    query_terms = _tokenize(query)
+    if not query_terms:
+        return []
+
+    skills = cfg.skills
+    if not skills:
+        return []
+
+    # Build document representations
+    docs: list[tuple[Skill, list[str], int]] = []
+    for s in skills:
+        tokens: list[str] = []
+        # Skill name tokens (boosted by repeating)
+        name_tokens = _tokenize(s.name)
+        tokens.extend(name_tokens * 3)  # 3x name boost
+        # Tag tokens (boosted)
+        for tag in s.tags:
+            tokens.extend(_tokenize(tag) * 2)  # 2x tag boost
+        # Description tokens
+        if s.description:
+            tokens.extend(_tokenize(s.description))
+        docs.append((s, tokens, len(tokens)))
+
+    n_docs = len(docs)
+    avg_doc_len = sum(d[2] for d in docs) / max(n_docs, 1)
+
+    # Compute document frequency per query term
+    df: dict[str, int] = {}
+    for term in query_terms:
+        df[term] = sum(1 for _, tokens, _ in docs if any(term in t for t in tokens))
+
+    # Score each document
+    results: list[SearchResult] = []
+    for skill, tokens, doc_len in docs:
+        total_score = 0.0
+        matched_fields: list[str] = []
+
+        for term in query_terms:
+            tf = _term_frequency(tokens, term)
+            if tf > 0:
+                total_score += _bm25_score(tf, doc_len, avg_doc_len, df[term], n_docs)
+
+        if total_score > 0:
+            name_tokens = _tokenize(skill.name)
+            if any(term in t for term in query_terms for t in name_tokens):
+                matched_fields.append("name")
+
+            tag_tokens = []
+            for tag in skill.tags:
+                tag_tokens.extend(_tokenize(tag))
+            if any(term in t for term in query_terms for t in tag_tokens):
+                matched_fields.append("tags")
+
+            if skill.description:
+                desc_tokens = _tokenize(skill.description)
+                if any(term in t for term in query_terms for t in desc_tokens):
+                    matched_fields.append("description")
+
+            results.append(SearchResult(
+                server_name=skill.name,
+                score=total_score,
+                matched_fields=matched_fields,
+                result_type="skill",
+            ))
+
+    results.sort(key=lambda r: r.score, reverse=True)
+    return results[:limit]
+
+
+def search_all(cfg: McpoyleConfig, query: str, limit: int = 20) -> list[SearchResult]:
+    """Search across both servers and skills, returning unified results sorted by score."""
+    server_results = search_servers(cfg, query, limit=limit)
+    skill_results = search_skills(cfg, query, limit=limit)
+
+    combined = server_results + skill_results
+    combined.sort(key=lambda r: r.score, reverse=True)
+    return combined[:limit]

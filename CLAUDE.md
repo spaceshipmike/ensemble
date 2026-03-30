@@ -17,12 +17,16 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 
 | Module | Role |
 |--------|------|
-| `config.py` | Data model (Server, Plugin, Marketplace, Group, etc.) and JSON I/O |
-| `clients.py` | Client definitions, detection, config file read/write, CC settings helpers |
-| `operations.py` | Business logic for all mutations (install, uninstall, enable, disable, assign, scope, etc.) — shared by CLI and TUI |
-| `sync.py` | Sync engine — resolves servers/plugins per client, writes configs |
+| `config.py` | Data model (Server, Plugin, Skill, Marketplace, Group, etc.) and JSON I/O |
+| `clients.py` | Client definitions (17 clients), detection, config file read/write, CC settings helpers |
+| `operations.py` | Business logic for all mutations (servers, plugins, skills, groups, trust tiers, collisions, deps, export) — shared by CLI and TUI |
+| `sync.py` | Sync engine — resolves servers/plugins/skills per client, writes configs, symlink-based skill sync |
+| `skills.py` | Skill store — SKILL.md I/O, minimal frontmatter parser, canonical store operations |
+| `search.py` | BM25-style search across servers and skills (name, tools, tags, descriptions) |
 | `cli.py` | Thin click wrapper that formats and displays |
-| `tui.py` | Textual TUI dashboard — visual presentation layer |
+| `tui.py` | Textual TUI dashboard — 6 tabs: Servers & Plugins, Skills, Groups, Clients, Marketplaces, Projects |
+| `doctor.py` | Deterministic health audit with structured scoring across 5 categories |
+| `registry.py` | Registry adapters (Official + Glama), quality signals, security summary, unified source parser |
 
 ## Rules
 

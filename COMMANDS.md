@@ -88,6 +88,27 @@ mcpoyle groups add-plugin dev-tools clangd-lsp
 
 Remove a plugin from a group.
 
+### `mcpoyle groups add-skill <group> <skill>`
+
+Add a skill to a group.
+
+```
+mcpoyle groups add-skill dev-tools git-workflow
+```
+
+### `mcpoyle groups remove-skill <group> <skill>`
+
+Remove a skill from a group.
+
+### `mcpoyle groups export <name> [--output <dir>]`
+
+Export a group as a Claude Code plugin directory. Creates a `plugin.json` manifest with server configs and copies skill files. The output directory can be registered as a local marketplace.
+
+```
+mcpoyle groups export dev-tools                          # default output
+mcpoyle groups export dev-tools --output ~/Code/my-plugin  # custom output
+```
+
 ---
 
 ## Clients
@@ -115,6 +136,8 @@ Detect installed AI clients, show their sync status, group assignments, and any 
 | `amazon-q` | Amazon Q | `~/.aws/amazonq/mcp.json` |
 | `cline` | Cline | VS Code globalStorage |
 | `roo-code` | Roo Code | VS Code globalStorage |
+| `opencode` | OpenCode | `~/.opencode/config.json` |
+| `amp` | Amp | `~/.ampcode/mcp.json` |
 
 ### `mcpoyle assign <client> <group> [options]`
 
@@ -175,15 +198,91 @@ mcpoyle rules remove ~/Projects/
 
 ---
 
+## Skills
+
+### `mcp skills list`
+
+List all skills with status, tags, and description.
+
+### `mcp skills add <name> [options]`
+
+Add a new skill. Creates a SKILL.md in the canonical store (`~/.config/mcpoyle/skills/<name>/SKILL.md`).
+
+| Option | Description |
+|--------|-------------|
+| `--description <text>` | Skill description |
+| `--tags <csv>` | Comma-separated tags |
+| `--depends <csv>` | Comma-separated server dependencies |
+
+```
+mcp skills add git-workflow --description "Git best practices" --tags "git,workflow"
+```
+
+### `mcp skills remove <name>`
+
+Remove a skill from config and delete from canonical store.
+
+### `mcp skills show <name>`
+
+Show skill details: status, description, origin, mode, tags, dependencies, path, group membership, and SKILL.md body.
+
+### `mcp skills enable <name>` / `mcp skills disable <name>`
+
+Toggle skill enabled state.
+
+### `mcp skills sync [<client>] [--dry-run]`
+
+Sync skills to client skills directories via symlinks (copy fallback). Without a client argument, syncs all detected clients that support skills.
+
+```
+mcp skills sync                # sync all clients
+mcp skills sync claude-code    # sync one client
+mcp skills sync --dry-run      # preview changes
+```
+
+### `mcp skills search <query>`
+
+Search installed skills by name, description, and tags.
+
+---
+
+## Pin / Track
+
+### `mcp pin <name>`
+
+Pin a server or skill to its current version. Prevents auto-updates.
+
+### `mcp track <name>`
+
+Track a server or skill for auto-updates from registry. Servers must have a registry ID.
+
+---
+
+## Collision Detection
+
+### `mcp collisions`
+
+Detect scope conflicts between global and project-level assignments. Reports servers, plugins, or skills that appear in both the global group and a project group.
+
+---
+
+## Dependency Intelligence
+
+### `mcp deps`
+
+Show skill dependency status. Reports which server dependencies are satisfied, missing, or disabled for each skill.
+
+---
+
 ## Search
 
 ### `mcpoyle search <query> [--limit <n>]`
 
-Search installed servers by name, tool names, and tool descriptions. Uses BM25-style term frequency ranking with field boosting (server name 3x, tool name 2x, tool description 1x). Results show match score and which fields matched.
+Search installed servers and skills by name, tools, tags, and descriptions. Uses BM25-style term frequency ranking with field boosting. Results show match score, result type (server/skill), and which fields matched.
 
 ```
 mcpoyle search "github"
-mcpoyle search "file read" --limit 5
+mcpoyle search "workflow" --limit 5
 ```
 
 ---
@@ -233,7 +332,10 @@ mcpoyle init --auto   # non-interactive, imports and syncs everything
 **Steps:**
 
 1. Detect installed AI clients
+1.5. Show unified server landscape across all clients
 2. Import existing MCP servers from each client's config
+2.5. Scan and import existing skills from client skills directories
+2.75. Install `mcpoyle-usage` builtin meta-skill (teaches agents to use `mcp` CLI)
 3. Optionally create groups and add servers to them
 4. Assign groups to clients (or keep "all servers" default)
 5. Preview sync (dry run) and apply on confirmation
@@ -299,17 +401,23 @@ mcpoyle doctor          # human-readable output
 mcpoyle doctor --json   # structured JSON
 ```
 
-**Checks performed:**
+**Checks performed** (organized by category):
 
-| Check | Severity | What it detects |
-|-------|----------|-----------------|
-| Missing env vars | error | Server env has empty values |
-| 1Password CLI missing | warning | Env var uses `op://` but `op` CLI not found |
-| Unreachable binary | warning | Server command not found on `$PATH` |
-| Config parse errors | error | Client config file contains invalid JSON |
-| Orphaned entries | warning | `__mcpoyle`-marked entries in client configs not in central registry |
-| Stale configs | warning | Client has never been synced |
-| Drift detected | warning | Managed entry was modified outside mcpoyle |
+| Category | Check | Severity | What it detects |
+|----------|-------|----------|-----------------|
+| existence | Missing env vars | error | Server env has empty values |
+| existence | 1Password CLI missing | warning | Env var uses `op://` but `op` CLI not found |
+| existence | Unreachable binary | warning | Server command not found on `$PATH` |
+| existence | Config parse errors | error | Client config file contains invalid JSON/TOML |
+| freshness | Stale configs | warning | Client has never been synced |
+| freshness | Drift detected | warning | Managed entry was modified outside mcpoyle |
+| grounding | Orphaned entries | warning | `__mcpoyle`-marked entries in client configs not in central registry |
+| grounding | Missing tool metadata | info | Enabled servers with no tool metadata |
+| parity | Cross-client parity | info | Clients with same group assignment |
+| skills-health | Broken symlinks | warning | Broken skill symlinks in client skills dirs |
+| skills-health | Unresolved dependencies | warning | Skills depending on missing servers |
+
+Each check has a point value. The aggregate score is displayed as a percentage with per-category breakdown.
 
 ---
 

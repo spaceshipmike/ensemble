@@ -428,3 +428,53 @@ class TestDoctorEnhancements:
             result = run_doctor(cfg)
         info_checks = [c for c in result.checks if c.severity == "info" and "no tool metadata" in c.message]
         assert len(info_checks) == 0
+
+
+# ── Unified Search ────────────────────────────────────────────
+
+
+class TestUnifiedSearch:
+    def test_search_all_includes_servers_and_skills(self):
+        from mcpoyle.config import Skill
+        from mcpoyle.search import search_all
+        cfg = McpoyleConfig(
+            servers=[Server(name="github-mcp", command="npx", tools=[ToolInfo(name="create_issue")])],
+            skills=[Skill(name="github-workflow", tags=["github", "workflow"], description="Git practices")],
+        )
+        results = search_all(cfg, "github")
+        assert len(results) >= 2
+        types = {r.result_type for r in results}
+        assert "server" in types
+        assert "skill" in types
+
+    def test_search_skills_by_tag(self):
+        from mcpoyle.config import Skill
+        from mcpoyle.search import search_skills
+        cfg = McpoyleConfig(
+            skills=[
+                Skill(name="sk1", tags=["python", "testing"]),
+                Skill(name="sk2", tags=["javascript"]),
+            ],
+        )
+        results = search_skills(cfg, "python")
+        assert len(results) == 1
+        assert results[0].server_name == "sk1"
+
+    def test_search_skills_empty(self):
+        from mcpoyle.search import search_skills
+        cfg = McpoyleConfig()
+        results = search_skills(cfg, "anything")
+        assert results == []
+
+    def test_search_all_ranks_by_score(self):
+        from mcpoyle.config import Skill
+        from mcpoyle.search import search_all
+        cfg = McpoyleConfig(
+            servers=[Server(name="ctx", command="npx")],
+            skills=[Skill(name="ctx-workflow", tags=["ctx"], description="ctx usage guide")],
+        )
+        results = search_all(cfg, "ctx")
+        assert len(results) >= 1
+        # Results should be sorted by score descending
+        for i in range(len(results) - 1):
+            assert results[i].score >= results[i + 1].score
