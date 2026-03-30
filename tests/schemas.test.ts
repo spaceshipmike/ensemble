@@ -200,13 +200,12 @@ describe("EnsembleConfigSchema", () => {
 		expect(reparsed).toEqual(config);
 	});
 
-	it("preserves extra fields via passthrough-like behavior on nested objects", () => {
-		// Zod strips unknown fields by default — this test documents that behavior
-		const input = { servers: [{ name: "ctx", command: "npx", unknownField: "value" }] };
+	it("preserves unknown top-level fields for forward compatibility", () => {
+		const input = { servers: [{ name: "ctx", command: "npx" }], futureField: "preserved" };
 		const config = EnsembleConfigSchema.parse(input);
 		expect(config.servers[0]?.name).toBe("ctx");
-		// Unknown fields are stripped by Zod's default behavior
-		expect((config.servers[0] as Record<string, unknown>)["unknownField"]).toBeUndefined();
+		// Top-level unknown fields are preserved via .passthrough()
+		expect((config as Record<string, unknown>)["futureField"]).toBe("preserved");
 	});
 
 	it("rejects invalid transport type", () => {

@@ -114,7 +114,7 @@ export const EnsembleConfigSchema = z.object({
 	rules: z.array(PathRuleSchema).default([]),
 	skills: z.array(SkillSchema).default([]),
 	settings: SettingsSchema.default({}),
-});
+}).passthrough();
 
 // --- Inferred types ---
 
