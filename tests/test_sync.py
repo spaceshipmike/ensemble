@@ -3,13 +3,15 @@
 import json
 
 from mcpoyle.clients import (
+    CLIENTS,
     MCPOYLE_MARKER,
     get_managed_servers,
     get_unmanaged_servers,
     import_servers_from_client,
     server_to_client_entry,
 )
-from mcpoyle.config import Server
+from mcpoyle.config import ClientAssignment, McpoyleConfig, Server, Skill
+from mcpoyle.sync import sync_skills
 
 
 def test_server_to_client_entry():
@@ -176,3 +178,184 @@ def test_import_project_servers():
     app3 = next(r for r in results if r.path == "/Users/test/app3")
     assert len(app3.servers) == 1
     assert app3.servers[0].name == "proj-server-2"
+
+
+def test_client_def_skills_dir():
+    """Skills-capable clients have skills_dir set."""
+    assert CLIENTS["claude-code"].skills_dir == "~/.claude/skills"
+    assert CLIENTS["cursor"].skills_dir == "~/.cursor/skills"
+    assert CLIENTS["codex-cli"].skills_dir == "~/.codex/skills"
+    assert CLIENTS["windsurf"].skills_dir == "~/.windsurf/skills"
+    assert CLIENTS["opencode"].skills_dir == "~/.opencode/skills"
+    assert CLIENTS["amp"].skills_dir == "~/.ampcode/skills"
+    # Non-skills clients have empty skills_dir
+    assert CLIENTS["claude-desktop"].skills_dir == ""
+
+
+def test_sync_skills_creates_symlinks(tmp_path, monkeypatch):
+    """Skills should be symlinked from canonical store to client skills dir."""
+    canonical = tmp_path / "canonical"
+    client_dir = tmp_path / "client_skills"
+
+    # Write a skill to canonical store
+    (canonical / "my-skill").mkdir(parents=True)
+    (canonical / "my-skill" / "SKILL.md").write_text("---\nname: my-skill\n---\n\nContent")
+
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", canonical)
+
+    # Patch the client def to use tmp_path
+    from unittest.mock import patch
+    from mcpoyle.clients import ClientDef
+    fake_client = ClientDef(
+        id="test-client", name="Test", config_path="", servers_key="",
+        skills_dir=str(client_dir),
+    )
+    with patch.dict("mcpoyle.sync.CLIENTS", {"test-client": fake_client}):
+        cfg = McpoyleConfig(
+            skills=[Skill(name="my-skill", enabled=True)],
+            clients=[ClientAssignment(id="test-client")],
+        )
+        result = sync_skills(cfg, "test-client")
+
+    assert result.created == 1
+    target = client_dir / "my-skill"
+    assert target.exists()
+    assert target.is_symlink()
+    assert (target / "SKILL.md").exists()
+
+
+def test_sync_skills_removes_untracked(tmp_path, monkeypatch):
+    """Skills removed from config should be cleaned up in client dir."""
+    canonical = tmp_path / "canonical"
+    client_dir = tmp_path / "client_skills"
+
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", canonical)
+
+    # Pre-create a managed symlink that's no longer wanted
+    client_dir.mkdir(parents=True)
+    old_skill = client_dir / "old-skill"
+    old_skill.mkdir()
+    (old_skill / ".mcpoyle-managed").write_text("managed by mcpoyle\n")
+
+    from unittest.mock import patch
+    from mcpoyle.clients import ClientDef
+    fake_client = ClientDef(
+        id="test-client", name="Test", config_path="", servers_key="",
+        skills_dir=str(client_dir),
+    )
+    with patch.dict("mcpoyle.sync.CLIENTS", {"test-client": fake_client}):
+        cfg = McpoyleConfig(
+            skills=[],  # No skills desired
+            clients=[ClientAssignment(id="test-client")],
+        )
+        result = sync_skills(cfg, "test-client")
+
+    assert result.removed == 1
+    assert not (client_dir / "old-skill").exists()
+
+
+def test_sync_skills_copy_fallback(tmp_path, monkeypatch):
+    """If symlink fails, should fall back to copy."""
+    canonical = tmp_path / "canonical"
+    client_dir = tmp_path / "client_skills"
+
+    (canonical / "copy-skill").mkdir(parents=True)
+    (canonical / "copy-skill" / "SKILL.md").write_text("---\nname: copy-skill\n---\n\nContent")
+
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", canonical)
+
+    from unittest.mock import patch
+    from mcpoyle.clients import ClientDef
+    import os
+
+    fake_client = ClientDef(
+        id="test-client", name="Test", config_path="", servers_key="",
+        skills_dir=str(client_dir),
+    )
+
+    # Make symlink fail
+    original_symlink = os.symlink
+    def failing_symlink(src, dst, *args, **kwargs):
+        raise OSError("Symlinks not supported")
+
+    with patch.dict("mcpoyle.sync.CLIENTS", {"test-client": fake_client}):
+        with patch("pathlib.Path.symlink_to", side_effect=OSError("Symlinks not supported")):
+            cfg = McpoyleConfig(
+                skills=[Skill(name="copy-skill", enabled=True)],
+                clients=[ClientAssignment(id="test-client")],
+            )
+            result = sync_skills(cfg, "test-client")
+
+    target = client_dir / "copy-skill"
+    assert target.exists()
+    assert not target.is_symlink()  # Should be a copy, not symlink
+    assert (target / "SKILL.md").exists()
+    assert (target / ".mcpoyle-managed").exists()
+
+
+def test_sync_skills_dry_run(tmp_path, monkeypatch):
+    """Dry run should not create files."""
+    canonical = tmp_path / "canonical"
+    client_dir = tmp_path / "client_skills"
+
+    (canonical / "dry-skill").mkdir(parents=True)
+    (canonical / "dry-skill" / "SKILL.md").write_text("---\nname: dry-skill\n---\n\nContent")
+
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", canonical)
+
+    from unittest.mock import patch
+    from mcpoyle.clients import ClientDef
+    fake_client = ClientDef(
+        id="test-client", name="Test", config_path="", servers_key="",
+        skills_dir=str(client_dir),
+    )
+    with patch.dict("mcpoyle.sync.CLIENTS", {"test-client": fake_client}):
+        cfg = McpoyleConfig(
+            skills=[Skill(name="dry-skill", enabled=True)],
+            clients=[ClientAssignment(id="test-client")],
+        )
+        result = sync_skills(cfg, "test-client", dry_run=True)
+
+    assert result.created == 1
+    assert not client_dir.exists()  # Nothing written
+
+
+def test_sync_skills_no_skills_dir():
+    """Clients without skills_dir should get a clear message."""
+    cfg = McpoyleConfig()
+    result = sync_skills(cfg, "claude-desktop")
+    assert "no skills directory" in result.actions[0]
+
+
+def test_sync_skills_backup_manifest(tmp_path, monkeypatch):
+    """Sync should write a backup manifest before modifying."""
+    canonical = tmp_path / "canonical"
+    client_dir = tmp_path / "client_skills"
+
+    (canonical / "new-skill").mkdir(parents=True)
+    (canonical / "new-skill" / "SKILL.md").write_text("---\nname: new-skill\n---\n\nContent")
+
+    # Pre-existing managed skill
+    client_dir.mkdir(parents=True)
+    old = client_dir / "existing"
+    old.mkdir()
+    (old / ".mcpoyle-managed").write_text("managed by mcpoyle\n")
+
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", canonical)
+
+    from unittest.mock import patch
+    from mcpoyle.clients import ClientDef
+    fake_client = ClientDef(
+        id="test-client", name="Test", config_path="", servers_key="",
+        skills_dir=str(client_dir),
+    )
+    with patch.dict("mcpoyle.sync.CLIENTS", {"test-client": fake_client}):
+        cfg = McpoyleConfig(
+            skills=[Skill(name="new-skill", enabled=True)],
+            clients=[ClientAssignment(id="test-client")],
+        )
+        sync_skills(cfg, "test-client")
+
+    manifest = client_dir / ".mcpoyle-backup-manifest"
+    assert manifest.exists()
+    assert "existing" in manifest.read_text()

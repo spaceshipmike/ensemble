@@ -106,6 +106,7 @@ class ClientDef:
     detect_paths: list[str] | None = None  # paths to check for detection
     glob_pattern: bool = False  # True for JetBrains-style glob paths
     config_format: str = "json"  # "json" or "toml"
+    skills_dir: str = ""  # unexpanded path for skills directory (~ allowed)
 
     @property
     def resolved_paths(self) -> list[Path]:
@@ -144,6 +145,7 @@ _client_defs = [
         config_path="~/.claude.json",
         servers_key="mcpServers",
         detect_paths=["~/.claude.json"],
+        skills_dir="~/.claude/skills",
     ),
     ClientDef(
         id="cursor",
@@ -154,6 +156,7 @@ _client_defs = [
             "/Applications/Cursor.app",
             "~/.cursor/mcp.json",
         ],
+        skills_dir="~/.cursor/skills",
     ),
     ClientDef(
         id="vscode",
@@ -174,6 +177,7 @@ _client_defs = [
             "/Applications/Windsurf.app",
             "~/.windsurf/mcp.json",
         ],
+        skills_dir="~/.windsurf/skills",
     ),
     ClientDef(
         id="zed",
@@ -206,6 +210,7 @@ _client_defs = [
         servers_key="mcp_servers",
         detect_paths=["~/.codex/config.toml"],
         config_format="toml",
+        skills_dir="~/.codex/skills",
     ),
     ClientDef(
         id="mcpx",
@@ -249,6 +254,22 @@ _client_defs = [
         config_path="~/.vscode/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
         servers_key="mcpServers",
         detect_paths=["~/.vscode/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json"],
+    ),
+    ClientDef(
+        id="opencode",
+        name="OpenCode",
+        config_path="~/.opencode/config.json",
+        servers_key="mcpServers",
+        detect_paths=["~/.opencode/config.json"],
+        skills_dir="~/.opencode/skills",
+    ),
+    ClientDef(
+        id="amp",
+        name="Amp",
+        config_path="~/.ampcode/mcp.json",
+        servers_key="mcpServers",
+        detect_paths=["~/.ampcode/mcp.json"],
+        skills_dir="~/.ampcode/skills",
     ),
 ]
 

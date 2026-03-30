@@ -28,7 +28,7 @@ from mcpoyle.clients import (
     write_project_settings,
     write_servers_nested,
 )
-from mcpoyle.config import ClientAssignment, Marketplace, McpoyleConfig, ProjectAssignment, Server, Settings, compute_entry_hash
+from mcpoyle.config import ClientAssignment, Marketplace, McpoyleConfig, ProjectAssignment, Server, Skill, Settings, compute_entry_hash
 
 
 @dataclass
@@ -512,3 +512,125 @@ def do_import(config: McpoyleConfig, client_id: str) -> ImportResult:
                     proj_imports.append(ProjectImport(path=proj.path, servers=new_servers))
 
     return ImportResult(servers=imported, project_imports=proj_imports)
+
+
+@dataclass
+class SkillSyncResult:
+    """Result of syncing skills to a client."""
+    actions: list[str]
+    created: int = 0
+    updated: int = 0
+    removed: int = 0
+
+
+def sync_skills(
+    config: McpoyleConfig,
+    client_id: str,
+    dry_run: bool = False,
+) -> SkillSyncResult:
+    """Sync skills to a client's skills directory via symlinks (copy fallback).
+
+    Creates symlinks from the canonical store (~/.config/mcpoyle/skills/<name>)
+    to the client's skills directory. If symlinks fail (e.g. on some Windows
+    filesystems), falls back to file copy.
+
+    Backs up the client's existing skills directory manifest before writing.
+    """
+    import shutil
+
+    from mcpoyle.skills import skill_md_path
+
+    client_def = CLIENTS.get(client_id)
+    if not client_def or not client_def.skills_dir:
+        return SkillSyncResult(actions=[f"{client_id}: no skills directory configured"])
+
+    skills = config.resolve_skills(client_id)
+    client_skills_dir = Path(client_def.skills_dir).expanduser()
+    actions: list[str] = []
+    created = 0
+    updated = 0
+    removed = 0
+
+    # Determine desired state
+    desired_names = {s.name for s in skills}
+
+    # Determine current state — find mcpoyle-managed skill dirs
+    # We track managed skills by the presence of a .mcpoyle-managed marker
+    existing_managed: set[str] = set()
+    if client_skills_dir.exists():
+        for d in client_skills_dir.iterdir():
+            if d.is_dir() and (d / ".mcpoyle-managed").exists():
+                existing_managed.add(d.name)
+            elif d.is_symlink():
+                # Symlinks are always managed by us
+                existing_managed.add(d.name)
+
+    to_add = desired_names - existing_managed
+    to_remove = existing_managed - desired_names
+    to_update = desired_names & existing_managed
+
+    if not to_add and not to_remove:
+        return SkillSyncResult(actions=[f"{client_def.name} skills: already in sync"])
+
+    label = f"{client_def.name} skills"
+
+    for name in sorted(to_add):
+        actions.append(f"  + skill {name}")
+        created += 1
+    for name in sorted(to_remove):
+        actions.append(f"  - skill {name}")
+        removed += 1
+
+    if dry_run:
+        actions.insert(0, f"{label}: would sync {len(desired_names)} skill(s)")
+        return SkillSyncResult(actions=actions, created=created, updated=updated, removed=removed)
+
+    # Create backup manifest
+    if client_skills_dir.exists():
+        manifest = client_skills_dir / ".mcpoyle-backup-manifest"
+        manifest.write_text("\n".join(sorted(existing_managed)) + "\n")
+
+    # Ensure target dir exists
+    client_skills_dir.mkdir(parents=True, exist_ok=True)
+
+    # Remove skills no longer wanted
+    for name in to_remove:
+        target = client_skills_dir / name
+        if target.is_symlink():
+            target.unlink()
+        elif target.is_dir():
+            shutil.rmtree(target)
+
+    # Add/update skills
+    for name in desired_names:
+        source = skill_md_path(name).parent  # the skill directory
+        target = client_skills_dir / name
+
+        if not source.exists():
+            actions.append(f"  ! skill {name}: source not found in canonical store")
+            continue
+
+        # Remove existing target if it needs updating
+        if target.exists() or target.is_symlink():
+            if target.is_symlink():
+                # Check if symlink target is correct
+                try:
+                    if target.resolve() == source.resolve():
+                        continue  # Already correct
+                except (OSError, ValueError):
+                    pass
+                target.unlink()
+            elif target.is_dir():
+                shutil.rmtree(target)
+
+        # Try symlink first, fall back to copy
+        try:
+            target.symlink_to(source)
+        except OSError:
+            # Symlink failed — copy instead
+            shutil.copytree(source, target)
+            # Write marker so we know we manage this
+            (target / ".mcpoyle-managed").write_text("managed by mcpoyle\n")
+
+    actions.append(f"{label}: synced {len(desired_names)} skill(s)")
+    return SkillSyncResult(actions=actions, created=created, updated=updated, removed=removed)
