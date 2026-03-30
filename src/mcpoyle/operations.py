@@ -31,6 +31,7 @@ from mcpoyle.config import (
     ProjectAssignment,
     Server,
     ServerOrigin,
+    Skill,
     ToolInfo,
 )
 
@@ -653,3 +654,98 @@ def remove_rule(cfg: McpoyleConfig, path: str) -> OpResult:
 
     cfg.rules.remove(rule)
     return OpResult(messages=[f"Removed rule for '{path}'."])
+
+
+# ── Skill operations ───────────────────────────────────────────
+
+
+@dataclass
+class SkillResult(OpResult):
+    skill: Skill | None = None
+
+
+def install_skill(
+    cfg: McpoyleConfig,
+    name: str,
+    description: str = "",
+    origin: str = "manual",
+    dependencies: list[str] | None = None,
+    tags: list[str] | None = None,
+    body: str = "",
+) -> SkillResult:
+    """Add a skill to the config and write it to the canonical store."""
+    if cfg.get_skill(name):
+        return SkillResult(ok=False, error=f"Skill '{name}' already exists.")
+
+    skill = Skill(
+        name=name,
+        description=description,
+        origin=origin,
+        dependencies=dependencies or [],
+        tags=tags or [],
+    )
+
+    # Write to canonical store
+    from mcpoyle.skills import write_skill_md
+    path = write_skill_md(skill, body)
+    skill.path = str(path)
+
+    cfg.skills.append(skill)
+    return SkillResult(skill=skill, messages=[f"Installed skill '{name}'."])
+
+
+def uninstall_skill(cfg: McpoyleConfig, name: str) -> SkillResult:
+    """Remove a skill from config and delete from canonical store."""
+    skill = cfg.get_skill(name)
+    if not skill:
+        return SkillResult(ok=False, error=f"Skill '{name}' not found.")
+
+    # Remove from canonical store
+    from mcpoyle.skills import delete_skill_md
+    delete_skill_md(name)
+
+    # Remove from groups
+    for group in cfg.groups:
+        if name in group.skills:
+            group.skills.remove(name)
+
+    cfg.skills.remove(skill)
+    return SkillResult(skill=skill, messages=[f"Removed skill '{name}'."])
+
+
+def enable_skill(cfg: McpoyleConfig, name: str) -> SkillResult:
+    skill = cfg.get_skill(name)
+    if not skill:
+        return SkillResult(ok=False, error=f"Skill '{name}' not found.")
+    skill.enabled = True
+    return SkillResult(skill=skill, messages=[f"Enabled skill '{name}'."])
+
+
+def disable_skill(cfg: McpoyleConfig, name: str) -> SkillResult:
+    skill = cfg.get_skill(name)
+    if not skill:
+        return SkillResult(ok=False, error=f"Skill '{name}' not found.")
+    skill.enabled = False
+    return SkillResult(skill=skill, messages=[f"Disabled skill '{name}'."])
+
+
+def add_skill_to_group(cfg: McpoyleConfig, group_name: str, skill_name: str) -> OpResult:
+    group = cfg.get_group(group_name)
+    if not group:
+        return OpResult(ok=False, error=f"Group '{group_name}' not found.")
+    if not cfg.get_skill(skill_name):
+        return OpResult(ok=False, error=f"Skill '{skill_name}' not found.")
+    if skill_name in group.skills:
+        return OpResult(messages=[f"Skill '{skill_name}' already in group '{group_name}'."])
+    group.skills.append(skill_name)
+    return OpResult(messages=[f"Added '{skill_name}' to group '{group_name}'."])
+
+
+def remove_skill_from_group(cfg: McpoyleConfig, group_name: str, skill_name: str) -> OpResult:
+    group = cfg.get_group(group_name)
+    if not group:
+        return OpResult(ok=False, error=f"Group '{group_name}' not found.")
+    if skill_name not in group.skills:
+        return OpResult(ok=False, error=f"Skill '{skill_name}' not in group '{group_name}'.")
+    group.skills.remove(skill_name)
+    return OpResult(messages=[f"Removed '{skill_name}' from group '{group_name}'."])

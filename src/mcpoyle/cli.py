@@ -176,6 +176,8 @@ def groups_list(ctx: click.Context) -> None:
             parts.append(f"{len(g.servers)} servers")
         if g.plugins:
             parts.append(f"{len(g.plugins)} plugins")
+        if g.skills:
+            parts.append(f"{len(g.skills)} skills")
         counts = ", ".join(parts) if parts else "empty"
         click.echo(f"  {g.name} ({counts}){desc}")
 
@@ -234,6 +236,16 @@ def groups_show(ctx: click.Context, name: str) -> None:
                 click.echo(f"  {pname} [{status}]")
             else:
                 click.echo(f"  {pname} [missing]")
+
+    if group.skills:
+        click.echo("Skills:")
+        for sname in group.skills:
+            skill = cfg.get_skill(sname)
+            if skill:
+                status = click.style("on", fg="green") if skill.enabled else click.style("off", fg="red")
+                click.echo(f"  {sname} [{status}]")
+            else:
+                click.echo(f"  {sname} [missing]")
 
 
 @groups_group.command("add-server")
@@ -569,6 +581,189 @@ def init_cmd(ctx: click.Context, auto_mode: bool) -> None:
 
     click.echo()
     click.echo("Setup complete. Run 'mcpoyle tui' to manage, or 'mcpoyle sync' after changes.")
+
+
+# ── Skill commands ───────────────────────────────────────────────
+
+
+@cli.group("skills")
+def skills_group() -> None:
+    """Manage skills."""
+
+
+@skills_group.command("list")
+@click.pass_context
+def skills_list(ctx: click.Context) -> None:
+    """List all skills."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    if not cfg.skills:
+        click.echo("No skills configured.")
+        return
+    for s in cfg.skills:
+        status = click.style("on", fg="green") if s.enabled else click.style("off", fg="red")
+        tags = f" [{', '.join(s.tags)}]" if s.tags else ""
+        click.echo(f"  {s.name} [{status}]{tags} — {s.description or '(no description)'}")
+
+
+@skills_group.command("add")
+@click.argument("name")
+@click.option("--description", default="", help="Skill description")
+@click.option("--tags", "tag_str", default="", help="Comma-separated tags")
+@click.option("--depends", "dep_str", default="", help="Comma-separated server dependencies")
+@click.pass_context
+def skills_add(ctx: click.Context, name: str, description: str, tag_str: str, dep_str: str) -> None:
+    """Add a new skill."""
+    tags = [t.strip() for t in tag_str.split(",") if t.strip()] if tag_str else []
+    deps = [d.strip() for d in dep_str.split(",") if d.strip()] if dep_str else []
+    result = ops.install_skill(ctx.obj["config"], name, description=description, tags=tags, dependencies=deps)
+    _handle(ctx, result)
+
+
+@skills_group.command("remove")
+@click.argument("name")
+@click.pass_context
+def skills_remove(ctx: click.Context, name: str) -> None:
+    """Remove a skill."""
+    result = ops.uninstall_skill(ctx.obj["config"], name)
+    _handle(ctx, result)
+
+
+@skills_group.command("show")
+@click.argument("name")
+@click.pass_context
+def skills_show(ctx: click.Context, name: str) -> None:
+    """Show skill details."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    skill = cfg.get_skill(name)
+    if not skill:
+        click.echo(f"Skill '{name}' not found.", err=True)
+        raise SystemExit(1)
+
+    status = click.style("enabled", fg="green") if skill.enabled else click.style("disabled", fg="red")
+    click.echo(f"Name:         {skill.name}")
+    click.echo(f"Status:       {status}")
+    click.echo(f"Description:  {skill.description or '(none)'}")
+    click.echo(f"Origin:       {skill.origin or '(none)'}")
+    click.echo(f"Mode:         {skill.mode}")
+    if skill.tags:
+        click.echo(f"Tags:         {', '.join(skill.tags)}")
+    if skill.dependencies:
+        click.echo(f"Dependencies: {', '.join(skill.dependencies)}")
+    if skill.path:
+        click.echo(f"Path:         {skill.path}")
+
+    # Show group membership
+    member_of = [g.name for g in cfg.groups if skill.name in g.skills]
+    if member_of:
+        click.echo(f"Groups:       {', '.join(member_of)}")
+
+    # Show SKILL.md body if available
+    from mcpoyle.skills import read_skill_md
+    result = read_skill_md(name)
+    if result:
+        _, body = result
+        if body:
+            click.echo(f"\n{body}")
+
+
+@skills_group.command("enable")
+@click.argument("name")
+@click.pass_context
+def skills_enable(ctx: click.Context, name: str) -> None:
+    """Enable a skill."""
+    result = ops.enable_skill(ctx.obj["config"], name)
+    _handle(ctx, result)
+
+
+@skills_group.command("disable")
+@click.argument("name")
+@click.pass_context
+def skills_disable(ctx: click.Context, name: str) -> None:
+    """Disable a skill."""
+    result = ops.disable_skill(ctx.obj["config"], name)
+    _handle(ctx, result)
+
+
+@skills_group.command("sync")
+@click.argument("client", required=False)
+@click.option("--dry-run", is_flag=True, help="Show what would change")
+@click.pass_context
+def skills_sync(ctx: click.Context, client: str | None, dry_run: bool) -> None:
+    """Sync skills to client skills directories."""
+    from mcpoyle.clients import CLIENTS as ALL_CLIENTS
+    from mcpoyle.sync import sync_skills
+
+    cfg: McpoyleConfig = ctx.obj["config"]
+
+    if client:
+        if client not in ALL_CLIENTS:
+            click.echo(f"Unknown client: {client}", err=True)
+            raise SystemExit(1)
+        result = sync_skills(cfg, client, dry_run=dry_run)
+        for a in result.actions:
+            click.echo(a)
+    else:
+        for cid, cdef in ALL_CLIENTS.items():
+            if cdef.is_installed and cdef.skills_dir:
+                result = sync_skills(cfg, cid, dry_run=dry_run)
+                for a in result.actions:
+                    click.echo(a)
+
+    if not dry_run:
+        _save(ctx)
+
+
+@skills_group.command("search")
+@click.argument("query")
+@click.pass_context
+def skills_search(ctx: click.Context, query: str) -> None:
+    """Search installed skills by name, description, and tags."""
+    cfg: McpoyleConfig = ctx.obj["config"]
+    query_lower = query.lower()
+    matches = []
+    for s in cfg.skills:
+        score = 0
+        if query_lower in s.name.lower():
+            score += 3
+        if query_lower in s.description.lower():
+            score += 1
+        if any(query_lower in t.lower() for t in s.tags):
+            score += 2
+        if score > 0:
+            matches.append((s, score))
+
+    matches.sort(key=lambda x: x[1], reverse=True)
+
+    if not matches:
+        click.echo(f"No skills matching '{query}'.")
+        return
+
+    for s, score in matches:
+        status = click.style("on", fg="green") if s.enabled else click.style("off", fg="red")
+        click.echo(f"  {s.name} [{status}] — {s.description or '(no description)'}")
+
+
+# ── Group skill commands ────────────────────────────────────────
+
+
+@groups_group.command("add-skill")
+@click.argument("group_name")
+@click.argument("skill_name")
+@click.pass_context
+def groups_add_skill(ctx: click.Context, group_name: str, skill_name: str) -> None:
+    """Add a skill to a group."""
+    result = ops.add_skill_to_group(ctx.obj["config"], group_name, skill_name)
+    _handle(ctx, result)
+
+
+@groups_group.command("remove-skill")
+@click.argument("group_name")
+@click.argument("skill_name")
+@click.pass_context
+def groups_remove_skill(ctx: click.Context, group_name: str, skill_name: str) -> None:
+    """Remove a skill from a group."""
+    result = ops.remove_skill_from_group(ctx.obj["config"], group_name, skill_name)
+    _handle(ctx, result)
 
 
 # ── Search command ───────────────────────────────────────────────

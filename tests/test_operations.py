@@ -10,6 +10,7 @@ from mcpoyle.config import (
     McpoyleConfig,
     Plugin,
     Server,
+    Skill,
 )
 from mcpoyle.operations import (
     AssignResult,
@@ -19,27 +20,34 @@ from mcpoyle.operations import (
     PluginResult,
     ScopeResult,
     ServerResult,
+    SkillResult,
     add_plugin_to_group,
     add_rule,
     add_server,
     add_server_to_group,
+    add_skill_to_group,
     assign_client,
     create_group,
     delete_group,
     disable_plugin,
     disable_server,
+    disable_skill,
     enable_plugin,
     enable_server,
+    enable_skill,
     import_plugins,
     install_plugin,
+    install_skill,
     remove_marketplace,
     remove_plugin_from_group,
     remove_rule,
     remove_server,
     remove_server_from_group,
+    remove_skill_from_group,
     scope_item,
     unassign_client,
     uninstall_plugin,
+    uninstall_skill,
 )
 
 
@@ -317,3 +325,82 @@ def test_op_result_failure():
     r = OpResult(ok=False, error="Something broke")
     assert not r.ok
     assert r.error == "Something broke"
+
+
+# ── Skill operations ───────────────────────────────────────────
+
+
+def test_install_skill(tmp_path, monkeypatch):
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", tmp_path / "skills")
+    cfg = McpoyleConfig()
+    result = install_skill(cfg, "test-skill", description="A test", tags=["test"])
+    assert result.ok
+    assert result.skill is not None
+    assert result.skill.name == "test-skill"
+    assert len(cfg.skills) == 1
+    # File should exist
+    assert (tmp_path / "skills" / "test-skill" / "SKILL.md").exists()
+
+
+def test_install_skill_duplicate(tmp_path, monkeypatch):
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", tmp_path / "skills")
+    cfg = McpoyleConfig(skills=[Skill(name="existing")])
+    result = install_skill(cfg, "existing")
+    assert not result.ok
+
+
+def test_uninstall_skill(tmp_path, monkeypatch):
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", tmp_path / "skills")
+    cfg = McpoyleConfig(
+        skills=[Skill(name="to-remove")],
+        groups=[Group(name="g1", skills=["to-remove"])],
+    )
+    # Create the skill file
+    (tmp_path / "skills" / "to-remove").mkdir(parents=True)
+    (tmp_path / "skills" / "to-remove" / "SKILL.md").write_text("test")
+
+    result = uninstall_skill(cfg, "to-remove")
+    assert result.ok
+    assert len(cfg.skills) == 0
+    assert "to-remove" not in cfg.groups[0].skills
+
+
+def test_enable_disable_skill():
+    cfg = McpoyleConfig(skills=[Skill(name="s1")])
+    result = disable_skill(cfg, "s1")
+    assert result.ok
+    assert not cfg.skills[0].enabled
+
+    result = enable_skill(cfg, "s1")
+    assert result.ok
+    assert cfg.skills[0].enabled
+
+
+def test_skill_group_operations():
+    cfg = McpoyleConfig(
+        skills=[Skill(name="sk1")],
+        groups=[Group(name="g1")],
+    )
+    result = add_skill_to_group(cfg, "g1", "sk1")
+    assert result.ok
+    assert "sk1" in cfg.groups[0].skills
+
+    # Duplicate add
+    result = add_skill_to_group(cfg, "g1", "sk1")
+    assert result.ok  # Already in group, message but no error
+
+    result = remove_skill_from_group(cfg, "g1", "sk1")
+    assert result.ok
+    assert "sk1" not in cfg.groups[0].skills
+
+
+def test_skill_group_not_found():
+    cfg = McpoyleConfig(skills=[Skill(name="sk1")])
+    result = add_skill_to_group(cfg, "missing", "sk1")
+    assert not result.ok
+
+
+def test_skill_not_found_for_group():
+    cfg = McpoyleConfig(groups=[Group(name="g1")])
+    result = add_skill_to_group(cfg, "g1", "missing")
+    assert not result.ok
