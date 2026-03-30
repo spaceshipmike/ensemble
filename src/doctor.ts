@@ -5,7 +5,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, lstatSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
 	CLIENTS,
@@ -197,7 +197,6 @@ function checkBrokenSkillSymlinks(_config: EnsembleConfig): DoctorCheck[] {
 		if (!clientDef.skillsDir) continue;
 		const skillsDir = expandPath(clientDef.skillsDir);
 		if (!existsSync(skillsDir)) continue;
-		const { readdirSync } = require("node:fs") as typeof import("node:fs");
 		try {
 			for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
 				if (!entry.isDirectory()) continue;
@@ -205,7 +204,7 @@ function checkBrokenSkillSymlinks(_config: EnsembleConfig): DoctorCheck[] {
 				try {
 					const stat = lstatSync(skillPath);
 					if (stat.isSymbolicLink()) {
-						const target = require("node:fs").readlinkSync(skillPath);
+						const target = readlinkSync(skillPath);
 						if (!existsSync(target)) {
 							checks.push({
 								id: "broken-skill-symlink",

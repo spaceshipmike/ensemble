@@ -30,7 +30,6 @@ export {
 
 // Schemas and types
 export {
-	// Schemas
 	EnsembleConfigSchema,
 	ServerSchema,
 	PluginSchema,
@@ -44,9 +43,7 @@ export {
 	ToolInfoSchema,
 	MarketplaceSourceSchema,
 	ProjectAssignmentSchema,
-	// Constants
 	RESERVED_MARKETPLACE_NAMES,
-	// Helpers
 	qualifiedPluginName,
 } from "./schemas.js";
 
@@ -66,3 +63,66 @@ export type {
 	ServerOrigin,
 	ToolInfo,
 } from "./schemas.js";
+
+// Operations (pure functions)
+export {
+	addServer,
+	removeServer,
+	enableServer,
+	disableServer,
+	createGroup,
+	deleteGroup,
+	addServerToGroup,
+	removeServerFromGroup,
+	addPluginToGroup,
+	removePluginFromGroup,
+	addSkillToGroup,
+	removeSkillFromGroup,
+	assignClient,
+	unassignClient,
+	installPlugin,
+	uninstallPlugin,
+	enablePlugin,
+	disablePlugin,
+	importPlugins,
+	addMarketplace,
+	removeMarketplace,
+	installSkill,
+	uninstallSkill,
+	enableSkill,
+	disableSkill,
+	addRule,
+	removeRule,
+	pinItem,
+	trackItem,
+	detectCollisions,
+	checkSkillDependencies,
+} from "./operations.js";
+export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, CollisionInfo, SkillDependencyInfo } from "./operations.js";
+
+// Clients
+export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry } from "./clients.js";
+export type { ClientDef } from "./clients.js";
+
+// Sync
+export { syncClient, syncSkills, syncAllClients } from "./sync.js";
+export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction } from "./sync.js";
+
+// Search
+export { searchAll, searchServers, searchSkills } from "./search.js";
+export type { SearchResult } from "./search.js";
+
+// Registry
+export { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams, securitySummary, estimatedTokenCost } from "./registry.js";
+export type { RegistryServer, ServerDetail, EnvVarSpec, RegistryAdapter } from "./registry.js";
+
+// Doctor
+export { runDoctor } from "./doctor.js";
+export type { DoctorResult, DoctorCheck } from "./doctor.js";
+
+// Skills store
+export { parseFrontmatter, formatFrontmatter, skillToFrontmatter, frontmatterToSkill, readSkillMd, writeSkillMd, deleteSkillMd, listSkillDirs, skillMdPath } from "./skills.js";
+
+// Projects
+export { listProjects, getProject, resolveProjectPath } from "./projects.js";
+export type { RegistryProject } from "./projects.js";
