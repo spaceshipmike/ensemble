@@ -1,6 +1,6 @@
 {
-  "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "scenario-crafter"],
+  "currentCommand": "review",
+  "completedSteps": [],
   "workflowStep": null,
   "scenarioScore": {
     "satisfied": 50,

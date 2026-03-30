@@ -1,12 +1,12 @@
 ---
-version: 1.0.0
+version: 1.0.1
 status: active
 last_updated: 2026-03-30
 synopsis:
   short: "Central manager for MCP servers, skills, and plugins across AI clients"
-  medium: "Ensemble is a library-first TypeScript toolkit that centrally manages MCP servers, agent skills (SKILL.md files), and Claude Code plugins across 18 AI clients. It exposes pure-function operations with Zod-validated schemas, a CLI for direct use, and package exports for app integration."
-  readme: "Ensemble eliminates the pain of maintaining MCP server configurations, agent skills, and Claude Code plugins across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains, and 11 more clients. Define your servers and skills once, organize them into groups, assign groups to clients or projects, and sync. The library-first architecture means every operation is a pure function — load config, call an operation, save config — making Ensemble equally useful as a standalone CLI and as an imported dependency for app-level consumers like Chorus. Skills are SKILL.md files managed via a canonical store with symlink fan-out to each client's skills directory. Registry integration supports extensible backends with trust-tier classification, quality signals, metadata caching, and local capability search. A unified source parser accepts GitHub repos, local paths, and registry slugs through a single command. Zod schemas are exported for runtime validation by consumers."
-  tech-stack: [TypeScript, Commander.js, Zod, Vitest, Biome, tsup, npm, better-sqlite3, proper-lockfile, smol-toml, fs-extra, JSON config]
+  medium: "Ensemble is a library-first TypeScript toolkit that centrally manages MCP servers, agent skills (SKILL.md files), and Claude Code plugins across 17 AI clients. It exposes pure-function operations with Zod-validated schemas, a CLI for direct use, and package exports for app integration."
+  readme: "Ensemble eliminates the pain of maintaining MCP server configurations, agent skills, and Claude Code plugins across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains, and 10 more clients. Define your servers and skills once, organize them into groups, assign groups to clients or projects, and sync. The library-first architecture means every operation is a pure function — load config, call an operation, save config — making Ensemble equally useful as a standalone CLI and as an imported dependency for app-level consumers like Chorus. Skills are SKILL.md files managed via a canonical store with symlink fan-out to each client's skills directory. Registry integration supports extensible backends with trust-tier classification, quality signals, metadata caching, and local capability search. A unified source parser accepts GitHub repos, local paths, and registry slugs through a single command. Zod schemas are exported for runtime validation by consumers."
+  tech-stack: [TypeScript, Commander.js, Zod, Vitest, Biome, tsup, npm, better-sqlite3, proper-lockfile, smol-toml, JSON config]
   patterns: [library-first architecture, pure-function operations, Zod schema exports, additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, extensible registry adapters, registry metadata caching, server provenance tracking, tool metadata storage, context cost awareness, local capability search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit, guided onboarding, marker-based coexistence, canonical store + symlink fan-out, trust-tier classification, unified source parser, collision detection, pin/track provenance modes, dependency intelligence, pre-install security summary, deterministic config scoring, profile-as-plugin packaging, builtin meta-skill]
   goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, skill lifecycle management, registry discovery + install, project-aware scoping, library API for app consumers, CLI surface, server provenance and capability search, trust-tiered content safety]
 ---
@@ -120,14 +120,15 @@ Schemas serve as both runtime validators and TypeScript type sources (via `z.inf
 ### Client Resolution API
 
 ```ts
-import { resolveServers, resolveSkills, resolvePlugins, detectClients } from 'ensemble/clients';
+import { resolveServers, resolveSkills, resolvePlugins } from 'ensemble';
+import { detectClients } from 'ensemble/clients';
 
 const clients = detectClients();                         // scan for installed AI clients
 const servers = resolveServers(config, 'cursor');        // servers that would sync to Cursor
 const skills = resolveSkills(config, 'claude-code');     // skills that would sync to Claude Code
 ```
 
-Resolution applies group filtering, path rules, and project-level overrides — the same logic the sync engine uses, exposed for consumers who need to inspect without writing.
+The resolve functions live in `config.ts` and are re-exported from the root `ensemble` package. `detectClients` is in `clients.ts`. Resolution applies group filtering, path rules, and project-level overrides — the same logic the sync engine uses, exposed for consumers who need to inspect without writing.
 
 ### Registry API
 
@@ -190,12 +191,12 @@ ensemble registry backends                 # list available registry backends
 
 ensemble search <query>                    # search local servers by capability (tools, descriptions)
 
-ensemble add <source>                          # unified add — infers type from source format:
+ensemble add <source>                          # (FUTURE) unified add — infers type from source format:
                                               #   owner/repo (GitHub), ./local/path, registry:slug, full URL
-ensemble add <source> --type server|skill      # explicit type when inference is ambiguous
+ensemble add <source> --type server|skill      # (FUTURE) explicit type when inference is ambiguous
 
 ensemble skills list                           # list all skills
-ensemble skills add <name> --from <source>     # add skill from GitHub repo, local path, or catalog
+ensemble skills add <name> --from <source>     # (FUTURE) add skill from GitHub repo, local path, or catalog
 ensemble skills remove <name>
 ensemble skills show <name>                    # show skill details (frontmatter, dependencies, trust tier)
 ensemble skills search <query>                 # search skills catalog (claude-plugins.dev)
@@ -229,6 +230,13 @@ ensemble rules remove <path>
 ensemble scope <name> --project <path>     # move server/plugin to project-only
 
 ensemble projects                          # list registry projects with MCP server status
+
+ensemble collisions                        # detect scope conflicts between global and project groups
+ensemble deps                              # show skill dependency status
+
+ensemble migrate [--dry-run]               # migrate from mcpoyle to Ensemble
+
+ensemble registry cache-clear              # clear file-based registry response cache
 
 ensemble init                              # guided first-run setup
 ensemble doctor                            # audit config health across all clients
@@ -908,9 +916,11 @@ Ensemble integrates with MCP server registries to discover, browse, and install 
 - **Official MCP Registry** (`registry.modelcontextprotocol.io`) — the canonical upstream source (~10K servers). Returns structured package metadata with `registryType`, transport, and environment variable specifications.
 - **Glama** (`glama.ai`) — the largest enriched directory (~19K servers, 70+ categories). Returns environment variable JSON schemas and hosting attributes. Good for non-dev tools (finance, marketing, productivity, etc.).
 
-### Unified Source Parser
+### Unified Source Parser (Future)
 
-`ensemble add <source>` accepts multiple source formats and infers the type automatically:
+> **Note:** The unified source parser is a planned feature, not part of v1.0. Servers are currently added via `ensemble add <name> --command <cmd>` or `ensemble registry add <id>`.
+
+`ensemble add <source>` will accept multiple source formats and infer the type automatically:
 
 | Source Format | Interpretation | Example |
 |--------------|----------------|---------|
@@ -922,7 +932,7 @@ Ensemble integrates with MCP server registries to discover, browse, and install 
 
 The parser examines the source string and routes to the appropriate handler (registry adapter, catalog adapter, GitHub clone, local import). When the type is ambiguous (e.g., a GitHub repo could contain a server or a skill), Ensemble inspects the repo contents — presence of SKILL.md indicates a skill, presence of package.json/pyproject.toml with MCP server patterns indicates a server. The `--type server|skill` flag overrides inference.
 
-`ensemble add <source>` is the primary entry point for adding any content. `ensemble skills add <name> --from <source>` is a convenience alias that skips type inference (always treats the source as a skill). Both share the same underlying operations layer.
+`ensemble add <source>` will be the primary entry point for adding any content. `ensemble skills add <name> --from <source>` will be a convenience alias that skips type inference (always treats the source as a skill). Both will share the same underlying operations layer. Until these are implemented, use `ensemble add <name> --command <cmd>` for servers and `ensemble registry add <id>` for registry installs.
 
 ### Search
 
@@ -990,15 +1000,12 @@ Registry API responses are cached locally to avoid repeated network calls during
 ```json
 {
   "settings": {
-    "registry_cache_ttl": 3600,
-    "registry_cache_overrides": {
-      "glama": 7200
-    }
+    "registry_cache_ttl": 3600
   }
 }
 ```
 
-`registry_cache_ttl` is the default TTL in seconds (default: 3600 — one hour). Per-registry overrides are optional. Cache is stored at `~/.config/ensemble/cache/registry/`. `registry search --no-cache` bypasses the cache for a single call.
+`registry_cache_ttl` is the default TTL in seconds (default: 3600 — one hour). Cache is stored at `~/.config/ensemble/cache/registry/`. `ensemble registry cache-clear` empties the cache directory. `registry search --no-cache` bypasses the cache for a single call.
 
 ### Tool Metadata Storage
 
@@ -1058,6 +1065,8 @@ Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-i
 | Amazon Q | `~/.aws/amazonq/mcp.json` | JSON | No |
 | Cline | `~/.vscode/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | JSON | No |
 | Roo Code | `~/.vscode/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json` | JSON | No |
+| OpenCode | `~/.config/opencode/config.json` | JSON | No |
+| Amp | `~/.amp/mcp.json` | JSON | No |
 | mcpx | `~/.config/mcpx/config.toml` → `servers` | TOML | No |
 
 **Note:** VS Code uses `mcp.servers` (dot-separated key path) instead of `mcpServers`. Zed uses `context_servers`. Some clients require a `"type": "stdio"` field in server entries. Codex CLI and mcpx use TOML format instead of JSON. Cline and Roo Code store configs in VS Code's `globalStorage` directory.
@@ -1075,7 +1084,7 @@ Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-i
 - **Distribution:** npm registry (`npm install ensemble` / `npx ensemble`)
 - **Config:** JSON (read/write via node:fs)
 - **TOML parsing:** smol-toml (for Codex CLI and mcpx configs)
-- **File operations:** fs-extra (for skill sync, migration, backups)
+- **File operations:** node:fs (native, for skill sync, migration, backups)
 - **File locking:** proper-lockfile (for atomic config writes)
 - **SQLite:** better-sqlite3 (for project registry reads)
 - **HTTP:** native fetch (for registry API calls)
@@ -1100,10 +1109,11 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 ```
 ensemble/
 ├── src/
-│   ├── config.ts         # Zod schemas, types, loadConfig/saveConfig
+│   ├── schemas.ts        # Zod schemas, TypeScript types (via z.infer), constants
+│   ├── config.ts         # loadConfig/saveConfig (atomic writes), query helpers, resolution helpers
 │   ├── operations.ts     # Pure business logic (addServer, removeServer, enable, disable, assign, scope, etc.)
-│   ├── clients.ts        # Client definitions (18 clients), detection, format adapters
-│   ├── sync.ts           # Sync engine — resolveServers/Skills/Plugins per client, write configs
+│   ├── clients.ts        # Client definitions (17 clients), detection, format adapters
+│   ├── sync.ts           # Sync engine — write configs per client, symlink fan-out for skills
 │   ├── skills.ts         # Skill store — SKILL.md I/O, canonical store operations
 │   ├── search.ts         # BM25-style local capability search
 │   ├── registry.ts       # Registry adapters (Official + Glama), quality signals, metadata caching
@@ -1120,11 +1130,12 @@ ensemble/
 
 | Module | Role |
 |--------|------|
-| `config.ts` | Zod schemas, TypeScript types (via `z.infer`), `loadConfig`/`saveConfig` with atomic writes |
-| `clients.ts` | Client definitions (including `skills_dir`), detection, config file read/write, CC settings helpers |
+| `schemas.ts` | Zod schemas, TypeScript types (via `z.infer`), constants |
+| `config.ts` | `loadConfig`/`saveConfig` with atomic writes, query helpers, resolution helpers (`resolveServers`, `resolveSkills`, `resolvePlugins`) |
+| `clients.ts` | Client definitions (17 clients, including `skills_dir`), detection, config file read/write, CC settings helpers |
 | `operations.ts` | Pure business logic for all mutations — shared by CLI and library consumers |
 | `projects.ts` | Project registry reader — reads project-registry SQLite DB via better-sqlite3 |
-| `sync.ts` | Sync engine — resolves servers/skills/plugins per client. Dual strategy: config-entry writes for servers, symlink fan-out for skills |
+| `sync.ts` | Sync engine — dual strategy: config-entry writes for servers, symlink fan-out for skills. Uses resolution helpers from `config.ts` |
 | `skills.ts` | Skill store — SKILL.md frontmatter parsing, canonical store CRUD |
 | `registry.ts` | Registry adapter framework — search, show, install across extensible backends (servers + skills catalog) |
 | `search.ts` | Local capability search — BM25 scoring across servers and skills |
@@ -1164,7 +1175,7 @@ Patterns confirmed by external research that reinforce existing Ensemble decisio
 ## References
 
 - **Klavis-AI/klavis (open-strata)** — Open-source MCP server platform with managed/hosted backends, diff-based sync, and context cost awareness. Informed patterns: context cost awareness on sync (#3), drift detection validation (#6), and the registry adapter concept. Repo: `github.com/Klavis-AI/klavis`.
-- **lydakis/mcpx** — MCP server multiplexer with daemon model, auto-discovery, and TOML config. Informed patterns: config auto-discovery display during init (#1), registry metadata caching (#5), no-daemon validation (#4), and virtual server mapping concept (#7). Added as 18th supported client. Repo: `github.com/lydakis/mcpx`.
+- **lydakis/mcpx** — MCP server multiplexer with daemon model, auto-discovery, and TOML config. Informed patterns: config auto-discovery display during init (#1), registry metadata caching (#5), no-daemon validation (#4), and virtual server mapping concept (#7). Added as supported client. Repo: `github.com/lydakis/mcpx`.
 - **smith-horn/skillsmith** — Trust-tier classification, quality scoring from upstream signals, dependency intelligence, security scanning. Informed patterns: trust tiers, quality signals, dependency modeling, pre-install security summary. Repo: `github.com/smith-horn/skillsmith`.
 - **inceptyon-labs/TARS** — Profile-as-plugin packaging, collision detection across scopes, diff-plan-apply with backup, pin/track provenance modes. Informed patterns: profile-as-plugin, collision detection, backup strategy, provenance modes. Repo: `github.com/inceptyon-labs/TARS`.
 - **christiananagnostou/skillbox** — Canonical store + symlink fan-out, auto-detect agents, self-referential meta-skill. Informed patterns: symlink distribution, meta-skill concept. Repo: `github.com/christiananagnostou/skillbox`.
@@ -1176,9 +1187,9 @@ Patterns confirmed by external research that reinforce existing Ensemble decisio
 
 ## Changelog
 
-- **1.0.0** — TypeScript rewrite. Rename mcpoyle → Ensemble. Language: Python → TypeScript. Architecture: library-first with pure-function operations and Zod schema exports. Add Library API section (package exports, config loading pattern, operations as pure functions, Zod schema exports, client resolution API, registry API, integration guidance). CLI: click → Commander.js, binary is `ensemble` with `ens` alias. Build: hatch → tsup, pytest → Vitest, Biome for linting/formatting. Dependencies: httpx → native fetch, dataclasses → Zod, pathlib → node:fs, fcntl → proper-lockfile, tomllib → smol-toml, shutil → fs-extra, SQLite via better-sqlite3. Config path: `~/.config/mcpoyle/` → `~/.config/ensemble/`. Marker: `__mcpoyle` → `__ensemble`. Add automatic migration from mcpoyle config, skills store, cache, and client markers. Remove TUI surface (Chorus is the GUI). Remove Textual dependency. Add non-goal: GUI/TUI (Chorus handles UI). Add non-goal: live MCP connections (config-only scope). Add design principle: library-first. Update all CLI examples, config paths, and references for Ensemble naming.
+- **1.0.0** — TypeScript rewrite. Rename mcpoyle → Ensemble. Language: Python → TypeScript. Architecture: library-first with pure-function operations and Zod schema exports. Add Library API section (package exports, config loading pattern, operations as pure functions, Zod schema exports, client resolution API, registry API, integration guidance). CLI: click → Commander.js, binary is `ensemble` with `ens` alias. Build: hatch → tsup, pytest → Vitest, Biome for linting/formatting. Dependencies: httpx → native fetch, dataclasses → Zod, pathlib → node:fs, fcntl → proper-lockfile, tomllib → smol-toml, shutil → node:fs, SQLite via better-sqlite3. Config path: `~/.config/mcpoyle/` → `~/.config/ensemble/`. Marker: `__mcpoyle` → `__ensemble`. Add automatic migration from mcpoyle config, skills store, cache, and client markers. Remove TUI surface (Chorus is the GUI). Remove Textual dependency. Add non-goal: GUI/TUI (Chorus handles UI). Add non-goal: live MCP connections (config-only scope). Add design principle: library-first. Update all CLI examples, config paths, and references for Ensemble naming.
 - **0.15.0** — Add skills as third entity type (SKILL.md files with YAML frontmatter). Add canonical store + symlink fan-out sync strategy for skills. Add client skills directory mapping (Claude Code, Cursor, Codex, Windsurf). Add builtin mcpoyle-usage meta-skill. Add skills catalog integration (claude-plugins.dev, ~58K skills). Add unified source parser (`mcpoyle add <source>` infers type from format). Add trust-tier classification (official/community/local) to origin tracking. Add quality signals (stars, last-updated, has-readme) to registry search/show. Add collision detection across scopes for both servers and skills. Add pin/track provenance modes for servers and skills. Add dependency intelligence (skills declare server dependencies). Add pre-install security summary for registry installs. Add deterministic structured scoring to doctor (categories, points, fix suggestions). Add profile-as-plugin packaging (`groups export --as-plugin`). Add skills migration to init flow. Update Group model to include skills. Update sync engine for dual strategy (config-entry + symlink). Update local search to include skills. Research: 16 patterns from 8 external references (skillsmith, TARS, skillbox, ay-claude, caliber, skillsgate, AgentSkillsManager, dotagents).
-- **0.14.0** — Incorporate 8 research patterns from Klavis-AI/klavis and lydakis/mcpx. Add HTTP/SSE transport fields (`url`, `auth_type`, `auth_ref`) to Server model. Add server origin/provenance tracking. Add tool metadata storage at install time. Add mcpx as 18th supported client. Add config auto-discovery display to init flow. Add context cost awareness to sync. Add registry adapter pattern for extensible backends. Add registry metadata caching with configurable TTL. Add local capability search (`mcpoyle search`). Validate no-daemon and hash-based drift detection designs. Note virtual server mapping as future pattern.
+- **0.14.0** — Incorporate 8 research patterns from Klavis-AI/klavis and lydakis/mcpx. Add HTTP/SSE transport fields (`url`, `auth_type`, `auth_ref`) to Server model. Add server origin/provenance tracking. Add tool metadata storage at install time. Add mcpx as supported client. Add config auto-discovery display to init flow. Add context cost awareness to sync. Add registry adapter pattern for extensible backends. Add registry metadata caching with configurable TTL. Add local capability search (`mcpoyle search`). Validate no-daemon and hash-based drift detection designs. Note virtual server mapping as future pattern.
 - **0.13.0** — Add `mcpoyle init` guided onboarding command (detect clients, import servers, create groups, assign, sync). Add marker-based coexistence documentation to Design Principles. Inspired by patterns in ToolHive.
 - **0.12.0** — Add content-hash drift detection to sync engine (warn on manual edits, `--force`/`--adopt` flags). Add `mcpoyle doctor` command for deterministic config health auditing (env vars, orphaned entries, stale configs, parse errors, unreachable binaries). Inspired by patterns in Caliber (ai-setup).
 - **0.11.0** — Integrate project-registry for project-aware scoping. Read-only SQLite integration: name-based project assignment, `mcpoyle projects` command. Add `projects.py` module. Registry is optional with graceful fallback.

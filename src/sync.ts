@@ -286,6 +286,34 @@ export function syncSkills(
 	return { clientId, actions, messages };
 }
 
+// --- Context cost awareness ---
+
+export interface ContextCostSummary {
+	serverCount: number;
+	toolCount: number;
+	estimatedTokens: number;
+	warningThreshold: number;
+	exceedsThreshold: boolean;
+}
+
+export function computeContextCost(
+	config: EnsembleConfig,
+	clientId: string,
+): ContextCostSummary {
+	const servers = resolveServers(config, clientId);
+	const toolCount = servers.reduce((sum, s) => sum + s.tools.length, 0);
+	// Estimate ~200 tokens per tool (name + description + schema)
+	const estimatedTokens = toolCount * 200;
+	const threshold = config.settings.sync_cost_warning_threshold;
+	return {
+		serverCount: servers.length,
+		toolCount,
+		estimatedTokens,
+		warningThreshold: threshold,
+		exceedsThreshold: toolCount > threshold,
+	};
+}
+
 // --- Sync all ---
 
 export function syncAllClients(

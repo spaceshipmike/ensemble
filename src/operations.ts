@@ -522,6 +522,151 @@ export function unassignClient(
 	};
 }
 
+// --- Scope operation ---
+
+export function scopeItem(
+	config: EnsembleConfig,
+	name: string,
+	projectPath: string,
+): OpReturn<ScopeResult> {
+	const absPath = resolve(expandPath(projectPath));
+	const projectBasename = absPath.split("/").pop() || "project";
+
+	const server = getServer(config, name);
+	const plugin = getPlugin(config, name);
+	if (!server && !plugin) {
+		return {
+			config,
+			result: {
+				...fail(`'${name}' is not a known server or plugin.`),
+				itemType: "",
+				itemName: name,
+				globalGroup: "",
+				projectGroup: "",
+				projectPath: absPath,
+			},
+		};
+	}
+
+	const itemType = server ? "server" : "plugin";
+	let newConfig = { ...config };
+	const messages: string[] = [];
+
+	// Ensure claude-code client assignment exists
+	let assignment = getClient(newConfig, "claude-code");
+	if (!assignment) {
+		assignment = { id: "claude-code", group: null, last_synced: null, projects: {}, server_hashes: {} };
+		newConfig = { ...newConfig, clients: [...newConfig.clients, assignment] };
+	}
+
+	// Step 1: Ensure global uses a group
+	let globalGroupName = assignment.group;
+	if (!globalGroupName) {
+		globalGroupName = "claude-code-global";
+		if (!getGroup(newConfig, globalGroupName)) {
+			const globalGroup: Group = {
+				name: globalGroupName,
+				description: "Auto-created global group for Claude Code",
+				servers: newConfig.servers.filter((s) => s.enabled).map((s) => s.name),
+				plugins: newConfig.plugins.filter((p) => p.enabled).map((p) => p.name),
+				skills: [],
+			};
+			newConfig = { ...newConfig, groups: [...newConfig.groups, globalGroup] };
+			messages.push(`Created group '${globalGroupName}' with all enabled items.`);
+		}
+		newConfig = {
+			...newConfig,
+			clients: newConfig.clients.map((c) =>
+				c.id === "claude-code" ? { ...c, group: globalGroupName } : c,
+			),
+		};
+	}
+
+	const globalGroup = getGroup(newConfig, globalGroupName);
+	if (!globalGroup) {
+		return {
+			config,
+			result: {
+				...fail(`Global group '${globalGroupName}' not found.`),
+				itemType, itemName: name, globalGroup: globalGroupName ?? "", projectGroup: "", projectPath: absPath,
+			},
+		};
+	}
+
+	// Step 2: Ensure project has a group
+	const existingProj = getClient(newConfig, "claude-code")?.projects[absPath];
+	let projGroupName = existingProj?.group;
+	if (!projGroupName) {
+		projGroupName = projectBasename;
+		if (getGroup(newConfig, projGroupName) && projGroupName === globalGroupName) {
+			projGroupName = `${projectBasename}-project`;
+		}
+		if (!getGroup(newConfig, projGroupName)) {
+			const projGroup: Group = {
+				name: projGroupName,
+				description: `Servers and plugins for ${projectBasename}`,
+				servers: [...globalGroup.servers],
+				plugins: [...globalGroup.plugins],
+				skills: [],
+			};
+			newConfig = { ...newConfig, groups: [...newConfig.groups, projGroup] };
+			messages.push(`Created group '${projGroupName}' for project.`);
+		}
+		// Assign project
+		newConfig = {
+			...newConfig,
+			clients: newConfig.clients.map((c) =>
+				c.id === "claude-code"
+					? { ...c, projects: { ...c.projects, [absPath]: { group: projGroupName ?? null, last_synced: null } } }
+					: c,
+			),
+		};
+	}
+
+	// Step 3: Add to project group, remove from global group
+	newConfig = {
+		...newConfig,
+		groups: newConfig.groups.map((g) => {
+			if (g.name === projGroupName) {
+				if (itemType === "server" && !g.servers.includes(name)) {
+					return { ...g, servers: [...g.servers, name] };
+				}
+				if (itemType === "plugin" && !g.plugins.includes(name)) {
+					return { ...g, plugins: [...g.plugins, name] };
+				}
+			}
+			if (g.name === globalGroupName) {
+				if (itemType === "server") {
+					return { ...g, servers: g.servers.filter((s) => s !== name) };
+				}
+				if (itemType === "plugin") {
+					return { ...g, plugins: g.plugins.filter((p) => p !== name) };
+				}
+			}
+			return g;
+		}),
+	};
+
+	messages.push(
+		`Scoped ${itemType} '${name}' to project ${absPath}.`,
+		`  removed from: ${globalGroupName} (global)`,
+		`  added to:     ${projGroupName} (project)`,
+		"Run 'ensemble sync claude-code' to apply.",
+	);
+
+	return {
+		config: newConfig,
+		result: {
+			...ok(messages),
+			itemType,
+			itemName: name,
+			globalGroup: globalGroupName ?? "",
+			projectGroup: projGroupName ?? "",
+			projectPath: absPath,
+		},
+	};
+}
+
 // --- Plugin operations (pure — no CC settings I/O) ---
 
 export function installPlugin(

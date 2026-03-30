@@ -16,7 +16,7 @@
       }
     },
     "spec": {
-      "current": "1.0.0",
+      "current": "1.0.1",
       "incrementRules": {
         "minor": "auto-on-evolve"
       }

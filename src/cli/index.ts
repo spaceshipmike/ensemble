@@ -48,6 +48,7 @@ import {
 	trackItem,
 	detectCollisions,
 	checkSkillDependencies,
+	scopeItem,
 } from "../operations.js";
 import { searchAll } from "../search.js";
 import { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams } from "../registry.js";
@@ -268,8 +269,32 @@ program
 		if (!opts.dryRun) saveConfig(config);
 	});
 
-program.command("import <client>").description("Import servers from a client").action((_client) => {
-	console.log("Import command — use the library API for full import flow.");
+program.command("import <client>").description("Import servers from a client").action((clientId) => {
+	const clientDef = CLIENTS[clientId];
+	if (!clientDef) { console.error(`Unknown client: ${clientId}`); process.exit(1); }
+	const { expandPath, readClientConfig: readCC, importServersFromClient } = require("../clients.js") as typeof import("../clients.js");
+	let config = loadConfig();
+	const configPath = expandPath(clientDef.configPath);
+	const clientConfig = readCC(configPath);
+	const imported = importServersFromClient(clientConfig, clientDef.serversKey);
+	let count = 0;
+	for (const s of imported) {
+		if (config.servers.some((existing) => existing.name === s.name)) continue;
+		const { config: newConfig, result } = addServer(config, {
+			name: s.name, command: s.command, args: s.args, env: s.env,
+			transport: s.transport as "stdio",
+			origin: { source: "import", client: clientId, timestamp: new Date().toISOString() },
+		});
+		if (result.ok) { config = newConfig; count++; }
+	}
+	console.log(count > 0 ? `Imported ${count} server(s) from ${clientDef.name}.` : "No new servers to import.");
+	saveConfig(config);
+});
+
+// --- Scope ---
+
+program.command("scope <name>").description("Move server/plugin to project-only").requiredOption("--project <path>", "Target project path").action((name, opts) => {
+	handle(() => scopeItem(loadConfig(), name, opts.project));
 });
 
 // --- Plugins ---
@@ -372,6 +397,13 @@ marketplaces.command("add <name>").option("--repo <owner/repo>").option("--path 
 	saveConfig(newConfig);
 });
 
+marketplaces.command("show <name>").description("Show marketplace details").action((name) => {
+	const config = loadConfig();
+	const mp = config.marketplaces.find((m) => m.name === name);
+	if (!mp) { console.error(`Marketplace '${name}' not found.`); process.exit(1); }
+	console.log(JSON.stringify(mp, null, 2));
+});
+
 marketplaces.command("remove <name>").action((name) => {
 	handle(() => removeMarketplace(loadConfig(), name));
 });
@@ -411,6 +443,15 @@ skills.command("show <name>").action((name) => {
 	const skill = config.skills.find((s) => s.name === name);
 	if (!skill) { console.error(`Skill '${name}' not found.`); process.exit(1); }
 	console.log(JSON.stringify(skill, null, 2));
+});
+
+skills.command("search <query>").description("Search installed skills").action((query) => {
+	const { searchSkills: searchSk } = require("../search.js") as typeof import("../search.js");
+	const results = searchSk(loadConfig(), query);
+	if (results.length === 0) { console.log("No matching skills."); return; }
+	for (const r of results) {
+		console.log(`${r.name}  score=${r.score.toFixed(2)}  [${r.matchedFields.join(",")}]`);
+	}
 });
 
 skills.command("sync [client]").option("--dry-run").action((clientId, opts) => {
@@ -588,6 +629,12 @@ program.command("projects").description("List registry projects").action(() => {
 	for (const p of projects) {
 		console.log(`${p.name} (${p.type}) ${p.paths[0] ?? ""}`);
 	}
+});
+
+// --- Reference ---
+
+program.command("reference").description("Show full command reference").action(() => {
+	program.outputHelp();
 });
 
 // --- Parse ---
