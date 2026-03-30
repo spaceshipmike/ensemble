@@ -1,10 +1,10 @@
 {
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan"],
+  "completedSteps": ["state-owner-scan", "scenario-crafter"],
   "workflowStep": null,
   "scenarioScore": {
     "satisfied": 50,
-    "total": 51
+    "total": 61
   },
   "specVersion": "1.0.0",
   "projectClassification": "existing-has-code",

@@ -538,6 +538,21 @@ program.command("doctor").option("--json", "Output structured JSON").action((opt
 	console.log(`${result.errors} errors, ${result.warnings} warnings, ${result.infos} info`);
 });
 
+// --- Migration ---
+
+program.command("migrate").description("Migrate from mcpoyle to Ensemble").option("--dry-run", "Preview migration without making changes").action((opts) => {
+	const { migrate, needsMigration } = require("../migration.js") as typeof import("../migration.js");
+	if (!needsMigration() && !opts.dryRun) {
+		console.log("No mcpoyle installation found — nothing to migrate.");
+		return;
+	}
+	const result = migrate(opts.dryRun);
+	for (const msg of result.messages) console.log(msg);
+	if (opts.dryRun && result.actions.length > 0) {
+		console.log(`\nWould perform ${result.actions.length} migration action(s). Run without --dry-run to apply.`);
+	}
+});
+
 // --- Projects ---
 
 program.command("projects").description("List registry projects").action(() => {

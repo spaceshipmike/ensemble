@@ -23,6 +23,9 @@
 | CLI | CLI Surface | 4 | Library API Surface |
 | System Quality | Operations Layer | 3 | Library API Surface |
 | System Quality | Additive Sync Safety | 3 | Client Resolution and Sync |
+| Core | Guided Onboarding (Init) | 4 | Client Resolution and Sync, Skill Management |
+| Core | Migration (mcpoyle to Ensemble) | 3 | Config Lifecycle |
+| Core | Profile-as-Plugin (Group Export) | 3 | Group Organization, Plugin Lifecycle |
 
 ---
 
@@ -909,3 +912,196 @@ Validates: `#sync` (Drift Detection)
 
 Difficulty: medium
 Validates: `#sync` (Sync, Additive Sync)
+
+---
+
+## Feature: Guided Onboarding (Init)
+> I run a single command and Ensemble walks me through detecting my clients, importing my servers and skills, creating groups, and syncing everything.
+
+Category: Core | Depends on: Client Resolution and Sync, Skill Management
+
+### Critical
+
+#### Scenario: First-Time Guided Setup End to End
+
+> **Given** a user has never run Ensemble before, has Claude Desktop, Claude Code, and Cursor installed with various MCP servers configured in each, and Claude Code has a skill in its skills directory
+> **When** the user runs `ensemble init` and follows the guided prompts — choosing to import all servers, import all skills, creating a group called "dev-tools", assigning it to Cursor, and confirming the sync preview
+> **Then** the user sees each step clearly: detected clients with install status and skills support indicators, a unified landscape of all servers and skills across clients with deduplication highlighted, imported servers and skills in the central config, the meta-skill installed, the group populated, and a successful sync to each client.
+
+**Satisfied when:**
+- Client detection displays installed clients with a clear installed/not-found indicator and a skills-support marker for clients that support skills directories
+- The unified server landscape shows a matrix of which servers exist in which clients, with duplicate counts
+- Imported servers are deduplicated — a server appearing in three clients is imported once
+- Imported skills are copied to the canonical store (`~/.config/ensemble/skills/<name>/SKILL.md`)
+- The `ensemble-usage` meta-skill is installed automatically with `origin.source: "builtin"` and `origin.trust_tier: "official"`
+- The sync preview (dry-run) shows what will be written before any files are modified
+
+Difficulty: hard
+Validates: `#init` (Init)
+
+#### Scenario: Non-Interactive Auto Mode
+
+> **Given** a user wants to onboard without answering prompts — perhaps in a CI environment or scripted setup
+> **When** the user runs `ensemble init --auto`
+> **Then** Ensemble detects all clients, imports all servers and skills from every detected client, installs the meta-skill, creates no groups, assigns all servers to all clients (default null-group behavior), and syncs — all without pausing for input.
+
+**Satisfied when:**
+- `--auto` completes without any interactive prompts or confirmation dialogs
+- All servers from all detected clients are imported with deduplication
+- All skills from all detected clients are imported to the canonical store
+- No groups are created (clients receive all enabled servers by default)
+- Sync runs automatically after import
+- The command's output summarizes what was done (counts of imported servers, skills, clients synced)
+
+Difficulty: medium
+Validates: `#init` (Init)
+
+### Edge Cases
+
+#### Scenario: Re-Running Init on an Already-Configured System
+
+> **Given** a user has previously run `ensemble init` — servers, skills, groups, and client assignments already exist in the config
+> **When** the user runs `ensemble init` again
+> **Then** Ensemble detects the existing state and skips steps that are already complete. It does not duplicate servers, re-import skills that already exist in the canonical store, or overwrite group assignments. The user sees which steps were skipped and why.
+
+**Satisfied when:**
+- Servers already in the config are not re-imported (matched by name)
+- Skills already in the canonical store are not re-imported
+- The meta-skill is not reinstalled if it already exists
+- Existing group assignments are preserved, not overwritten
+- The output communicates what was skipped (e.g., "3 servers already imported, skipping")
+- Running init twice produces the same config state as running it once (idempotent)
+
+Difficulty: medium
+Validates: `#init` (Init)
+
+#### Scenario: Init When No AI Clients Are Detected
+
+> **Given** a user runs `ensemble init` on a machine where no supported AI clients are installed (no Claude Desktop, no Claude Code, no Cursor, etc.)
+> **When** the client detection step finds nothing
+> **Then** the user sees a clear message that no clients were found, the import step is skipped gracefully, and Ensemble still creates a valid empty config that can be populated later.
+
+**Satisfied when:**
+- The detection step reports that no clients were found without crashing
+- The user is not asked to import from nonexistent clients
+- A valid config file is created (empty servers, groups, clients arrays)
+- The meta-skill is still installed to the canonical store (it does not require a client)
+- The user sees guidance on what to do next (install a client, add servers manually)
+
+Difficulty: easy
+Validates: `#init` (Init)
+
+---
+
+## Feature: Migration (mcpoyle to Ensemble)
+> I upgrade from mcpoyle to Ensemble and my servers, skills, groups, and client assignments carry over seamlessly.
+
+Category: Core | Depends on: Config Lifecycle
+
+### Critical
+
+#### Scenario: Full Migration from mcpoyle
+
+> **Given** a user has an existing mcpoyle installation with config at `~/.config/mcpoyle/config.json`, skills in `~/.config/mcpoyle/skills/`, cache in `~/.config/mcpoyle/cache/`, and `__mcpoyle` markers in client config files
+> **When** Ensemble runs for the first time and detects the mcpoyle installation
+> **Then** the user's entire setup migrates to Ensemble paths: config is copied to `~/.config/ensemble/config.json`, skills are moved to `~/.config/ensemble/skills/`, cache is moved to `~/.config/ensemble/cache/`, symlinks in client skills directories are updated to point to the new canonical paths, and the migration logs what it did.
+
+**Satisfied when:**
+- Config file is copied (not moved) to the new location — the original `~/.config/mcpoyle/config.json` is preserved as a backup
+- Skills directory contents are moved to `~/.config/ensemble/skills/` with the same directory structure
+- Client config symlinks that pointed to `~/.config/mcpoyle/skills/...` now point to `~/.config/ensemble/skills/...`
+- `__mcpoyle` markers in client configs are replaced with `__ensemble` on the next sync
+- The `mcpoyle-usage` meta-skill is replaced with `ensemble-usage`
+- The migration produces a log or summary of what was moved and updated
+
+Difficulty: hard
+Validates: `#migration` (Config, Migration from mcpoyle)
+
+### Edge Cases
+
+#### Scenario: No mcpoyle State to Migrate
+
+> **Given** a user has never used mcpoyle — no `~/.config/mcpoyle/` directory exists
+> **When** Ensemble runs for the first time
+> **Then** the migration step is skipped silently and Ensemble proceeds with normal first-run behavior (fresh config creation or init flow).
+
+**Satisfied when:**
+- No error or warning is produced about missing mcpoyle state
+- Ensemble creates a fresh config at `~/.config/ensemble/config.json` if none exists
+- The absence of mcpoyle does not block any Ensemble functionality
+- No empty `~/.config/mcpoyle/` directory is created as a side effect
+
+Difficulty: easy
+Validates: `#migration` (Config, Migration from mcpoyle)
+
+#### Scenario: Idempotent Re-Run After Completed Migration
+
+> **Given** a user has already migrated from mcpoyle — both `~/.config/mcpoyle/` (backup) and `~/.config/ensemble/` exist with valid config
+> **When** Ensemble runs again and encounters both directories
+> **Then** Ensemble uses the `~/.config/ensemble/` config and does not re-run migration. No files are copied, moved, or overwritten.
+
+**Satisfied when:**
+- Ensemble detects that `~/.config/ensemble/config.json` already exists and uses it directly
+- No files are copied from `~/.config/mcpoyle/` to `~/.config/ensemble/`
+- No symlinks are re-pointed
+- The migration code path is a no-op — it completes instantly without side effects
+- Running Ensemble ten times after migration produces the same state as running it once after migration
+
+Difficulty: easy
+Validates: `#migration` (Config, Migration from mcpoyle)
+
+---
+
+## Feature: Profile-as-Plugin (Group Export)
+> I export a group as a Claude Code plugin so others can install my curated server+skill bundle without needing Ensemble.
+
+Category: Core | Depends on: Group Organization, Plugin Lifecycle
+
+### Critical
+
+#### Scenario: Export a Server-Only Group as a Plugin
+
+> **Given** a group "dev-tools" contains servers "ctx" and "prm" but no skills
+> **When** the user runs `ensemble groups export dev-tools --as-plugin`
+> **Then** Ensemble generates a plugin package directory under `~/.config/ensemble/marketplace/` containing a manifest that registers the group's servers as a Claude Code plugin.
+
+**Satisfied when:**
+- A plugin directory is created at `~/.config/ensemble/marketplace/dev-tools/` (or similar path)
+- The directory contains a `plugin.json` manifest compatible with Claude Code's plugin system
+- The manifest registers the group's MCP servers (names, commands, args, env)
+- The generated plugin is a self-contained package — it does not require Ensemble at runtime
+
+Difficulty: medium
+Validates: `#profile-as-plugin` (Plugins, Profile-as-Plugin Packaging)
+
+#### Scenario: Export a Group with Skills Bundled
+
+> **Given** a group "work-flow" contains servers "github-mcp" and skill "git-workflow" with its SKILL.md in the canonical store
+> **When** the user runs `ensemble groups export work-flow --as-plugin`
+> **Then** the generated plugin package includes both the server registrations and copies of the skill files, so the plugin recipient gets the full bundle.
+
+**Satisfied when:**
+- Server definitions are included in the plugin manifest
+- Skill SKILL.md files are copied into the plugin package directory (not symlinked — the package must be portable)
+- The skill directory structure is preserved (`<plugin>/skills/git-workflow/SKILL.md`)
+- The plugin works as a standalone distribution — no dependency on the exporter's canonical store paths
+
+Difficulty: medium
+Validates: `#profile-as-plugin` (Plugins, Profile-as-Plugin Packaging)
+
+### Edge Cases
+
+#### Scenario: Register Exported Plugin as Local Marketplace
+
+> **Given** the user has exported a group as a plugin to `~/.config/ensemble/marketplace/`
+> **When** the user checks their Claude Code settings (or Ensemble syncs)
+> **Then** the local marketplace directory is registered in Claude Code's `extraKnownMarketplaces`, making the exported plugin discoverable in Claude Code's plugin browser.
+
+**Satisfied when:**
+- The local marketplace path appears in `extraKnownMarketplaces` in `~/.claude/settings.json` with `source: "directory"`
+- The exported plugin appears as an installable option in Claude Code's plugin browser
+- A user without Ensemble can install the plugin through Claude Code's native plugin UI
+- Registering the marketplace is idempotent — exporting the same group twice does not create duplicate marketplace entries
+
+Difficulty: hard
+Validates: `#profile-as-plugin` (Plugins, Profile-as-Plugin Packaging, Marketplaces)
