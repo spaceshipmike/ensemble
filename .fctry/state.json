@@ -1,33 +1,68 @@
 {
-  "upgradeApplied": {
-    "from": "0.75.0",
-    "to": "0.76.19"
-  },
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
-  "specVersion": "0.14.0",
-  "readinessSummary": {
-    "satisfied": 7,
-    "partial": 5,
-    "missing": 6,
-    "draft": 0
+  "workflowStep": null,
+  "completedSteps": ["executor-build"],
+  "specVersion": "0.15.0",
+  "upgradeApplied": {
+    "from": "0.78.7",
+    "to": "0.78.10"
+  },
+  "agentOutputs": {
+    "spec-writer": {
+      "summary": "Incorporated 16 patterns from 8 external skill management references into spec 0.15.0."
+    },
+    "state-owner": {
+      "briefingDigest": "Full review scan of spec 0.15.0 vs codebase v0.5.8."
+    }
+  },
+  "sectionReadiness": {
+    "core-concepts": "aligned",
+    "problem": "aligned",
+    "solution": "aligned",
+    "cli-surface": "aligned",
+    "tui-surface": "aligned",
+    "config": "aligned",
+    "path-rules": "aligned",
+    "skills-management": "aligned",
+    "project-registry": "aligned",
+    "plugins": "aligned",
+    "marketplaces": "aligned",
+    "sync": "aligned",
+    "init": "aligned",
+    "doctor": "aligned",
+    "registry": "aligned",
+    "search": "aligned",
+    "supported-clients": "aligned",
+    "tech-stack": "aligned",
+    "non-goals": "aligned",
+    "architecture": "aligned",
+    "design-principles": "aligned",
+    "future": "aligned"
   },
   "buildRun": {
+    "runId": "run-1743350400000",
     "status": "completed",
+    "startedAt": "2026-03-30T12:00:00Z",
+    "completedAt": "2026-03-30T13:00:00Z",
     "plan": {
-      "specVersion": "0.14.0",
-      "totalChunks": 7,
-      "chunks": [
-        {"id": 1, "name": "Server Model Expansion", "status": "completed"},
-        {"id": 2, "name": "TOML Support + mcpx Client", "status": "completed"},
-        {"id": 3, "name": "Registry Adapter + Caching", "status": "completed"},
-        {"id": 4, "name": "Local Capability Search", "status": "completed"},
-        {"id": 5, "name": "Context Cost Awareness", "status": "completed"},
-        {"id": 6, "name": "Init Auto-Discovery + Doctor", "status": "completed"},
-        {"id": 7, "name": "Tests + TUI Fix", "status": "completed"}
-      ]
+      "totalChunks": 11,
+      "priorities": ["reliability-first"],
+      "prioritySource": "project",
+      "specVersion": "0.15.0"
     },
-    "chunkProgress": "7/7",
-    "lastCheckpoint": "2026-03-28T12:30:00Z"
+    "chunks": [
+      {"id": 1, "name": "Skill Data Model + Config Storage", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 2, "name": "Canonical Store + SKILL.MD I/O", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 3, "name": "Client Skills Directory Mapping + Symlink Sync", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 4, "name": "Skills CLI Commands", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 5, "name": "Trust Tiers + Provenance Modes", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 6, "name": "Skills Tab in TUI", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 7, "name": "Init Flow — Skills Import + Meta-Skill", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 8, "name": "Doctor — Structured Scoring + Skills Health", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 9, "name": "Registry — Catalog, Quality Signals, Security Summary, Unified Parser", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 10, "name": "Advanced — Collision Detection, Dependencies, Profile-as-Plugin", "status": "completed", "retryCount": 0, "maxRetries": 3},
+      {"id": 11, "name": "Search + Docs Update", "status": "completed", "retryCount": 0, "maxRetries": 3}
+    ],
+    "lastCheckpoint": "2026-03-30T13:00:00Z"
   }
 }

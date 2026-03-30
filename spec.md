@@ -1,14 +1,14 @@
 ---
-version: 0.13.0
+version: 0.15.0
 status: active
-last_updated: 2026-03-13
+last_updated: 2026-03-30
 synopsis:
-  short: "Central manager for MCP servers and Claude Code plugins across AI clients"
-  medium: "mcpoyle is a CLI and TUI tool that centrally manages MCP server configurations and Claude Code plugins across multiple AI clients. It provides a single registry, group-based organization, and automatic sync to each client's native config format."
-  readme: "mcpoyle eliminates the pain of maintaining MCP server configurations across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, and JetBrains. Define your servers once, organize them into groups, assign groups to clients or projects, and sync. For Claude Code, mcpoyle extends to full plugin lifecycle management — install, uninstall, enable, disable — and marketplace registration. The CLI surface is optimized for scripting and AI agents; the TUI dashboard provides a human-friendly overview with keyboard-driven navigation and sync previews."
-  tech-stack: [Python 3.12+, click, Textual, httpx, hatch, uv, JSON config]
-  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit, guided onboarding, marker-based coexistence]
-  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, registry discovery + install, project-aware scoping, CLI + TUI surfaces]
+  short: "Central manager for MCP servers, skills, and plugins across AI clients"
+  medium: "mcpoyle is a CLI and TUI tool that centrally manages MCP servers, agent skills (SKILL.md files), and Claude Code plugins across 18 AI clients. It provides a single registry with extensible backends, group-based organization, trust-tiered provenance tracking, symlink-based skill distribution, and automatic sync to each client's native config format."
+  readme: "mcpoyle eliminates the pain of maintaining MCP server configurations, agent skills, and Claude Code plugins across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains, and 11 more clients. Define your servers and skills once, organize them into groups, assign groups to clients or projects, and sync. Skills are SKILL.md files managed via a canonical store with symlink fan-out to each client's skills directory. The init flow shows a unified landscape of all servers and skills across all detected clients before importing. For Claude Code, mcpoyle extends to full plugin lifecycle management and marketplace registration. Registry integration supports extensible backends with trust-tier classification, quality signals, metadata caching, and local capability search. A unified source parser accepts GitHub repos, local paths, and registry slugs through a single command. The CLI surface is optimized for scripting and AI agents; the TUI dashboard provides a human-friendly overview with keyboard-driven navigation and sync previews."
+  tech-stack: [Python 3.12+, click, Textual, httpx, hatch, uv, JSON config, TOML config]
+  patterns: [additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, extensible registry adapters, registry metadata caching, server provenance tracking, tool metadata storage, context cost awareness, local capability search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit, guided onboarding, marker-based coexistence, canonical store + symlink fan-out, trust-tier classification, unified source parser, collision detection, pin/track provenance modes, dependency intelligence, pre-install security summary, deterministic config scoring, profile-as-plugin packaging, builtin meta-skill]
+  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, skill lifecycle management, registry discovery + install, project-aware scoping, CLI + TUI surfaces, server provenance and capability search, trust-tiered content safety]
 ---
 
 # mcpoyle
@@ -25,24 +25,30 @@ Each AI client (Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, Jet
 
 Claude Code also has a plugin/marketplace system with configuration in `~/.claude/settings.json` (`enabledPlugins`, `extraKnownMarketplaces`) and a plugin cache at `~/.claude/plugins/cache/`. Managing plugins — installing, enabling, organizing across projects — requires manual JSON editing or the Claude Code UI. The native scope system (user/project/local) has known bugs around cross-scope visibility, making programmatic management even more valuable.
 
+AI clients are also gaining support for agent skills — instruction files (SKILL.md) that live in client-specific directories and teach agents workflows, coding patterns, and domain knowledge. Skills are a different artifact type from servers (runtime processes) and plugins (code extensions): they're static markdown files with YAML frontmatter. Each client uses its own skills directory path, creating the same fragmentation problem that exists for server configs.
+
 ## Solution
 
-A single CLI that manages a central server registry, organizes servers and plugins into groups, and syncs the right configuration to the right clients. For Claude Code, this extends to full plugin lifecycle management: install, uninstall, enable, disable, and marketplace registration.
+A single CLI that manages a central registry of servers, skills, and plugins, organizes them into groups, and syncs the right configuration to the right clients. Servers sync via config-entry writes; skills sync via canonical store with symlink fan-out to each client's skills directory. For Claude Code, this extends to full plugin lifecycle management: install, uninstall, enable, disable, and marketplace registration.
 
 ## Core Concepts
 
-- **Server** — an MCP server definition (name, command, args, env, transport)
+- **Server** — an MCP server definition (name, command, args, env, transport, and optionally url, auth, origin, and tool metadata). Servers are runtime processes that provide tools to AI agents.
+- **Skill** — an agent instruction file (SKILL.md with YAML frontmatter: name, description, and optionally dependencies, tags). Skills are static markdown files that teach agents workflows, coding patterns, and domain knowledge. They are not runtime processes (servers) or code extensions (plugins).
 - **Plugin** — a Claude Code plugin (name, marketplace, scope, enabled state)
 - **Marketplace** — a source of plugins (GitHub repo or local directory)
-- **Group** — a named collection of servers and/or plugins (e.g., "dev-tools", "work", "personal")
-- **Client** — an AI application that consumes MCP servers (detected automatically)
-- **Sync** — writing the correct servers and plugin state to each client's config, filtered by group assignment
+- **Group** — a named collection of servers, skills, and/or plugins (e.g., "dev-tools", "work", "personal")
+- **Client** — an AI application that consumes MCP servers and optionally skills (detected automatically)
+- **Sync** — writing the correct servers, skills, and plugin state to each client's config and skills directory, filtered by group assignment. Servers sync via config-entry writes; skills sync via symlink fan-out from the canonical store.
+- **Origin** — provenance metadata tracking where a server or skill was imported from, when, by what method, and its trust tier
+- **Trust Tier** — classification of registry content: `official` (verified publishers), `community` (unverified registry content), `local` (user-defined). Displayed in search results and `show` output.
 
 ## CLI Surface
 
 ```
 mcpoyle list                              # list all servers
-mcpoyle add <name> --command <cmd> [--args ...] [--env KEY=VAL ...]
+mcpoyle add <name> --command <cmd> [--args ...] [--env KEY=VAL ...]   # explicit server add
+                                              # (or use unified: mcpoyle add <source> — see below)
 mcpoyle remove <name>
 mcpoyle enable <name>
 mcpoyle disable <name>
@@ -69,6 +75,21 @@ mcpoyle import <client>                   # import servers from a client's confi
 mcpoyle registry search <query>           # search MCP server registries
 mcpoyle registry show <id>               # show server details from registry
 mcpoyle registry add <id>                 # install server from registry
+mcpoyle registry backends                 # list available registry backends
+
+mcpoyle search <query>                    # search local servers by capability (tools, descriptions)
+
+mcpoyle add <source>                          # unified add — infers type from source format:
+                                              #   owner/repo (GitHub), ./local/path, registry:slug, full URL
+mcpoyle add <source> --type server|skill      # explicit type when inference is ambiguous
+
+mcpoyle skills list                           # list all skills
+mcpoyle skills add <name> --from <source>     # add skill from GitHub repo, local path, or catalog
+mcpoyle skills remove <name>
+mcpoyle skills show <name>                    # show skill details (frontmatter, dependencies, trust tier)
+mcpoyle skills search <query>                 # search skills catalog (claude-plugins.dev)
+mcpoyle skills sync [<client>]                # sync skills to client skills directories (symlink fan-out)
+mcpoyle skills sync --dry-run                 # preview skill sync plan (file operations, backup)
 
 mcpoyle plugins list                      # list all plugins (installed + enabled state)
 mcpoyle plugins install <name> [--marketplace <name>]
@@ -84,8 +105,11 @@ mcpoyle marketplaces add <name> --path /local/dir
 mcpoyle marketplaces remove <name>
 mcpoyle marketplaces show <name>          # show marketplace details + plugins
 
+mcpoyle groups add-skill <group> <skill>
+mcpoyle groups remove-skill <group> <skill>
 mcpoyle groups add-plugin <group> <plugin>
 mcpoyle groups remove-plugin <group> <plugin>
+mcpoyle groups export <group> --as-plugin     # compile group into a CC plugin (profile-as-plugin)
 
 mcpoyle rules list                        # list all path rules
 mcpoyle rules add <path> <group>          # auto-assign group to projects under path
@@ -109,17 +133,18 @@ mcpoyle reference                         # show full command reference
 
 ### Dashboard
 
-The dashboard uses a tabbed interface with five tabs. Each tab takes the full screen, keeping the layout clean and readable. Tabs are navigated with number keys (1-5) or by clicking.
+The dashboard uses a tabbed interface with six tabs. Each tab takes the full screen, keeping the layout clean and readable. Tabs are navigated with number keys (1-6) or by clicking.
 
-- **Servers & Plugins** (tab 1, default) — servers table on top, plugins table below. Servers show enabled/disabled state, command, and group membership. Plugins show enabled state, marketplace, and managed status.
-- **Groups** (tab 2) — lists groups with member counts (servers and plugins) and description.
-- **Clients** (tab 3) — lists detected clients with install status, assigned group, and last sync timestamp (or "never" if not yet synced).
-- **Marketplaces** (tab 4) — lists registered marketplaces with source type (GitHub/local) and detail.
-- **Projects** (tab 5) — lists active projects from the project registry with assigned group, MCP server count, and filesystem paths. Only visible when the registry database is available.
+- **Servers & Plugins** (tab 1, default) — servers table on top, plugins table below. Servers show enabled/disabled state, command, trust tier, and group membership. Plugins show enabled state, marketplace, and managed status.
+- **Skills** (tab 2) — lists skills with name, description, source (local/catalog/GitHub), trust tier, and dependency status (whether required servers are present). Skills that depend on missing servers show a warning indicator.
+- **Groups** (tab 3) — lists groups with member counts (servers, skills, and plugins) and description.
+- **Clients** (tab 4) — lists detected clients with install status, skills support indicator, assigned group, and last sync timestamp (or "never" if not yet synced).
+- **Marketplaces** (tab 5) — lists registered marketplaces with source type (GitHub/local) and detail.
+- **Projects** (tab 6) — lists active projects from the project registry with assigned group, MCP server count, and filesystem paths. Only visible when the registry database is available.
 
 ### Navigation
 
-- 1/2/3/4/5 switches between tabs
+- 1/2/3/4/5/6 switches between tabs
 - Arrow keys navigate within the active table (up/down through items)
 - Tab switches focus between tables when a tab has multiple (e.g., servers and plugins)
 - Esc closes a modal
@@ -166,7 +191,40 @@ Central config at `~/.config/mcpoyle/config.json`:
       "transport": "stdio",
       "command": "npx",
       "args": ["tsx", "/path/to/index.ts", "serve"],
-      "env": {}
+      "env": {},
+      "origin": {
+        "source": "import",
+        "client": "cursor",
+        "timestamp": "2026-03-01T12:00:00Z"
+      }
+    },
+    {
+      "name": "remote-db",
+      "enabled": true,
+      "transport": "http",
+      "url": "https://mcp.example.com/db",
+      "auth_type": "bearer",
+      "auth_ref": "op://Dev/remote-db/token",
+      "tools": [
+        {"name": "query", "description": "Run a read-only SQL query"},
+        {"name": "schema", "description": "List tables and columns"}
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "name": "git-workflow",
+      "enabled": true,
+      "description": "Git branching and PR workflow instructions",
+      "path": "~/.config/mcpoyle/skills/git-workflow/SKILL.md",
+      "origin": {
+        "source": "catalog",
+        "catalog_id": "git-workflow",
+        "trust_tier": "community",
+        "timestamp": "2026-03-30T12:00:00Z"
+      },
+      "dependencies": ["github-mcp"],
+      "tags": ["git", "workflow"]
     }
   ],
   "groups": [
@@ -174,6 +232,7 @@ Central config at `~/.config/mcpoyle/config.json`:
       "name": "dev-tools",
       "description": "Core development MCP servers",
       "servers": ["ctx", "prm", "knowmarks"],
+      "skills": ["git-workflow"],
       "plugins": ["clangd-lsp", "typescript-lsp"]
     }
   ],
@@ -202,6 +261,75 @@ Central config at `~/.config/mcpoyle/config.json`:
 ```
 
 When `group` is `null`, the client receives all enabled servers (default behavior).
+
+### Server Model Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Unique server identifier |
+| `enabled` | yes | Whether the server is active |
+| `transport` | yes | `"stdio"`, `"http"`, `"sse"`, or `"streamable-http"` |
+| `command` | stdio only | Executable command |
+| `args` | stdio only | Command arguments |
+| `env` | no | Environment variables (may contain `op://` refs) |
+| `url` | http only | Server endpoint URL for HTTP/SSE transport |
+| `auth_type` | http only | Authentication method: `"bearer"`, `"api-key"`, `"header"` |
+| `auth_ref` | http only | Auth credential reference (typically `op://` for 1Password) |
+| `origin` | no | Provenance metadata (see below) |
+| `tools` | no | Cached tool definitions from registry (see below) |
+
+**Origin tracking.** The optional `origin` object records where a server came from: `source` (one of `"import"`, `"registry"`, `"manual"`), `client` (for imports — which client it was imported from), `registry_id` (for registry installs — the registry identifier), and `timestamp` (ISO 8601). Origin data enriches `doctor` output and drift messages — e.g., "Server 'postgres' (imported from Cursor on 2026-03-01) has drifted."
+
+**Tool metadata.** The optional `tools` array stores tool definitions fetched from the registry at install time. Each entry has `name` and `description`. This avoids discarding metadata after `registry show` and enables local capability search via `mcpoyle search`. Tools are populated automatically on `registry add` and can be refreshed with `registry show --update-tools`.
+
+### Skill Model Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Unique skill identifier (matches directory name in canonical store) |
+| `enabled` | yes | Whether the skill is active |
+| `description` | yes | One-line description (from SKILL.md frontmatter) |
+| `path` | yes | Absolute path to the SKILL.md in the canonical store |
+| `origin` | no | Provenance metadata — source, trust tier, timestamp |
+| `dependencies` | no | List of MCP server names this skill requires |
+| `tags` | no | Freeform tags for categorization and search |
+| `mode` | no | `"track"` (follow upstream, default for catalog/registry installs) or `"pin"` (frozen, default for manual/local) |
+
+**SKILL.md format.** A skill is a markdown file with YAML frontmatter containing at minimum `name` and `description`. The markdown body contains the agent instructions. This format is the dominant convention across the skills ecosystem (7/8 reference implementations converge on it).
+
+```markdown
+---
+name: git-workflow
+description: Git branching and PR workflow instructions
+dependencies:
+  - github-mcp
+tags:
+  - git
+  - workflow
+---
+
+# Git Workflow
+
+When working with git repositories, follow these patterns...
+```
+
+### Provenance Modes (Pin/Track)
+
+Servers and skills track their update mode via an optional `mode` field on the origin object:
+
+- **`track`** (default for registry/catalog installs) — mcpoyle checks upstream for updates and notifies on drift. `mcpoyle doctor` flags tracked items that have diverged from their source.
+- **`pin`** (default for manual/local items) — frozen at the installed version. No upstream checks. The user controls all changes.
+
+`mcpoyle pin <name>` and `mcpoyle track <name>` toggle the mode. The mode is informational — mcpoyle never auto-updates content. "Track" means "notify me," not "update for me."
+
+### Dependency Intelligence
+
+Skills can declare MCP server dependencies in their frontmatter (`dependencies: [server-name]`). Servers can suggest co-installed peers via an optional `peers` field in the origin object. Dependencies are advisory, not enforced:
+
+- `mcpoyle skills show <name>` lists dependencies and whether each required server is present in the registry
+- `mcpoyle skills add <name>` warns if dependencies are missing but proceeds with the install
+- `mcpoyle doctor` flags skills with unresolved dependencies as info-level findings
+- The TUI Skills tab shows a dependency status indicator per skill
 
 ### Project-Level Assignments (Claude Code)
 
@@ -242,6 +370,74 @@ mcpoyle rules list                        # list all path rules
 mcpoyle rules add <path> <group>          # add a rule (group must exist)
 mcpoyle rules remove <path>               # remove a rule
 ```
+
+## Skills Management
+
+Skills are the third entity type in mcpoyle, alongside servers and plugins. While servers are runtime processes and plugins are code extensions, skills are static instruction files that teach AI agents workflows, coding patterns, and domain knowledge.
+
+### Canonical Store
+
+All skills are written once to a central location at `~/.config/mcpoyle/skills/<name>/SKILL.md`. This is the single source of truth for skill content. Each skill lives in its own directory to accommodate future multi-file skills (e.g., skills with embedded examples or data files).
+
+### Sync Strategy: Symlink Fan-Out
+
+Skills use a fundamentally different sync strategy from servers. Servers sync by writing entries into client config files (JSON/TOML). Skills sync by creating symlinks from each client's skills directory back to the canonical store:
+
+```
+~/.config/mcpoyle/skills/git-workflow/SKILL.md  (canonical)
+    ↓ symlink
+~/.claude/skills/git-workflow/SKILL.md
+~/.cursor/skills/git-workflow/SKILL.md
+~/.codex/skills/git-workflow/SKILL.md
+```
+
+**Fallback:** On platforms or filesystems where symlinks fail, mcpoyle falls back to file copy. A content hash (SHA-256) of the canonical file is stored to enable drift detection on copied skills.
+
+**Backup strategy.** Because skills sync writes to disk (unlike server sync which writes to config files), `mcpoyle skills sync` generates a plan of file operations before executing. On first sync to a client's skills directory, mcpoyle creates a backup manifest (`~/.config/mcpoyle/backups/skills-<timestamp>.json`) containing SHA-256 hashes of all files that will be created or overwritten. This enables rollback via `mcpoyle skills sync --rollback`.
+
+### Client Skills Directory Mapping
+
+Each ClientDef gains an optional `skills_dir` field. Not all clients support skills — this creates an intentional asymmetry. Skills commands silently skip clients without skills support.
+
+| Client | Skills Directory | Status |
+|--------|-----------------|--------|
+| Claude Code | `~/.claude/skills/<name>/` | Supported |
+| Cursor | `~/.cursor/skills/<name>/` | Supported |
+| Codex CLI | `~/.codex/skills/<name>/` | Supported |
+| Windsurf | `~/.windsurf/skills/<name>/` | Supported |
+| VS Code (Copilot) | TBD | Pending confirmation |
+| Zed | TBD | Pending confirmation |
+| Other clients | — | Not applicable |
+
+The skills directory paths are configured in the client definitions. As clients add skills support, new paths are added without changing the sync logic.
+
+### Builtin Meta-Skill
+
+mcpoyle ships a built-in skill (`mcpoyle-usage`) that teaches AI agents how to use mcpoyle itself. This creates a bootstrapping loop: agents with skills support auto-discover mcpoyle commands.
+
+The meta-skill is installed automatically on `mcpoyle init` and contains instructions for `mcp search`, `mcp list`, `mcp sync`, `mcp skills`, and other commonly useful commands. It is marked with `origin.source: "builtin"` and `origin.trust_tier: "official"`. The meta-skill is excluded from `mcpoyle skills remove` unless `--force` is used.
+
+### Skills Catalog Integration
+
+The claude-plugins.dev API serves as a skills catalog backend, providing access to ~58K community skills. The API is public, paginated, and requires no authentication.
+
+**Catalog response fields:** `id`, `name`, `namespace`, `sourceUrl`, `description`, `author`, `installs`, `stars`.
+
+`mcpoyle skills search <query>` searches the catalog. Results show name, description, author, install count, and trust tier (community for all catalog content). `mcpoyle skills add <name> --from catalog:<id>` fetches the skill from its `sourceUrl` and writes it to the canonical store.
+
+The catalog adapter sits alongside the Official MCP Registry and Glama as a registry backend, but serves skills instead of servers. It is implemented as a registry adapter (see Registry Adapter Pattern) with the same `search`/`show`/`resolve` interface.
+
+### Collision Detection
+
+When `mcpoyle skills sync` would write a skill that conflicts with one already in the target client's skills directory at a different scope (user-level vs. project-level `.claude/skills/`), mcpoyle surfaces the collision:
+
+```
+⚠ claude-code: skill "git-workflow" exists at project scope (.claude/skills/git-workflow/)
+  Canonical version differs from project version.
+  Use --force to overwrite project skill, or --skip to leave project version.
+```
+
+Collision detection also applies to server sync: when a server being synced conflicts with one already present in the client config at a different scope (user vs project), mcpoyle reports which scope wins based on the client's precedence rules.
 
 ## Project Registry Integration
 
@@ -431,24 +627,36 @@ Claude Code reserves certain marketplace names: `claude-code-marketplace`, `clau
 
 Marketplace auto-update is controlled through Claude Code's UI, not via JSON config files. mcpoyle does not manage auto-update settings. The `DISABLE_AUTOUPDATER` and `FORCE_AUTOUPDATE_PLUGINS` environment variables can override update behavior globally.
 
-## Sync with Plugins
+### Profile-as-Plugin Packaging
 
-When a group contains both servers and plugins, `mcpoyle sync` handles both:
+Groups can be compiled into a standalone Claude Code plugin via a local marketplace that mcpoyle controls. This enables distributing mcpoyle bundles as first-class CC plugins without requiring mcpoyle on the target machine.
 
-- Servers are synced to the target client's config (all clients)
-- Plugins are synced to Claude Code's plugin config (Claude Code only)
-- Plugin entries in groups are silently ignored for non-Claude Code clients
+`mcpoyle groups export <group> --as-plugin` generates a plugin package containing:
+- All servers in the group (as a CC plugin that registers MCP servers)
+- All skills in the group (bundled as plugin assets)
+- A marketplace manifest compatible with Claude Code's plugin system
 
-`mcpoyle sync --dry-run` shows both server and plugin changes.
+The generated plugin is written to a local marketplace directory (`~/.config/mcpoyle/marketplace/`) that mcpoyle registers in Claude Code's `extraKnownMarketplaces`. This means the exported group appears as an installable plugin in Claude Code's plugin browser — usable by anyone with access to the marketplace directory, even without mcpoyle installed.
+
+## Sync
+
+When a group contains servers, skills, and/or plugins, `mcpoyle sync` handles all three via their respective strategies:
+
+- **Servers** are synced by writing entries to the target client's config file (JSON/TOML). All clients.
+- **Skills** are synced by creating symlinks from the canonical store to the client's skills directory (file-level operations). Only clients with `skills_dir` support.
+- **Plugins** are synced to Claude Code's plugin config (Claude Code only).
+- Skill entries in groups are silently ignored for clients without skills support. Plugin entries are silently ignored for non-Claude Code clients.
+
+`mcpoyle sync --dry-run` shows server, skill, and plugin changes. Skills preview shows the file operations (create symlink, update symlink, remove symlink) rather than config diff.
 
 ### Drift Detection
 
 On each sync, mcpoyle computes a content hash (SHA-256) of every managed server/plugin config it writes. These hashes are stored in the central config alongside the `last_synced` timestamp. On the next sync, before writing, mcpoyle re-reads the client config and hashes the current state of each managed entry. If a hash differs from what mcpoyle last wrote, the entry was modified outside mcpoyle.
 
-When drift is detected, `mcpoyle sync` reports it:
+When drift is detected, `mcpoyle sync` reports it with provenance context when available:
 
 ```
-⚠ claude-desktop: server "ctx" was modified outside mcpoyle
+⚠ claude-desktop: server "ctx" (imported from Cursor on 2026-03-01) was modified outside mcpoyle
   Use --force to overwrite, or --adopt to update mcpoyle's registry
 ```
 
@@ -459,17 +667,37 @@ Behavior:
 
 `mcpoyle sync --dry-run` includes drift warnings in its output.
 
+### Context Cost Awareness
+
+When `mcpoyle sync` would push a large number of servers to a client, it surfaces a tool-count and estimated token cost summary before writing. This extends the existing token cost estimate feature (from `registry show`) to the sync surface.
+
+```
+$ mcpoyle sync cursor
+Sync preview for cursor:
+  12 servers, 47 tools, ~8,400 estimated context tokens
+
+  ⚠ High tool count — 47 tools may consume significant context window.
+    Consider using groups to limit servers per client.
+
+Proceed? [Y/n]
+```
+
+The warning threshold is configurable via `settings.sync_cost_warning_threshold` (default: 50 tools). `--dry-run` includes cost summaries without the confirmation prompt. `--yes` skips the prompt.
+
 ## Init
 
 `mcpoyle init` is a guided onboarding command for first-time setup. It walks the user through client detection, optional server import, group creation, and initial assignment — replacing the need to run multiple commands manually.
 
 ### Flow
 
-1. **Detect clients** — scans for installed AI clients and displays them with install status
-2. **Import existing servers** — for each detected client, offers to import existing MCP server configs into the central registry (`mcpoyle import`)
-3. **Create groups** — prompts to create one or more groups (e.g., "dev-tools", "work", "personal") with optional descriptions
-4. **Assign groups** — for each detected client, prompts to assign a group or keep the default (all enabled servers)
-5. **Initial sync** — runs `mcpoyle sync --dry-run` to preview, then `mcpoyle sync` on confirmation
+1. **Detect clients** — scans for installed AI clients and displays them with install status and skills support indicator
+2. **Auto-discovery display** — before asking what to import, shows a unified view of ALL servers AND skills across ALL detected clients. The user sees the full landscape: which servers and skills exist where, which are duplicated across clients, and which are unique to one client. This overview informs the import decision.
+3. **Import existing servers** — the user selects which servers to import from the unified view (or selects all). Deduplication is automatic — servers with identical name+command appearing in multiple clients are imported once.
+4. **Import existing skills** — scans each client's skills directory for SKILL.md files. Single-source skills (found in only one client) are auto-migrated to the canonical store. Multi-source skills (same name in multiple clients with different content) are presented as conflicts for the user to resolve — pick one version, or skip and handle manually.
+5. **Install meta-skill** — installs the built-in `mcpoyle-usage` skill to the canonical store and syncs it to all skills-capable clients.
+6. **Create groups** — prompts to create one or more groups (e.g., "dev-tools", "work", "personal") with optional descriptions
+7. **Assign groups** — for each detected client, prompts to assign a group or keep the default (all enabled servers and skills)
+8. **Initial sync** — runs `mcpoyle sync --dry-run` to preview, then `mcpoyle sync` on confirmation
 
 ### Behavior
 
@@ -484,39 +712,64 @@ Behavior:
 $ mcpoyle init
 Detected clients:
   ✓ Claude Desktop (installed)
-  ✓ Claude Code (installed)
-  ✓ Cursor (installed)
+  ✓ Claude Code (installed, skills ✓)
+  ✓ Cursor (installed, skills ✓)
   · Windsurf (not found)
 
-Import servers from Claude Desktop? [Y/n] y
+Servers across all clients:
+  Server          Claude Desktop   Claude Code   Cursor
+  ctx             ✓                ✓             ✓
+  prm             ✓                ·             ✓
+  postgres        ·                ✓             ·
+  3 unique servers across 3 clients (2 duplicated)
+
+Skills across clients:
+  Skill               Claude Code   Cursor
+  git-workflow         ✓             ·
+  1 skill found in 1 client
+
+Import servers? [A]ll / [s]elect / [n]one: a
   + ctx (npx tsx /path/to/index.ts serve)
   + prm (npx tsx /path/to/prm/index.ts serve)
-  Imported 2 servers.
+  + postgres (npx @mcp/postgres)
+  Imported 3 servers.
+
+Import skills? [A]ll / [s]elect / [n]one: a
+  + git-workflow → ~/.config/mcpoyle/skills/git-workflow/SKILL.md
+  Imported 1 skill.
+
+Installing mcpoyle-usage meta-skill...
+  + mcpoyle-usage → ~/.config/mcpoyle/skills/mcpoyle-usage/SKILL.md
 
 Create a group? [y/N] y
   Group name: dev-tools
-  Description: Core development servers
+  Description: Core development servers and skills
 
   Add servers to dev-tools:
     [x] ctx
     [x] prm
-  Added 2 servers to dev-tools.
+  Add skills to dev-tools:
+    [x] git-workflow
+  Added 2 servers and 1 skill to dev-tools.
 
 Assign groups to clients:
-  Claude Desktop → dev-tools
-  Claude Code → (all servers)
+  Claude Desktop → dev-tools (servers only — no skills support)
+  Claude Code → (all servers + skills)
   Cursor → dev-tools
 
 Preview sync... (dry run)
   Claude Desktop: would sync
     + ctx
     + prm
+  Claude Code: would sync
+    + ctx, prm, postgres (servers)
+    + git-workflow, mcpoyle-usage (skills → symlink)
   ...
 
 Apply? [Y/n] y
   Claude Desktop: synced
-  Claude Code: synced
-  Cursor: synced
+  Claude Code: synced (3 servers, 2 skills)
+  Cursor: synced (2 servers, 1 skill)
 
 Setup complete. Run 'mcpoyle tui' to manage, or 'mcpoyle sync' after changes.
 ```
@@ -525,28 +778,63 @@ Setup complete. Run 'mcpoyle tui' to manage, or 'mcpoyle sync' after changes.
 
 `mcpoyle doctor` runs a deterministic health audit across all managed configs — no network calls, no LLM. It checks for common issues and reports them with severity levels (error, warning, info).
 
+### Structured Scoring
+
+Each doctor check produces a structured result with deterministic scoring:
+
+```json
+{
+  "id": "env-vars",
+  "category": "existence",
+  "maxPoints": 10,
+  "earnedPoints": 8,
+  "severity": "error",
+  "message": "Server 'postgres' missing env var DATABASE_URL",
+  "fix": {
+    "command": "mcpoyle show postgres",
+    "description": "Review required environment variables"
+  }
+}
+```
+
+**Scoring categories:**
+- **Existence** — required files and configs are present
+- **Freshness** — configs are current (no stale sync, no pending changes)
+- **Grounding** — referenced paths, binaries, and servers actually exist
+- **Cross-platform parity** — clients with the same group assignment have matching configs
+- **Skills health** — symlinks are valid, dependencies are resolved, canonical store is consistent
+
+The aggregate score (`earnedPoints / maxPoints` across all checks) gives a single health percentage. `mcpoyle doctor --json` outputs the full structured results for scripting and dashboards.
+
 ### Checks
 
-| Check | Severity | What it detects |
-|-------|----------|-----------------|
-| Missing env vars | error | Server env references an `op://` or variable that isn't set |
-| Orphaned entries | warning | Server in a client config with `__mcpoyle` marker but not in central registry |
-| Stale configs | warning | Client hasn't been synced since a server was added/modified |
-| Config parse errors | error | Client config file exists but contains invalid JSON/TOML |
-| Drift detected | warning | Managed entry was modified outside mcpoyle (same hash check as sync) |
-| Unreachable binary | warning | Server command binary not found on `$PATH` |
+| Check | Category | Severity | What it detects |
+|-------|----------|----------|-----------------|
+| Missing env vars | existence | error | Server env references an `op://` or variable that isn't set |
+| Orphaned entries | existence | warning | Server/skill in a client config/directory with `__mcpoyle` marker but not in central registry |
+| Stale configs | freshness | warning | Client hasn't been synced since a server/skill was added/modified |
+| Config parse errors | existence | error | Client config file exists but contains invalid JSON/TOML |
+| Drift detected | freshness | warning | Managed entry was modified outside mcpoyle (includes origin context when available) |
+| Unreachable binary | grounding | warning | Server command binary not found on `$PATH` |
+| Missing tool metadata | grounding | info | Server installed from registry but has no cached tools (suggest `registry show --update-tools`) |
+| Broken skill symlink | grounding | error | Skill symlink in client directory points to missing canonical file |
+| Unresolved skill deps | grounding | info | Skill declares server dependencies that are not in the registry |
+| Tracked item drift | freshness | info | Tracked server/skill has diverged from upstream source |
+| Cross-client parity | parity | warning | Clients with the same group assignment have different effective configs |
 
 ### Output
 
 ```
 $ mcpoyle doctor
-✓ Central config valid (17 servers, 4 groups, 3 plugins)
+✓ Central config valid (17 servers, 5 skills, 4 groups, 3 plugins)
 ✓ claude-desktop: config valid, in sync
 ⚠ cursor: server "prm" has missing env var GITHUB_TOKEN
 ⚠ claude-code: 2 orphaned entries (run mcpoyle sync to clean up)
 ✗ windsurf: config file contains invalid JSON
+ℹ skill "data-analysis" depends on missing server "pandas-mcp"
 
-2 errors, 2 warnings
+Health: 85/100 (85%)
+2 errors, 2 warnings, 1 info
 ```
 
 `mcpoyle doctor --json` outputs structured results for scripting.
@@ -558,6 +846,22 @@ mcpoyle integrates with MCP server registries to discover, browse, and install s
 - **Official MCP Registry** (`registry.modelcontextprotocol.io`) — the canonical upstream source (~10K servers). Returns structured package metadata with `registryType`, transport, and environment variable specifications.
 - **Glama** (`glama.ai`) — the largest enriched directory (~19K servers, 70+ categories). Returns environment variable JSON schemas and hosting attributes. Good for non-dev tools (finance, marketing, productivity, etc.).
 
+### Unified Source Parser
+
+`mcpoyle add <source>` accepts multiple source formats and infers the type automatically:
+
+| Source Format | Interpretation | Example |
+|--------------|----------------|---------|
+| `owner/repo` | GitHub repository | `anthropics/mcp-server-git` |
+| `./local/path` or absolute path | Local directory | `./my-skills/git-workflow` |
+| `registry:<slug>` | Registry server by slug | `registry:postgres` |
+| `catalog:<id>` | Skills catalog by ID | `catalog:git-workflow` |
+| Full URL | Fetched and parsed | `https://github.com/...` |
+
+The parser examines the source string and routes to the appropriate handler (registry adapter, catalog adapter, GitHub clone, local import). When the type is ambiguous (e.g., a GitHub repo could contain a server or a skill), mcpoyle inspects the repo contents — presence of SKILL.md indicates a skill, presence of package.json/pyproject.toml with MCP server patterns indicates a server. The `--type server|skill` flag overrides inference.
+
+`mcpoyle add <source>` is the primary entry point for adding any content. `mcpoyle skills add <name> --from <source>` is a convenience alias that skips type inference (always treats the source as a skill). Both share the same underlying operations layer.
+
 ### Search
 
 `mcpoyle registry search <query>` searches both registries, deduplicates results by name, and displays a merged list. Results show:
@@ -565,6 +869,8 @@ mcpoyle integrates with MCP server registries to discover, browse, and install s
 - Server name and description
 - Source registry
 - Transport type (stdio/HTTP)
+- Trust tier (official/community/local)
+- Quality signals: stars, last-updated date, has-readme (when available from upstream)
 - Popularity indicator (use count or download count when available)
 
 ### Show
@@ -588,11 +894,86 @@ mcpoyle integrates with MCP server registries to discover, browse, and install s
 
 If the server requires environment variables, mcpoyle prompts for each one (or accepts them via `--env KEY=VAL` flags). Values containing `op://` references are stored as-is.
 
+**Trust tier assignment.** On install, mcpoyle assigns a trust tier based on the source: `official` for verified publishers on the Official MCP Registry, `community` for all other registry/catalog content, `local` for user-defined servers and skills. The trust tier is stored in the origin object and displayed in `show` output.
+
+**Pre-install security summary.** Before completing `registry add`, mcpoyle displays a summary of what the server will do:
+
+```
+$ mcpoyle registry add postgres
+Installing postgres from Official MCP Registry (official tier)
+
+Security summary:
+  Command: npx -y @mcp/postgres
+  Env vars: DATABASE_URL (required)
+  Transport: stdio
+  No suspicious patterns detected.
+
+Proceed? [Y/n]
+```
+
+The security summary flags potentially risky patterns: unknown binaries (not from well-known registries like npm/PyPI), excessive environment variable requests, commands that write to system directories, and env values that appear to be hardcoded secrets rather than references. This builds trust for third-party content. `--yes` skips the prompt.
+
 The server is added to the central config but not synced — run `mcpoyle sync` to push it to clients.
+
+### Registry Adapter Pattern
+
+The registry subsystem uses an adapter architecture so new backends can be added without modifying core search/install logic. Each adapter implements a common interface: `search(query) → [Result]`, `show(id) → Detail`, and `resolve(id) → ServerConfig`. The two built-in adapters (Official MCP Registry, Glama) are loaded by default. Additional adapters (Smithery, PulseMCP, MCP Scoreboard) can be registered as opt-in sources when the user provides API keys.
+
+`mcpoyle registry backends` lists available backends with their status (enabled/disabled) and last-used timestamp.
+
+### Metadata Caching
+
+Registry API responses are cached locally to avoid repeated network calls during discovery workflows (e.g., `search` followed by `show` followed by `add`). Cache TTL is configurable:
+
+```json
+{
+  "settings": {
+    "registry_cache_ttl": 3600,
+    "registry_cache_overrides": {
+      "glama": 7200
+    }
+  }
+}
+```
+
+`registry_cache_ttl` is the default TTL in seconds (default: 3600 — one hour). Per-registry overrides are optional. Cache is stored at `~/.config/mcpoyle/cache/registry/`. `registry search --no-cache` bypasses the cache for a single call.
+
+### Tool Metadata Storage
+
+When installing a server from the registry (`registry add`), mcpoyle stores the server's tool definitions (name + description) in the central config's `tools` field. This means tool metadata persists beyond `registry show` output and feeds local capability search.
+
+`registry show --update-tools <name>` refreshes the cached tool metadata for an already-installed server from its source registry.
+
+### Quality Signals
+
+Registry search and show results surface upstream quality signals when available. mcpoyle normalizes these signals into a lightweight display rather than computing scores locally:
+
+| Signal | Source | Display |
+|--------|--------|---------|
+| Stars / likes | GitHub, catalog | Star count |
+| Last updated | Registry metadata | Relative date ("2 days ago", "6 months ago") |
+| Has README | Repository | Boolean indicator |
+| Install count | Catalog (claude-plugins.dev) | Install count |
+| Verified publisher | Official MCP Registry | Trust tier badge |
+
+Quality signals are shown in `registry search` results (compact: star count + last-updated) and `registry show` output (full detail). They are informational — mcpoyle does not gate installs on quality thresholds.
+
+### Local Capability Search
+
+`mcpoyle search <query>` searches across the user's registered servers and skills by capability — matching against server names, descriptions, tool names/descriptions, and skill names/descriptions/tags. This is a local search (no network calls) using lightweight text matching (BM25-style term frequency scoring over the stored metadata).
+
+```
+$ mcpoyle search "database query"
+  postgres (server, 3 matching tools: query, schema, migrate)
+  supabase (server, 1 matching tool: sql_query)
+  sql-patterns (skill, tags: database, sql, query)
+```
+
+Useful for users with many servers and skills who need to find which provides a specific capability.
 
 ### Future Registry Support
 
-Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-in sources when the user provides API keys. MCP Scoreboard provides quality grades across six dimensions (schema, protocol, reliability, docs, security, usability). The registry architecture is designed to support multiple backends with a unified search interface.
+Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-in sources when the user provides API keys. MCP Scoreboard provides quality grades across six dimensions (schema, protocol, reliability, docs, security, usability).
 
 ## Supported Clients
 
@@ -613,10 +994,11 @@ Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-i
 | Copilot CLI | `~/.copilot/mcp-config.json` | JSON | No |
 | Copilot JetBrains | `~/.config/github-copilot/mcp.json` | JSON | No |
 | Amazon Q | `~/.aws/amazonq/mcp.json` | JSON | No |
-| Cline | `globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | JSON | No |
-| Roo Code | `globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json` | JSON | No |
+| Cline | `~/.vscode/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | JSON | No |
+| Roo Code | `~/.vscode/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json` | JSON | No |
+| mcpx | `~/.config/mcpx/config.toml` → `servers` | TOML | No |
 
-**Note:** VS Code uses `mcp.servers` (dot-separated key path) instead of `mcpServers`. Zed uses `context_servers`. Some clients require a `"type": "stdio"` field in server entries. Codex CLI uses TOML format instead of JSON. Cline and Roo Code store configs in VS Code's `globalStorage` directory.
+**Note:** VS Code uses `mcp.servers` (dot-separated key path) instead of `mcpServers`. Zed uses `context_servers`. Some clients require a `"type": "stdio"` field in server entries. Codex CLI and mcpx use TOML format instead of JSON. Cline and Roo Code store configs in VS Code's `globalStorage` directory.
 
 ## Tech Stack
 
@@ -631,6 +1013,7 @@ Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-i
 ## Non-Goals
 
 - Running or proxying MCP servers — mcpoyle only manages configs
+- **Daemon / background process** — mcpoyle runs on demand, no file watching, no long-running service. Validated by examining mcpx's daemon model: the complexity of daemon lifecycle management (startup, shutdown, health, port conflicts) is disproportionate to the config-management problem. On-demand is the correct design.
 - Server runtime health checks or monitoring — `mcpoyle doctor` audits config files, not running processes
 - Multi-machine sync (single machine only)
 - Marketplace auto-update management — controlled via Claude Code's UI, not JSON
@@ -643,12 +1026,13 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 
 | Module | Role |
 |--------|------|
-| `config.py` | Data model (Server, Plugin, Marketplace, Group, etc.) and JSON I/O |
-| `clients.py` | Client definitions, detection, config file read/write, CC settings helpers |
+| `config.py` | Data model (Server, Skill, Plugin, Marketplace, Group, etc.) and JSON I/O |
+| `clients.py` | Client definitions (including `skills_dir`), detection, config file read/write, CC settings helpers |
 | `operations.py` | Business logic for all mutations (install, uninstall, enable, disable, assign, scope, etc.) — shared by CLI and TUI |
 | `projects.py` | Project registry reader — reads project-registry SQLite DB for project-aware scoping |
-| `sync.py` | Sync engine — resolves servers/plugins per client, writes configs |
-| `registry.py` | MCP server registry clients (Official, Glama) — search, show, install |
+| `sync.py` | Sync engine — resolves servers/skills/plugins per client. Dual strategy: config-entry writes for servers, symlink fan-out for skills |
+| `registry.py` | Registry adapter framework — search, show, install across extensible backends (servers + skills catalog) |
+| `search.py` | Local capability search — BM25 scoring across servers and skills |
 | `cli.py` | Thin click wrapper that formats and displays |
 | `tui.py` | Textual TUI dashboard — visual presentation layer |
 
@@ -657,7 +1041,7 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 1. **Additive only on sync** — mcpoyle manages its own servers in client configs. It never deletes servers it didn't create. A `__mcpoyle` marker comment or metadata key identifies managed entries.
 2. **Backwards compatible defaults** — no group assignment = sync all enabled servers, same as Conductor's current behavior.
 3. **Idempotent** — running `mcpoyle sync` twice produces the same result.
-4. **No daemon** — runs on demand, no file watching, no background process.
+4. **No daemon** — runs on demand, no file watching, no background process. (Validated: see Non-Goals.)
 5. **Dry-run support** — `mcpoyle sync --dry-run` shows what would change without writing.
 6. **Config backup** — before writing to any client's config file for the first time, mcpoyle creates a `.mcpoyle-backup` copy alongside the original. Subsequent writes do not overwrite the backup.
 7. **Marker-based coexistence** — mcpoyle tags every server entry it writes with a `__mcpoyle: true` marker. On sync, mcpoyle reads all servers, preserves entries without the marker untouched, and only manages its own. This means mcpoyle coexists safely with other tools that write to the same config files (e.g., ToolHive, Caliber, manual edits). However, other tools that don't use markers may overwrite mcpoyle's entries during their own sync. Users running multiple config management tools should sync mcpoyle last, or use `mcpoyle doctor` to detect unexpected changes via drift detection.
@@ -667,10 +1051,36 @@ Core logic is organized into four layers: data model, operations, sync engine, a
 - **Multi-group assignments** — Allow projects and clients to be assigned multiple groups, with resolved servers/plugins being the union. Currently limited to one group each.
 - **Project registry write-back** — Write `mcp_servers` to the project-registry's `project_fields` table, making mcpoyle a producer as well as a consumer.
 - **Additional registries** — Smithery and PulseMCP as opt-in sources with API key configuration.
-- **SkillsGate integration** — SkillsGate (`skillsgate.ai`) is an open marketplace for AI agent skills (coding workflows, prompt libraries). Different from MCP servers but complementary — could integrate as a skills discovery source alongside Claude Code plugins.
+- **SkillsGate deep integration** — SkillsGate (`skillsgate.ai`) as an additional skills catalog backend alongside claude-plugins.dev. SkillsGate offers lock-file based version pinning and agent-selective removal — features that could enhance mcpoyle's skill provenance tracking.
+- **Virtual server mapping** — As AI clients add platform-level integrations (Codex apps, Claude Code plugins, Kiro connectors), mcpoyle may need to represent non-traditional "servers" that aren't stdio/HTTP processes. A virtual server pattern would map platform features into the familiar server abstraction, allowing them to participate in groups, assignments, and sync like regular servers. Deferred until client ecosystems stabilize.
+
+## Validated Designs
+
+Patterns confirmed by external research that reinforce existing mcpoyle decisions:
+
+- **Content-hash drift detection** — Klavis-AI/klavis (open-strata) uses diff-based sync to detect config changes. mcpoyle's SHA-256 hash approach achieves the same goal with lower complexity: hash-compare is O(1) per entry vs. full diff computation. No change needed.
+- **No-daemon architecture** — lydakis/mcpx uses a daemon model for server proxying. mcpoyle's on-demand design avoids daemon lifecycle complexity (startup ordering, crash recovery, port management) since mcpoyle manages configs, not running servers.
+- **SKILL.md as universal format** — 7/8 researched skill management tools converge on YAML-frontmatter markdown files as the skill format. mcpoyle adopts this consensus format rather than inventing a proprietary one.
+- **Symlink fan-out as distribution** — 3/8 tools (skillbox, skillsgate, dotagents) use canonical store + symlink fan-out. This is the correct pattern for file-based artifacts: single source of truth with zero-copy distribution. File copy is the correct fallback.
+- **Advisory dependencies** — skillsmith models skill-server dependencies as optional metadata rather than hard requirements. mcpoyle follows this: dependencies inform the user but never block installation.
+
+## References
+
+- **Klavis-AI/klavis (open-strata)** — Open-source MCP server platform with managed/hosted backends, diff-based sync, and context cost awareness. Informed patterns: context cost awareness on sync (#3), drift detection validation (#6), and the registry adapter concept. Repo: `github.com/Klavis-AI/klavis`.
+- **lydakis/mcpx** — MCP server multiplexer with daemon model, auto-discovery, and TOML config. Informed patterns: config auto-discovery display during init (#1), registry metadata caching (#5), no-daemon validation (#4), and virtual server mapping concept (#7). Added as 18th supported client. Repo: `github.com/lydakis/mcpx`.
+- **smith-horn/skillsmith** — Trust-tier classification, quality scoring from upstream signals, dependency intelligence, security scanning. Informed patterns: trust tiers, quality signals, dependency modeling, pre-install security summary. Repo: `github.com/smith-horn/skillsmith`.
+- **inceptyon-labs/TARS** — Profile-as-plugin packaging, collision detection across scopes, diff-plan-apply with backup, pin/track provenance modes. Informed patterns: profile-as-plugin, collision detection, backup strategy, provenance modes. Repo: `github.com/inceptyon-labs/TARS`.
+- **christiananagnostou/skillbox** — Canonical store + symlink fan-out, auto-detect agents, self-referential meta-skill. Informed patterns: symlink distribution, meta-skill concept. Repo: `github.com/christiananagnostou/skillbox`.
+- **walidboulanouar/ay-claude-templates** — Multi-source parser, bundle install, manifest dependencies. Informed patterns: unified source parser. Repo: `github.com/walidboulanouar/ay-claude-templates`.
+- **caliber-ai-org/ai-setup** — Content-hash state comparison, deterministic scoring with categories, quality gate. Informed patterns: structured doctor scoring. Repo: `github.com/caliber-ai-org/ai-setup`.
+- **skillsgate/skillsgate** — Canonical + symlink, lock file, multi-source parser, security scanning. Informed patterns: symlink fan-out validation, security scanning. Repo: `github.com/skillsgate/skillsgate`.
+- **lasoons/AgentSkillsManager** — IDE-specific skills directories, cloud catalog (58K skills via claude-plugins.dev API). Informed patterns: client skills directory mapping, skills catalog integration. Repo: `github.com/lasoons/AgentSkillsManager`.
+- **iannuttall/dotagents** — Symlink fan-out, migration with conflict detection, backup+undo, skill frontmatter validation, client path mapping. Informed patterns: skills migration, backup strategy, client path mapping. Repo: `github.com/iannuttall/dotagents`.
 
 ## Changelog
 
+- **0.15.0** — Add skills as third entity type (SKILL.md files with YAML frontmatter). Add canonical store + symlink fan-out sync strategy for skills. Add client skills directory mapping (Claude Code, Cursor, Codex, Windsurf). Add builtin mcpoyle-usage meta-skill. Add skills catalog integration (claude-plugins.dev, ~58K skills). Add unified source parser (`mcpoyle add <source>` infers type from format). Add trust-tier classification (official/community/local) to origin tracking. Add quality signals (stars, last-updated, has-readme) to registry search/show. Add collision detection across scopes for both servers and skills. Add pin/track provenance modes for servers and skills. Add dependency intelligence (skills declare server dependencies). Add pre-install security summary for registry installs. Add deterministic structured scoring to doctor (categories, points, fix suggestions). Add profile-as-plugin packaging (`groups export --as-plugin`). Add skills migration to init flow. Add skills tab to TUI. Update Group model to include skills. Update sync engine for dual strategy (config-entry + symlink). Update local search to include skills. Research: 16 patterns from 8 external references (skillsmith, TARS, skillbox, ay-claude, caliber, skillsgate, AgentSkillsManager, dotagents).
+- **0.14.0** — Incorporate 8 research patterns from Klavis-AI/klavis and lydakis/mcpx. Add HTTP/SSE transport fields (`url`, `auth_type`, `auth_ref`) to Server model. Add server origin/provenance tracking. Add tool metadata storage at install time. Add mcpx as 18th supported client. Add config auto-discovery display to init flow. Add context cost awareness to sync. Add registry adapter pattern for extensible backends. Add registry metadata caching with configurable TTL. Add local capability search (`mcpoyle search`). Validate no-daemon and hash-based drift detection designs. Note virtual server mapping as future pattern.
 - **0.13.0** — Add `mcpoyle init` guided onboarding command (detect clients, import servers, create groups, assign, sync). Add marker-based coexistence documentation to Design Principles. Inspired by patterns in ToolHive.
 - **0.12.0** — Add content-hash drift detection to sync engine (warn on manual edits, `--force`/`--adopt` flags). Add `mcpoyle doctor` command for deterministic config health auditing (env vars, orphaned entries, stale configs, parse errors, unreachable binaries). Inspired by patterns in Caliber (ai-setup).
 - **0.11.0** — Integrate project-registry for project-aware scoping. Read-only SQLite integration: name-based project assignment, `mcpoyle projects` command, Projects tab in TUI. Add `projects.py` module. Registry is optional with graceful fallback.

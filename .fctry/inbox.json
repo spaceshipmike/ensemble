@@ -1,14 +1,118 @@
 [
   {
+    "id": "inbox-1774888880069-vb8tcb",
+    "type": "reference",
+    "content": "https://github.com/smith-horn/skillsmith",
+    "timestamp": "2026-03-30T16:41:20.069Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - smith-horn/skillsmith: Skill discovery, security, optimization, and management for agentic systems",
+      "excerpt": "Commercial MCP server for Claude Code skill discovery, installation, and management. Semantic search (FTS5 + embedding), trust-tier security model, quality scoring, security scanner, skill-to-skill dependency intelligence, sync engine with SQLite.",
+      "summary": "6 patterns extracted: trust-tier classification, quality scoring with weighted breakdown, security scanning for agent content, dependency intelligence (skill-to-MCP), hybrid search (FTS + semantic), compatibility metadata."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
+    "id": "inbox-1774888859323-4zwdd9",
+    "type": "reference",
+    "content": "https://github.com/inceptyon-labs/TARS",
+    "timestamp": "2026-03-30T16:40:59.323Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - inceptyon-labs/TARS: Centralized hub for managing Claude Code resources with apply/rollback and profile-based config sharing",
+      "excerpt": "Rust/Tauri desktop app covering skills, agents, commands, hooks, MCP servers, and plugins. Visual editor, profile-based config sharing, collision detection, apply/rollback operations.",
+      "summary": "7 patterns extracted: profile-as-plugin packaging, collision detection across scopes, diff-plan-then-apply with backup, scope hierarchy with precedence, pin/track source tracking, ConfigOps trait, CLAUDE.md overlay modes."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
+    "id": "inbox-1774888819954-c1usuo",
+    "type": "reference",
+    "content": "https://github.com/christiananagnostou/skillbox",
+    "timestamp": "2026-03-30T16:40:19.954Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - christiananagnostou/skillbox: Local-first, agent-agnostic skills manager",
+      "excerpt": "TypeScript CLI that installs skills from GitHub repos to canonical store, symlinks to agent directories. Supports user/project scope, auto-detects agents, checksum updates, JSON output.",
+      "summary": "6 patterns extracted: canonical store + symlink fan-out, agent-agnostic scope model, auto-detect agents, checksum update detection, GitHub repo as multi-skill catalog, self-referential skill bootstrap."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
+    "id": "inbox-1774888799388-zpri6p",
+    "type": "reference",
+    "content": "https://github.com/walidboulanouar/ay-claude-templates",
+    "timestamp": "2026-03-30T16:39:59.388Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - walidboulanouar/ay-claude-templates: CLI tool for AY Claude Platform - package manager for Claude Code extensions",
+      "excerpt": "Node.js CLI managing 7 content types (skills, agents, commands, hooks, plugins, MCPs, settings). Supabase-backed marketplace (placeholder), local registry.json, bundle/collection install.",
+      "summary": "7 patterns extracted: seven content-type taxonomy, global/local scope with auto-detection, auto-registration in settings.json, bundle/collection install, manifest dependency resolution, version history with rollback, package verification."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
+    "id": "inbox-1774888758088-ykpsfa",
+    "type": "reference",
+    "content": "https://github.com/caliber-ai-org/ai-setup",
+    "timestamp": "2026-03-30T16:39:18.088Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - caliber-ai-org/ai-setup: Continuously sync AI setups across Claude Code, Cursor, and Codex",
+      "excerpt": "Node.js CLI that fingerprints codebases, generates platform-specific configs via LLM, syncs with quality gate. Deterministic scoring, manifest-based undo, builtin meta-skills.",
+      "summary": "7 patterns extracted: content-hash state comparison, skill-as-markdown format, federated skill discovery with LLM scoring, deterministic config scoring, manifest-based undo, quality gate on refresh, builtin skills as managed artifacts."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
+    "id": "inbox-1774888727472-plen27",
+    "type": "reference",
+    "content": "https://github.com/skillsgate/skillsgate",
+    "timestamp": "2026-03-30T16:38:47.472Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - skillsgate/skillsgate: npm for AI skills — 80K+ skills catalog with semantic search and security scanning",
+      "excerpt": "Desktop app, TUI, and CLI for discovering/installing skills across 18 AI agents. Canonical copy + symlink distribution, lock file, multi-source parser, content-hash sync, security scanning.",
+      "summary": "6 patterns extracted: canonical copy + symlink distribution, lock file for state tracking, multi-source parser with typed resolution, content-hash change detection, security scanning before install, agent-selective removal."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
+    "id": "inbox-1774888711305-o8ob92",
+    "type": "reference",
+    "content": "https://github.com/lasoons/AgentSkillsManager",
+    "timestamp": "2026-03-30T16:38:31.305Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - lasoons/AgentSkillsManager: Multi-IDE skills management extension with cloud catalog (~58K skills)",
+      "excerpt": "VS Code extension managing SKILL.md files across 7 IDEs. Git-cached repo browsing, cloud search via claude-plugins.dev API, hash-based conflict detection, preset + user repo layering.",
+      "summary": "5 patterns extracted: IDE-specific skills directory mapping, cloud catalog search (claude-plugins.dev, 58K skills), hash-based conflict detection, git-cached repo browsing, preset + user repository layering."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
+    "id": "inbox-1774888695754-17x26p",
+    "type": "reference",
+    "content": "https://github.com/iannuttall/dotagents",
+    "timestamp": "2026-03-30T16:38:15.754Z",
+    "status": "incorporated",
+    "analysis": {
+      "title": "GitHub - iannuttall/dotagents: One location for all hooks, commands, skills, and AGENT/CLAUDE.md files",
+      "excerpt": "TypeScript CLI establishing .agents folder as canonical source for AI agent config artifacts. Symlink fan-out to 8 clients, migration with conflict resolution, backup+undo, skill frontmatter validation.",
+      "summary": "6 patterns extracted: canonical-source symlink fan-out, dual-scope (global + project), migration with conflict resolution, backup-before-write with timestamped undo, skill frontmatter validation, client-specific path mapping table."
+    },
+    "consumedBy": "/fctry:ref 2026-03-30"
+  },
+  {
     "id": "inbox-1774694981540-w3sscr",
     "type": "reference",
     "content": "https://github.com/Klavis-AI/klavis",
     "timestamp": "2026-03-28T10:49:41.540Z",
     "status": "incorporated",
     "analysis": {
-      "title": "GitHub - Klavis-AI/klavis: Klavis AI:  MCP integration platforms that let AI agents use tools reliably at any scale \u00b7 GitHub",
-      "excerpt": "GitHub - Klavis-AI/klavis: Klavis AI: MCP integration platforms that let AI agents use tools reliably at any scale \u00b7 GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Plan and track work Code Review Manage code changes APPLICATION SECURITY GitHub Advanced Security Find and fix vulnerabilities Code security Secure your code as you build Secret protection Stop leaks before they start EXPLORE Why GitHub Documentation Blog Changelog Marketplace View all features Solutions BY COMPANY SIZE Enterprises Small and medium teams Startups Nonprofits BY USE CASE App Modernization DevSecOps DevOps CI/CD View all use cases BY INDUSTRY Healthcare Financial services Manufacturing Government View all industries View all solutions Resources EXPLORE BY TOPIC AI Software Development DevOps Security View all topics EXPLORE BY TYPE Customer stories Events &amp; webinars Ebooks &amp; reports Business insights GitHub Skills SUPPORT &amp; SERVICES Documentation Customer support Community forum Trust center Partners View all resources Open Source COMMUNITY GitHub Sponsors Fund open source developers PROGRAMS Security Lab Maintainer Community Accelerator GitHub Stars Archive Program REPOSITORIES Topics Trending Collections Enterprise ENTERPRISE SOLUTIONS Enterprise platform AI-powered developer platform AVAILABLE ADD-ONS GitHub Advanced Security Enterprise-grade security features Copilot for Business Enterprise-grade AI features Premium Support Enterprise-grade 24/7 support Pricing Search or jump to... Search code, repositories, users, issues, pull requests... --> Search Clear Search syntax tips Provide feedback --> We read every piece of feedback, and take your input very s",
-      "summary": "Reference fetched \u2014 ready for /fctry:ref"
+      "title": "GitHub - Klavis-AI/klavis: Klavis AI:  MCP integration platforms that let AI agents use tools reliably at any scale",
+      "excerpt": "MCP integration platform for scaling AI agent tool use.",
+      "summary": "Reference fetched — ready for /fctry:ref"
     },
     "consumedBy": "/fctry:ref 2026-03-28"
   },
@@ -19,9 +123,9 @@
     "timestamp": "2026-03-27T00:44:04.090Z",
     "status": "incorporated",
     "analysis": {
-      "title": "GitHub - lydakis/mcpx: Turn MCP servers into composable CLIs. \u00b7 GitHub",
-      "excerpt": "GitHub - lydakis/mcpx: Turn MCP servers into composable CLIs. \u00b7 GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Plan and track work Code Review Manage code changes APPLICATION SECURITY GitHub Advanced Security Find and fix vulnerabilities Code security Secure your code as you build Secret protection Stop leaks before they start EXPLORE Why GitHub Documentation Blog Changelog Marketplace View all features Solutions BY COMPANY SIZE Enterprises Small and medium teams Startups Nonprofits BY USE CASE App Modernization DevSecOps DevOps CI/CD View all use cases BY INDUSTRY Healthcare Financial services Manufacturing Government View all industries View all solutions Resources EXPLORE BY TOPIC AI Software Development DevOps Security View all topics EXPLORE BY TYPE Customer stories Events &amp; webinars Ebooks &amp; reports Business insights GitHub Skills SUPPORT &amp; SERVICES Documentation Customer support Community forum Trust center Partners View all resources Open Source COMMUNITY GitHub Sponsors Fund open source developers PROGRAMS Security Lab Maintainer Community Accelerator GitHub Stars Archive Program REPOSITORIES Topics Trending Collections Enterprise ENTERPRISE SOLUTIONS Enterprise platform AI-powered developer platform AVAILABLE ADD-ONS GitHub Advanced Security Enterprise-grade security features Copilot for Business Enterprise-grade AI features Premium Support Enterprise-grade 24/7 support Pricing Search or jump to... Search code, repositories, users, issues, pull requests... --> Search Clear Search syntax tips Provide feedback --> We read every piece of feedback, and take your input very seriously. Include my email address so I can be contac",
-      "summary": "Reference fetched \u2014 ready for /fctry:ref"
+      "title": "GitHub - lydakis/mcpx: Turn MCP servers into composable CLIs",
+      "excerpt": "Composable CLI wrapper for MCP servers.",
+      "summary": "Reference fetched — ready for /fctry:ref"
     },
     "consumedBy": "/fctry:ref 2026-03-28"
   },
@@ -30,11 +134,11 @@
     "type": "reference",
     "content": "https://github.com/different-ai/openwork",
     "timestamp": "2026-03-27T00:40:09.838Z",
-    "status": "processed",
+    "status": "dismissed",
     "analysis": {
-      "title": "GitHub - different-ai/openwork: An open-source alternative to Claude Cowork built for teams, powered by opencode \u00b7 GitHub",
-      "excerpt": "GitHub - different-ai/openwork: An open-source alternative to Claude Cowork built for teams, powered by opencode \u00b7 GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Plan and track work Code Review Manage code changes APPLICATION SECURITY GitHub Advanced Security Find and fix vulnerabilities Code security Secure your code as you build Secret protection Stop leaks before they start EXPLORE Why GitHub Documentation Blog Changelog Marketplace View all features Solutions BY COMPANY SIZE Enterprises Small and medium teams Startups Nonprofits BY USE CASE App Modernization DevSecOps DevOps CI/CD View all use cases BY INDUSTRY Healthcare Financial services Manufacturing Government View all industries View all solutions Resources EXPLORE BY TOPIC AI Software Development DevOps Security View all topics EXPLORE BY TYPE Customer stories Events &amp; webinars Ebooks &amp; reports Business insights GitHub Skills SUPPORT &amp; SERVICES Documentation Customer support Community forum Trust center Partners View all resources Open Source COMMUNITY GitHub Sponsors Fund open source developers PROGRAMS Security Lab Maintainer Community Accelerator GitHub Stars Archive Program REPOSITORIES Topics Trending Collections Enterprise ENTERPRISE SOLUTIONS Enterprise platform AI-powered developer platform AVAILABLE ADD-ONS GitHub Advanced Security Enterprise-grade security features Copilot for Business Enterprise-grade AI features Premium Support Enterprise-grade 24/7 support Pricing Search or jump to... Search code, repositories, users, issues, pull requests... --> Search Clear Search syntax tips Provide feedback --> We read every piece of feedback, and take your input very ser",
-      "summary": "Reference fetched \u2014 ready for /fctry:ref"
+      "title": "GitHub - different-ai/openwork: An open-source alternative to Claude Cowork built for teams, powered by opencode",
+      "excerpt": "Team collaboration tool for AI coding agents.",
+      "summary": "Reference fetched — ready for /fctry:ref"
     }
   },
   {
@@ -42,11 +146,11 @@
     "type": "reference",
     "content": "https://github.com/rowboatlabs/rowboat",
     "timestamp": "2026-03-27T00:39:22.206Z",
-    "status": "processed",
+    "status": "dismissed",
     "analysis": {
-      "title": "GitHub - rowboatlabs/rowboat: Open-source AI coworker, with memory \u00b7 GitHub",
-      "excerpt": "GitHub - rowboatlabs/rowboat: Open-source AI coworker, with memory \u00b7 GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Plan and track work Code Review Manage code changes APPLICATION SECURITY GitHub Advanced Security Find and fix vulnerabilities Code security Secure your code as you build Secret protection Stop leaks before they start EXPLORE Why GitHub Documentation Blog Changelog Marketplace View all features Solutions BY COMPANY SIZE Enterprises Small and medium teams Startups Nonprofits BY USE CASE App Modernization DevSecOps DevOps CI/CD View all use cases BY INDUSTRY Healthcare Financial services Manufacturing Government View all industries View all solutions Resources EXPLORE BY TOPIC AI Software Development DevOps Security View all topics EXPLORE BY TYPE Customer stories Events &amp; webinars Ebooks &amp; reports Business insights GitHub Skills SUPPORT &amp; SERVICES Documentation Customer support Community forum Trust center Partners View all resources Open Source COMMUNITY GitHub Sponsors Fund open source developers PROGRAMS Security Lab Maintainer Community Accelerator GitHub Stars Archive Program REPOSITORIES Topics Trending Collections Enterprise ENTERPRISE SOLUTIONS Enterprise platform AI-powered developer platform AVAILABLE ADD-ONS GitHub Advanced Security Enterprise-grade security features Copilot for Business Enterprise-grade AI features Premium Support Enterprise-grade 24/7 support Pricing Search or jump to... Search code, repositories, users, issues, pull requests... --> Search Clear Search syntax tips Provide feedback --> We read every piece of feedback, and take your input very seriously. Include my email address so I can be c",
-      "summary": "Reference fetched \u2014 ready for /fctry:ref"
+      "title": "GitHub - rowboatlabs/rowboat: Open-source AI coworker, with memory",
+      "excerpt": "AI coworker platform with memory capabilities.",
+      "summary": "Reference fetched — ready for /fctry:ref"
     }
   },
   {
@@ -54,11 +158,11 @@
     "type": "reference",
     "content": "https://github.com/zeroclaw-labs/zeroclaw",
     "timestamp": "2026-03-27T00:34:25.367Z",
-    "status": "processed",
+    "status": "dismissed",
     "analysis": {
-      "title": "GitHub - zeroclaw-labs/zeroclaw: Fast, small, and fully autonomous AI personal assistant infrastructure, ANY OS, ANY PLATFORM \u2014 deploy anywhere, swap anything \ud83e\udd80 \u00b7 GitHub",
-      "excerpt": "GitHub - zeroclaw-labs/zeroclaw: Fast, small, and fully autonomous AI personal assistant infrastructure, ANY OS, ANY PLATFORM \u2014 deploy anywhere, swap anything \ud83e\udd80 \u00b7 GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Plan and track work Code Review Manage code changes APPLICATION SECURITY GitHub Advanced Security Find and fix vulnerabilities Code security Secure your code as you build Secret protection Stop leaks before they start EXPLORE Why GitHub Documentation Blog Changelog Marketplace View all features Solutions BY COMPANY SIZE Enterprises Small and medium teams Startups Nonprofits BY USE CASE App Modernization DevSecOps DevOps CI/CD View all use cases BY INDUSTRY Healthcare Financial services Manufacturing Government View all industries View all solutions Resources EXPLORE BY TOPIC AI Software Development DevOps Security View all topics EXPLORE BY TYPE Customer stories Events &amp; webinars Ebooks &amp; reports Business insights GitHub Skills SUPPORT &amp; SERVICES Documentation Customer support Community forum Trust center Partners View all resources Open Source COMMUNITY GitHub Sponsors Fund open source developers PROGRAMS Security Lab Maintainer Community Accelerator GitHub Stars Archive Program REPOSITORIES Topics Trending Collections Enterprise ENTERPRISE SOLUTIONS Enterprise platform AI-powered developer platform AVAILABLE ADD-ONS GitHub Advanced Security Enterprise-grade security features Copilot for Business Enterprise-grade AI features Premium Support Enterprise-grade 24/7 support Pricing Search or jump to... Search code, repositories, users, issues, pull requests... --> Search Clear Search syntax tips Provide feedback --> We read ever",
-      "summary": "Reference fetched \u2014 ready for /fctry:ref"
+      "title": "GitHub - zeroclaw-labs/zeroclaw: Autonomous AI personal assistant infrastructure",
+      "excerpt": "Cross-platform autonomous AI assistant infrastructure in Rust.",
+      "summary": "Reference fetched — ready for /fctry:ref"
     }
   }
 ]
