@@ -130,3 +130,7 @@ export type { RegistryProject } from "./projects.js";
 // Migration
 export { migrate, needsMigration } from "./migration.js";
 export type { MigrationResult, MigrationAction } from "./migration.js";
+
+// Init
+export { initAuto, detectClientLandscape, scanServerLandscape, scanSkillLandscape, importSelectedServers } from "./init.js";
+export type { InitResult, DetectedClient, ServerLandscape, SkillLandscape } from "./init.js";

@@ -538,6 +538,26 @@ program.command("doctor").option("--json", "Output structured JSON").action((opt
 	console.log(`${result.errors} errors, ${result.warnings} warnings, ${result.infos} info`);
 });
 
+// --- Init ---
+
+program.command("init").description("Guided first-run setup").option("--auto", "Non-interactive mode").action((opts) => {
+	if (opts.auto) {
+		const { initAuto } = require("../init.js") as typeof import("../init.js");
+		const result = initAuto();
+		for (const msg of result.messages) console.log(msg);
+		saveConfig(result.config);
+		console.log("\nSetup complete. Run 'ensemble sync' after changes.");
+	} else {
+		// Interactive mode — for now, fall back to auto with a notice
+		const { initAuto } = require("../init.js") as typeof import("../init.js");
+		console.log("Running in auto mode (interactive prompts coming in a future release).\n");
+		const result = initAuto();
+		for (const msg of result.messages) console.log(msg);
+		saveConfig(result.config);
+		console.log("\nSetup complete. Run 'ensemble sync' after changes.");
+	}
+});
+
 // --- Migration ---
 
 program.command("migrate").description("Migrate from mcpoyle to Ensemble").option("--dry-run", "Preview migration without making changes").action((opts) => {
