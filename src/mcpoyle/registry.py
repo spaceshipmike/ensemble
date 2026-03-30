@@ -30,10 +30,15 @@ class RegistryServer:
     """A server from a registry search result."""
     name: str
     description: str
-    source: str  # "official" or "glama"
+    source: str  # "official" or "glama" or "skills-catalog"
     transport: str = "stdio"  # "stdio", "sse", "http"
     popularity: int = 0
     qualified_id: str = ""  # identifier for get/install
+    # Quality signals
+    stars: int = 0
+    last_updated: str = ""  # ISO 8601
+    has_readme: bool = False
+    installs: int = 0
 
 
 @dataclass
@@ -51,6 +56,31 @@ class ServerDetail:
     registry_type: str = ""  # "npm", "pypi", "oci"
     package_identifier: str = ""
     package_args: list[str] = field(default_factory=list)
+    # Quality signals
+    stars: int = 0
+    last_updated: str = ""
+    has_readme: bool = False
+    installs: int = 0
+
+    @property
+    def security_summary(self) -> dict:
+        """Pre-install security summary: show command, env vars, risk flags."""
+        flags: list[str] = []
+        if any(ev.name.upper() in ("API_KEY", "SECRET", "TOKEN", "PASSWORD") or
+               "SECRET" in ev.name.upper() or "TOKEN" in ev.name.upper()
+               for ev in self.env_vars):
+            flags.append("requires-secrets")
+        if self.transport in ("sse", "http", "streamable-http"):
+            flags.append("network-transport")
+        if len(self.tools) > 20:
+            flags.append("many-tools")
+        return {
+            "command": self.package_identifier or "(unknown)",
+            "env_vars": [{"name": ev.name, "required": ev.required} for ev in self.env_vars],
+            "risk_flags": flags,
+            "tool_count": len(self.tools),
+            "transport": self.transport,
+        }
 
     @property
     def estimated_token_cost(self) -> int:
@@ -439,6 +469,8 @@ def _detail_to_cache(d: ServerDetail) -> dict:
         "tools": d.tools, "tools_raw_chars": d.tools_raw_chars,
         "registry_type": d.registry_type, "package_identifier": d.package_identifier,
         "package_args": d.package_args,
+        "stars": d.stars, "last_updated": d.last_updated,
+        "has_readme": d.has_readme, "installs": d.installs,
     }
 
 
@@ -451,6 +483,8 @@ def _detail_from_cache(c: dict) -> ServerDetail:
         tools=c.get("tools", []), tools_raw_chars=c.get("tools_raw_chars", 0),
         registry_type=c.get("registry_type", ""), package_identifier=c.get("package_identifier", ""),
         package_args=c.get("package_args", []),
+        stars=c.get("stars", 0), last_updated=c.get("last_updated", ""),
+        has_readme=c.get("has_readme", False), installs=c.get("installs", 0),
     )
 
 
@@ -569,3 +603,78 @@ def translate_to_server_config(detail: ServerDetail) -> dict:
     if detail.transport in ("sse", "http", "streamable-http") and detail.homepage:
         result["url"] = detail.homepage
     return result
+
+
+# ── Unified source parser ─────────────────────────────────────
+
+
+@dataclass
+class ParsedSource:
+    """Result of parsing a source string."""
+    type: str  # "registry", "npm", "pypi", "github", "url", "path"
+    identifier: str  # the resolved identifier
+    name: str = ""  # suggested name for the server/skill
+
+
+def parse_source(source: str) -> ParsedSource:
+    """Infer source type from a user-provided string.
+
+    Handles:
+      - Registry IDs: @scope/name or plain name (tries registry lookup)
+      - NPM packages: npm:package-name
+      - PyPI packages: pip:package-name or pypi:package-name
+      - GitHub repos: github:owner/repo or owner/repo (with /)
+      - URLs: http:// or https://
+      - Local paths: starts with / or ~ or .
+    """
+    source = source.strip()
+
+    # Explicit prefix protocols
+    if source.startswith("npm:"):
+        pkg = source[4:]
+        name = pkg.rsplit("/", 1)[-1]
+        return ParsedSource(type="npm", identifier=pkg, name=_clean_name(name))
+
+    if source.startswith(("pip:", "pypi:")):
+        pkg = source.split(":", 1)[1]
+        return ParsedSource(type="pypi", identifier=pkg, name=_clean_name(pkg))
+
+    if source.startswith("github:"):
+        repo = source[7:]
+        name = repo.rsplit("/", 1)[-1] if "/" in repo else repo
+        return ParsedSource(type="github", identifier=repo, name=_clean_name(name))
+
+    # URL
+    if source.startswith(("http://", "https://")):
+        name = source.rsplit("/", 1)[-1].split("?")[0].split("#")[0]
+        return ParsedSource(type="url", identifier=source, name=_clean_name(name or "server"))
+
+    # Local path
+    if source.startswith(("/", "~", ".")):
+        from pathlib import Path
+        name = Path(source).expanduser().name
+        return ParsedSource(type="path", identifier=source, name=_clean_name(name))
+
+    # @scope/name pattern — likely npm or registry
+    if source.startswith("@") and "/" in source:
+        name = source.rsplit("/", 1)[-1]
+        return ParsedSource(type="registry", identifier=source, name=_clean_name(name))
+
+    # owner/repo pattern — likely github
+    if "/" in source and not source.startswith("@"):
+        name = source.rsplit("/", 1)[-1]
+        return ParsedSource(type="github", identifier=source, name=_clean_name(name))
+
+    # Plain name — assume registry lookup
+    return ParsedSource(type="registry", identifier=source, name=_clean_name(source))
+
+
+def _clean_name(name: str) -> str:
+    """Clean a name for use as a server/skill identifier."""
+    for prefix in ("mcp-server-", "server-", "mcp-", "@"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+    for suffix in ("-mcp", "-server"):
+        if name.endswith(suffix):
+            name = name[:-len(suffix)]
+    return name or "unnamed"

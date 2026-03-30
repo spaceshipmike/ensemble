@@ -1,7 +1,7 @@
 {
   "versions": {
     "external": {
-      "current": "0.5.16",
+      "current": "0.5.17",
       "propagationTargets": [
         {
           "file": "pyproject.toml",

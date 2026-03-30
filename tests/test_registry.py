@@ -6,11 +6,13 @@ import httpx
 
 from mcpoyle.registry import (
     EnvVarSpec,
+    ParsedSource,
     RegistryServer,
     ServerDetail,
     get_glama,
     get_official,
     get_server,
+    parse_source,
     search_glama,
     search_official,
     search_registries,
@@ -240,3 +242,129 @@ def test_translate_no_package():
     config = translate_to_server_config(detail)
     assert config["command"] == ""
     assert config["args"] == []
+
+
+# ── Quality signals ────────────────────────────────────────────
+
+
+def test_registry_server_quality_signals():
+    s = RegistryServer(
+        name="test", description="desc", source="official",
+        stars=42, last_updated="2025-01-01", has_readme=True, installs=1000,
+    )
+    assert s.stars == 42
+    assert s.installs == 1000
+    assert s.has_readme is True
+
+
+def test_server_detail_quality_signals():
+    d = ServerDetail(
+        name="test", description="desc", source="official",
+        stars=10, last_updated="2025-06-15", has_readme=True, installs=500,
+    )
+    assert d.stars == 10
+    assert d.installs == 500
+
+
+# ── Security summary ───────────────────────────────────────────
+
+
+def test_security_summary_clean():
+    d = ServerDetail(name="test", description="desc", source="official")
+    sec = d.security_summary
+    assert sec["risk_flags"] == []
+    assert sec["command"] == "(unknown)"
+
+
+def test_security_summary_with_secrets():
+    d = ServerDetail(
+        name="test", description="desc", source="official",
+        env_vars=[EnvVarSpec(name="API_TOKEN", required=True)],
+        package_identifier="@test/server",
+    )
+    sec = d.security_summary
+    assert "requires-secrets" in sec["risk_flags"]
+    assert sec["command"] == "@test/server"
+
+
+def test_security_summary_network_transport():
+    d = ServerDetail(
+        name="test", description="desc", source="official",
+        transport="sse",
+    )
+    sec = d.security_summary
+    assert "network-transport" in sec["risk_flags"]
+
+
+def test_security_summary_many_tools():
+    d = ServerDetail(
+        name="test", description="desc", source="official",
+        tools=[f"tool-{i}" for i in range(25)],
+    )
+    sec = d.security_summary
+    assert "many-tools" in sec["risk_flags"]
+
+
+# ── Unified source parser ─────────────────────────────────────
+
+
+def test_parse_source_npm():
+    r = parse_source("npm:@modelcontextprotocol/server-filesystem")
+    assert r.type == "npm"
+    assert r.identifier == "@modelcontextprotocol/server-filesystem"
+    assert "filesystem" in r.name
+
+
+def test_parse_source_pypi():
+    r = parse_source("pip:mcp-server-git")
+    assert r.type == "pypi"
+    assert r.identifier == "mcp-server-git"
+
+
+def test_parse_source_github():
+    r = parse_source("github:owner/repo")
+    assert r.type == "github"
+    assert r.identifier == "owner/repo"
+
+
+def test_parse_source_github_inferred():
+    r = parse_source("owner/some-repo")
+    assert r.type == "github"
+    assert r.identifier == "owner/some-repo"
+
+
+def test_parse_source_url():
+    r = parse_source("https://example.com/mcp-server")
+    assert r.type == "url"
+
+
+def test_parse_source_path():
+    r = parse_source("/usr/local/bin/my-server")
+    assert r.type == "path"
+
+
+def test_parse_source_path_relative():
+    r = parse_source("./my-server")
+    assert r.type == "path"
+
+
+def test_parse_source_path_tilde():
+    r = parse_source("~/bin/server")
+    assert r.type == "path"
+
+
+def test_parse_source_scoped_npm():
+    r = parse_source("@scope/package-name")
+    assert r.type == "registry"
+    assert r.identifier == "@scope/package-name"
+
+
+def test_parse_source_plain_name():
+    r = parse_source("some-server")
+    assert r.type == "registry"
+    assert r.identifier == "some-server"
+
+
+def test_parse_source_name_cleaning():
+    r = parse_source("npm:mcp-server-filesystem")
+    assert r.name == "filesystem"  # cleaned prefix

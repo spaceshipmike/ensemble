@@ -1092,6 +1092,27 @@ def registry_show(server_id: str, no_cache: bool) -> None:
         else:
             click.echo(f"Token cost:  ~{cost} tokens (tool definitions)")
 
+    # Quality signals
+    quality_parts = []
+    if detail.stars:
+        quality_parts.append(f"{detail.stars} stars")
+    if detail.installs:
+        quality_parts.append(f"{detail.installs} installs")
+    if detail.has_readme:
+        quality_parts.append("has README")
+    if detail.last_updated:
+        quality_parts.append(f"updated {detail.last_updated[:10]}")
+    if quality_parts:
+        click.echo(f"Quality:     {', '.join(quality_parts)}")
+
+    # Security summary
+    sec = detail.security_summary
+    if sec["risk_flags"]:
+        flags_str = ", ".join(sec["risk_flags"])
+        click.echo(f"Security:    {click.style(flags_str, fg='yellow')}")
+    else:
+        click.echo(f"Security:    {click.style('no risk flags', fg='green')}")
+
 
 @registry_group.command("add")
 @click.argument("server_id")
