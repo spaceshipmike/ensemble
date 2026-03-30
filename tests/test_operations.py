@@ -14,12 +14,14 @@ from mcpoyle.config import (
 )
 from mcpoyle.operations import (
     AssignResult,
+    CollisionInfo,
     GroupResult,
     ImportPluginsResult,
     OpResult,
     PluginResult,
     ScopeResult,
     ServerResult,
+    SkillDependencyInfo,
     SkillResult,
     add_plugin_to_group,
     add_rule,
@@ -27,14 +29,17 @@ from mcpoyle.operations import (
     add_server_to_group,
     add_skill_to_group,
     assign_client,
+    check_skill_dependencies,
     create_group,
     delete_group,
+    detect_collisions,
     disable_plugin,
     disable_server,
     disable_skill,
     enable_plugin,
     enable_server,
     enable_skill,
+    export_group_as_plugin,
     import_plugins,
     install_plugin,
     install_skill,
@@ -471,3 +476,123 @@ def test_pin_track_not_found():
     cfg = McpoyleConfig()
     assert not pin_item(cfg, "missing").ok
     assert not track_item(cfg, "missing").ok
+
+
+# ── Collision detection ────────────────────────────────────────
+
+
+def test_detect_collisions_found():
+    from mcpoyle.config import ProjectAssignment
+    cfg = McpoyleConfig(
+        servers=[Server(name="ctx", command="cmd")],
+        groups=[
+            Group(name="global", servers=["ctx"]),
+            Group(name="proj", servers=["ctx"]),
+        ],
+        clients=[ClientAssignment(
+            id="claude-code", group="global",
+            projects=[ProjectAssignment(path="/tmp/proj", group="proj")],
+        )],
+    )
+    collisions = detect_collisions(cfg)
+    assert len(collisions) == 1
+    assert collisions[0].item_name == "ctx"
+    assert collisions[0].item_type == "server"
+
+
+def test_detect_collisions_none():
+    from mcpoyle.config import ProjectAssignment
+    cfg = McpoyleConfig(
+        servers=[Server(name="s1", command="cmd"), Server(name="s2", command="cmd")],
+        groups=[
+            Group(name="global", servers=["s1"]),
+            Group(name="proj", servers=["s2"]),
+        ],
+        clients=[ClientAssignment(
+            id="claude-code", group="global",
+            projects=[ProjectAssignment(path="/tmp/proj", group="proj")],
+        )],
+    )
+    collisions = detect_collisions(cfg)
+    assert len(collisions) == 0
+
+
+def test_detect_collisions_skill():
+    from mcpoyle.config import ProjectAssignment
+    cfg = McpoyleConfig(
+        skills=[Skill(name="sk1")],
+        groups=[
+            Group(name="global", skills=["sk1"]),
+            Group(name="proj", skills=["sk1"]),
+        ],
+        clients=[ClientAssignment(
+            id="claude-code", group="global",
+            projects=[ProjectAssignment(path="/tmp/proj", group="proj")],
+        )],
+    )
+    collisions = detect_collisions(cfg)
+    assert len(collisions) == 1
+    assert collisions[0].item_type == "skill"
+
+
+# ── Dependency intelligence ────────────────────────────────────
+
+
+def test_check_skill_dependencies():
+    cfg = McpoyleConfig(
+        servers=[Server(name="github-mcp", command="gh")],
+        skills=[
+            Skill(name="sk1", dependencies=["github-mcp", "missing-server"]),
+            Skill(name="sk2", dependencies=[]),
+        ],
+    )
+    results = check_skill_dependencies(cfg)
+    assert len(results) == 1  # sk2 has no deps, so not reported
+    info = results[0]
+    assert info.skill_name == "sk1"
+    assert "github-mcp" in info.satisfied
+    assert "missing-server" in info.missing
+
+
+def test_check_skill_dependencies_disabled():
+    cfg = McpoyleConfig(
+        servers=[Server(name="s1", command="cmd", enabled=False)],
+        skills=[Skill(name="sk1", dependencies=["s1"])],
+    )
+    results = check_skill_dependencies(cfg)
+    assert len(results) == 1
+    assert "s1" in results[0].disabled
+
+
+# ── Profile-as-plugin export ──────────────────────────────────
+
+
+def test_export_group_as_plugin(tmp_path, monkeypatch):
+    monkeypatch.setattr("mcpoyle.skills.SKILLS_DIR", tmp_path / "skills")
+    # Create a skill in the canonical store
+    (tmp_path / "skills" / "sk1").mkdir(parents=True)
+    (tmp_path / "skills" / "sk1" / "SKILL.md").write_text("---\nname: sk1\n---\n\nContent")
+
+    cfg = McpoyleConfig(
+        servers=[Server(name="s1", command="echo", args=["hello"])],
+        skills=[Skill(name="sk1")],
+        groups=[Group(name="dev", description="Dev tools", servers=["s1"], skills=["sk1"])],
+    )
+    output_dir = str(tmp_path / "output")
+    result = export_group_as_plugin(cfg, "dev", output_dir)
+    assert result.ok
+
+    import json
+    manifest = json.loads((tmp_path / "output" / "plugin.json").read_text())
+    assert manifest["name"] == "dev"
+    assert "s1" in manifest["servers"]
+    assert manifest["servers"]["s1"]["command"] == "echo"
+    assert "sk1" in manifest["skills"]
+    # Skill should be copied
+    assert (tmp_path / "output" / "skills" / "sk1" / "SKILL.md").exists()
+
+
+def test_export_group_not_found():
+    cfg = McpoyleConfig()
+    result = export_group_as_plugin(cfg, "missing")
+    assert not result.ok

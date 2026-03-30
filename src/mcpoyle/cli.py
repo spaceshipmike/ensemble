@@ -944,6 +944,71 @@ def scope(ctx: click.Context, name: str, project_path: str) -> None:
     _handle(ctx, result)
 
 
+# ── Collision detection ─────────────────────────────────────────
+
+
+@cli.command("collisions")
+@click.pass_context
+def collisions_cmd(ctx: click.Context) -> None:
+    """Detect scope conflicts between global and project-level assignments."""
+    from mcpoyle.operations import detect_collisions
+    cfg: McpoyleConfig = ctx.obj["config"]
+    collisions = detect_collisions(cfg)
+
+    if not collisions:
+        click.echo("No scope collisions detected.")
+        return
+
+    click.echo(f"{len(collisions)} collision(s) found:")
+    for c in collisions:
+        click.echo(f"  {c.item_type} '{c.item_name}' in both '{c.global_group}' (global) and '{c.project_group}' ({c.project_path})")
+
+
+# ── Dependencies command ────────────────────────────────────────
+
+
+@cli.command("deps")
+@click.pass_context
+def deps_cmd(ctx: click.Context) -> None:
+    """Show skill dependency status."""
+    from mcpoyle.operations import check_skill_dependencies
+    cfg: McpoyleConfig = ctx.obj["config"]
+    results = check_skill_dependencies(cfg)
+
+    if not results:
+        click.echo("No skills with dependencies.")
+        return
+
+    for dep_info in results:
+        status_parts = []
+        if dep_info.satisfied:
+            status_parts.append(click.style(f"{len(dep_info.satisfied)} ok", fg="green"))
+        if dep_info.missing:
+            status_parts.append(click.style(f"{len(dep_info.missing)} missing", fg="red"))
+        if dep_info.disabled:
+            status_parts.append(click.style(f"{len(dep_info.disabled)} disabled", fg="yellow"))
+        click.echo(f"  {dep_info.skill_name}: {', '.join(status_parts)}")
+        for d in dep_info.missing:
+            click.echo(f"    missing: {d}")
+        for d in dep_info.disabled:
+            click.echo(f"    disabled: {d}")
+
+
+# ── Group export ────────────────────────────────────────────────
+
+
+@groups_group.command("export")
+@click.argument("name")
+@click.option("--output", "output_dir", default="", help="Output directory (default: ~/.config/mcpoyle/plugins/<name>)")
+@click.option("--as-plugin", is_flag=True, default=True, help="Export as Claude Code plugin")
+@click.pass_context
+def groups_export(ctx: click.Context, name: str, output_dir: str, as_plugin: bool) -> None:
+    """Export a group as a Claude Code plugin directory."""
+    from mcpoyle.operations import export_group_as_plugin
+    result = export_group_as_plugin(ctx.obj["config"], name, output_dir)
+    _handle(ctx, result, save=False)
+
+
 # ── Sync commands ────────────────────────────────────────────────
 
 

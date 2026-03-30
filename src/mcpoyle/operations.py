@@ -798,3 +798,182 @@ def track_item(cfg: McpoyleConfig, name: str) -> OpResult:
         return OpResult(messages=[f"Tracking skill '{name}' — will check for updates."])
 
     return OpResult(ok=False, error=f"'{name}' is not a known server or skill.")
+
+
+# ── Collision detection ────────────────────────────────────────
+
+
+@dataclass
+class CollisionInfo:
+    """A scope conflict detected during sync preview."""
+    item_name: str
+    item_type: str  # "server" or "plugin" or "skill"
+    global_group: str
+    project_group: str
+    project_path: str
+
+
+def detect_collisions(cfg: McpoyleConfig, client_id: str = "claude-code") -> list[CollisionInfo]:
+    """Detect scope conflicts between global and project-level assignments.
+
+    A collision is when the same server/plugin/skill appears in both the
+    global group and a project group (redundant) or when it appears in
+    multiple project groups.
+    """
+    collisions: list[CollisionInfo] = []
+    assignment = cfg.get_client(client_id)
+    if not assignment or not assignment.group:
+        return collisions
+
+    global_group = cfg.get_group(assignment.group)
+    if not global_group:
+        return collisions
+
+    for proj in assignment.projects:
+        if not proj.group:
+            continue
+        proj_group = cfg.get_group(proj.group)
+        if not proj_group:
+            continue
+
+        # Check servers
+        for name in proj_group.servers:
+            if name in global_group.servers:
+                collisions.append(CollisionInfo(
+                    item_name=name, item_type="server",
+                    global_group=assignment.group,
+                    project_group=proj.group, project_path=proj.path,
+                ))
+
+        # Check plugins
+        for name in proj_group.plugins:
+            if name in global_group.plugins:
+                collisions.append(CollisionInfo(
+                    item_name=name, item_type="plugin",
+                    global_group=assignment.group,
+                    project_group=proj.group, project_path=proj.path,
+                ))
+
+        # Check skills
+        for name in proj_group.skills:
+            if name in global_group.skills:
+                collisions.append(CollisionInfo(
+                    item_name=name, item_type="skill",
+                    global_group=assignment.group,
+                    project_group=proj.group, project_path=proj.path,
+                ))
+
+    return collisions
+
+
+# ── Dependency intelligence ────────────────────────────────────
+
+
+@dataclass
+class SkillDependencyInfo:
+    """Dependency status for a skill."""
+    skill_name: str
+    dependencies: list[str]
+    satisfied: list[str]
+    missing: list[str]
+    disabled: list[str]
+
+
+def check_skill_dependencies(cfg: McpoyleConfig) -> list[SkillDependencyInfo]:
+    """Check all skills' server dependencies and report status."""
+    results: list[SkillDependencyInfo] = []
+    for skill in cfg.skills:
+        if not skill.dependencies:
+            continue
+        satisfied = []
+        missing = []
+        disabled = []
+        for dep in skill.dependencies:
+            server = cfg.get_server(dep)
+            if not server:
+                missing.append(dep)
+            elif not server.enabled:
+                disabled.append(dep)
+            else:
+                satisfied.append(dep)
+        results.append(SkillDependencyInfo(
+            skill_name=skill.name,
+            dependencies=skill.dependencies,
+            satisfied=satisfied, missing=missing, disabled=disabled,
+        ))
+    return results
+
+
+# ── Profile-as-plugin (groups export) ──────────────────────────
+
+
+def export_group_as_plugin(cfg: McpoyleConfig, group_name: str, output_dir: str = "") -> OpResult:
+    """Compile a group into a Claude Code plugin directory.
+
+    Creates a plugin directory structure that can be registered as a
+    local marketplace directory.
+    """
+    group = cfg.get_group(group_name)
+    if not group:
+        return OpResult(ok=False, error=f"Group '{group_name}' not found.")
+
+    from pathlib import Path
+    import json as _json
+
+    # Default output: ~/.config/mcpoyle/plugins/<group-name>
+    if not output_dir:
+        output_dir = str(Path.home() / ".config" / "mcpoyle" / "plugins" / group_name)
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    # Build plugin manifest
+    manifest = {
+        "name": group_name,
+        "description": group.description or f"Plugin profile generated from group '{group_name}'",
+        "servers": {},
+        "skills": [],
+    }
+
+    # Include server configs
+    for sname in group.servers:
+        server = cfg.get_server(sname)
+        if server:
+            entry: dict = {}
+            if server.command:
+                entry["command"] = server.command
+            if server.args:
+                entry["args"] = server.args
+            if server.env:
+                entry["env"] = server.env
+            manifest["servers"][sname] = entry
+
+    # Include skill names
+    manifest["skills"] = list(group.skills)
+
+    # Write manifest
+    manifest_path = out / "plugin.json"
+    manifest_path.write_text(_json.dumps(manifest, indent=2) + "\n")
+
+    # Copy skills if any
+    if group.skills:
+        skills_out = out / "skills"
+        skills_out.mkdir(exist_ok=True)
+        from mcpoyle.skills import skill_md_path
+        import shutil
+        for sname in group.skills:
+            src = skill_md_path(sname).parent
+            if src.exists():
+                dst = skills_out / sname
+                if dst.exists():
+                    shutil.rmtree(dst)
+                shutil.copytree(src, dst)
+
+    messages = [
+        f"Exported group '{group_name}' as plugin to {out}",
+        f"  {len(group.servers)} server(s), {len(group.skills)} skill(s)",
+    ]
+    if group.plugins:
+        messages.append(f"  {len(group.plugins)} plugin reference(s) (not included in export)")
+
+    return OpResult(messages=messages)
