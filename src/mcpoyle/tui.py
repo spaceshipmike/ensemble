@@ -153,10 +153,11 @@ class McpoyleApp(App):
     BINDINGS = [
         Binding("ctrl+p", "command_palette", "Command Palette"),
         Binding("1", "tab_1", "Servers & Plugins", show=False),
-        Binding("2", "tab_2", "Groups", show=False),
-        Binding("3", "tab_3", "Clients", show=False),
-        Binding("4", "tab_4", "Marketplaces", show=False),
-        Binding("5", "tab_5", "Projects", show=False),
+        Binding("2", "tab_2", "Skills", show=False),
+        Binding("3", "tab_3", "Groups", show=False),
+        Binding("4", "tab_4", "Clients", show=False),
+        Binding("5", "tab_5", "Marketplaces", show=False),
+        Binding("6", "tab_6", "Projects", show=False),
         Binding("s", "sync_all", "Sync All"),
         Binding("r", "refresh", "Refresh"),
         Binding("e", "toggle_enable", "Enable/Disable"),
@@ -170,7 +171,7 @@ class McpoyleApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with TabbedContent("Servers & Plugins", "Groups", "Clients", "Marketplaces", "Projects"):
+        with TabbedContent("Servers & Plugins", "Skills", "Groups", "Clients", "Marketplaces", "Projects"):
             with TabPane("Servers & Plugins", id="tab-servers-plugins"):
                 with Vertical(id="servers-section"):
                     yield Label("Servers", classes="section-label")
@@ -178,6 +179,8 @@ class McpoyleApp(App):
                 with Vertical(id="plugins-section"):
                     yield Label("Plugins", classes="section-label")
                     yield DataTable(id="plugins-table")
+            with TabPane("Skills", id="tab-skills"):
+                yield DataTable(id="skills-table")
             with TabPane("Groups", id="tab-groups"):
                 yield DataTable(id="groups-table")
             with TabPane("Clients", id="tab-clients"):
@@ -201,8 +204,12 @@ class McpoyleApp(App):
         plugins.add_columns("Name", "Status", "Marketplace", "Managed")
         plugins.cursor_type = "row"
 
+        skills = self.query_one("#skills-table", DataTable)
+        skills.add_columns("Name", "Status", "Dependencies", "Trust", "Tags")
+        skills.cursor_type = "row"
+
         groups = self.query_one("#groups-table", DataTable)
-        groups.add_columns("Name", "Servers", "Plugins", "Description")
+        groups.add_columns("Name", "Servers", "Plugins", "Skills", "Description")
         groups.cursor_type = "row"
 
         clients = self.query_one("#clients-table", DataTable)
@@ -220,6 +227,7 @@ class McpoyleApp(App):
     def _populate_all(self) -> None:
         self._populate_servers()
         self._populate_plugins()
+        self._populate_skills()
         self._populate_groups()
         self._populate_clients()
         self._populate_marketplaces()
@@ -242,6 +250,20 @@ class McpoyleApp(App):
             managed = "yes" if p.managed else "no"
             table.add_row(p.name, status, p.marketplace, managed, key=p.name)
 
+    def _populate_skills(self) -> None:
+        table = self.query_one("#skills-table", DataTable)
+        table.clear()
+        for s in self.cfg.skills:
+            status = "ON" if s.enabled else "OFF"
+            deps = ", ".join(s.dependencies) if s.dependencies else "—"
+            # Check dependency status
+            dep_ok = all(self.cfg.get_server(d) is not None for d in s.dependencies) if s.dependencies else True
+            trust = "—"
+            tags = ", ".join(s.tags) if s.tags else "—"
+            if not dep_ok:
+                deps += " (!)"
+            table.add_row(s.name, status, deps, trust, tags, key=s.name)
+
     def _populate_groups(self) -> None:
         table = self.query_one("#groups-table", DataTable)
         table.clear()
@@ -250,6 +272,7 @@ class McpoyleApp(App):
                 g.name,
                 str(len(g.servers)),
                 str(len(g.plugins)),
+                str(len(g.skills)),
                 g.description or "—",
                 key=g.name,
             )
@@ -334,6 +357,8 @@ class McpoyleApp(App):
             return "server"
         if "plugins" in table_id:
             return "plugin"
+        if "skills" in table_id:
+            return "skill"
         if "marketplaces" in table_id:
             return "marketplace"
         if "groups" in table_id:
@@ -352,15 +377,18 @@ class McpoyleApp(App):
         self._switch_tab("tab-servers-plugins")
 
     def action_tab_2(self) -> None:
-        self._switch_tab("tab-groups")
+        self._switch_tab("tab-skills")
 
     def action_tab_3(self) -> None:
-        self._switch_tab("tab-clients")
+        self._switch_tab("tab-groups")
 
     def action_tab_4(self) -> None:
-        self._switch_tab("tab-marketplaces")
+        self._switch_tab("tab-clients")
 
     def action_tab_5(self) -> None:
+        self._switch_tab("tab-marketplaces")
+
+    def action_tab_6(self) -> None:
         self._switch_tab("tab-projects")
 
     # ── Actions ─────────────────────────────────────────────────
@@ -402,6 +430,18 @@ class McpoyleApp(App):
                     self.notify(result.messages[0] if result.messages else "Done")
                 else:
                     self.notify(result.error, severity="error")
+        elif panel_type == "skill":
+            skill = self.cfg.get_skill(key)
+            if skill:
+                if skill.enabled:
+                    result = ops.disable_skill(self.cfg, key)
+                else:
+                    result = ops.enable_skill(self.cfg, key)
+                if result.ok:
+                    self._save_and_refresh()
+                    self.notify(result.messages[0] if result.messages else "Done")
+                else:
+                    self.notify(result.error, severity="error")
 
     def action_remove_item(self) -> None:
         table = self._get_focused_table()
@@ -416,6 +456,8 @@ class McpoyleApp(App):
             result = ops.remove_server(self.cfg, key)
         elif panel_type == "plugin":
             result = ops.uninstall_plugin(self.cfg, key)
+        elif panel_type == "skill":
+            result = ops.uninstall_skill(self.cfg, key)
         elif panel_type == "marketplace":
             result = ops.remove_marketplace(self.cfg, key)
         else:
@@ -493,8 +535,10 @@ class McpoyleApp(App):
             result = ops.add_server_to_group(self.cfg, group_name, key)
         elif panel_type == "plugin":
             result = ops.add_plugin_to_group(self.cfg, group_name, key)
+        elif panel_type == "skill":
+            result = ops.add_skill_to_group(self.cfg, group_name, key)
         else:
-            self.notify("Select a server or plugin first", severity="warning")
+            self.notify("Select a server, plugin, or skill first", severity="warning")
             return
 
         if result.ok:

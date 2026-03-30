@@ -10,6 +10,7 @@ from mcpoyle.config import (
     McpoyleConfig,
     Plugin,
     Server,
+    Skill,
 )
 
 
@@ -22,11 +23,15 @@ def _make_test_config() -> McpoyleConfig:
         plugins=[
             Plugin(name="clangd-lsp", marketplace="claude-plugins-official", enabled=True),
         ],
+        skills=[
+            Skill(name="git-workflow", enabled=True, description="Git practices", tags=["git"]),
+            Skill(name="testing", enabled=False, description="Testing guide", dependencies=["ctx"]),
+        ],
         marketplaces=[
             Marketplace(name="my-plugins", source=MarketplaceSource(source="directory", path="/tmp/mkt")),
         ],
         groups=[
-            Group(name="dev-tools", description="Dev servers", servers=["ctx"], plugins=["clangd-lsp"]),
+            Group(name="dev-tools", description="Dev servers", servers=["ctx"], plugins=["clangd-lsp"], skills=["git-workflow"]),
         ],
     )
 
@@ -50,15 +55,19 @@ async def test_tui_launches_and_shows_dashboard(mock_load):
         plugins_table = app.query_one("#plugins-table", DataTable)
         assert plugins_table.row_count == 1
 
-        # Tab 2: Groups
+        # Tab 2: Skills
+        skills_table = app.query_one("#skills-table", DataTable)
+        assert skills_table.row_count == 2
+
+        # Tab 3: Groups
         groups_table = app.query_one("#groups-table", DataTable)
         assert groups_table.row_count == 1
 
-        # Tab 3: Clients
+        # Tab 4: Clients
         clients_table = app.query_one("#clients-table", DataTable)
         assert clients_table.row_count > 0
 
-        # Tab 4: Marketplaces
+        # Tab 5: Marketplaces
         mkts_table = app.query_one("#marketplaces-table", DataTable)
         assert mkts_table.row_count == 1
 
