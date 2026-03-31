@@ -1,68 +1,88 @@
 {
-  "currentCommand": "execute",
+  "currentCommand": "review",
+  "completedSteps": [],
   "workflowStep": null,
-  "completedSteps": ["executor-build"],
-  "specVersion": "0.15.0",
-  "upgradeApplied": {
-    "from": "0.78.7",
-    "to": "0.78.10"
+  "scenarioScore": {
+    "satisfied": 50,
+    "total": 61
   },
-  "agentOutputs": {
-    "spec-writer": {
-      "summary": "Incorporated 16 patterns from 8 external skill management references into spec 0.15.0."
-    },
-    "state-owner": {
-      "briefingDigest": "Full review scan of spec 0.15.0 vs codebase v0.5.8."
-    }
+  "specVersion": "1.0.0",
+  "projectClassification": "existing-has-code",
+  "readinessSummary": {
+    "built": 10,
+    "draft": 3,
+    "aligned": 0,
+    "total": 13
   },
   "sectionReadiness": {
-    "core-concepts": "aligned",
-    "problem": "aligned",
-    "solution": "aligned",
-    "cli-surface": "aligned",
-    "tui-surface": "aligned",
-    "config": "aligned",
-    "path-rules": "aligned",
-    "skills-management": "aligned",
-    "project-registry": "aligned",
-    "plugins": "aligned",
-    "marketplaces": "aligned",
-    "sync": "aligned",
-    "init": "aligned",
-    "doctor": "aligned",
-    "registry": "aligned",
-    "search": "aligned",
-    "supported-clients": "aligned",
-    "tech-stack": "aligned",
-    "non-goals": "aligned",
-    "architecture": "aligned",
-    "design-principles": "aligned",
-    "future": "aligned"
-  },
-  "buildRun": {
-    "runId": "run-1743350400000",
-    "status": "completed",
-    "startedAt": "2026-03-30T12:00:00Z",
-    "completedAt": "2026-03-30T13:00:00Z",
-    "plan": {
-      "totalChunks": 11,
-      "priorities": ["reliability-first"],
-      "prioritySource": "project",
-      "specVersion": "0.15.0"
+    "config": {
+      "readiness": "built",
+      "notes": "Zod schemas, loadConfig/saveConfig with file locking, createConfig, query helpers, resolution helpers. 176 lines. 22 tests pass."
     },
-    "chunks": [
-      {"id": 1, "name": "Skill Data Model + Config Storage", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 2, "name": "Canonical Store + SKILL.MD I/O", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 3, "name": "Client Skills Directory Mapping + Symlink Sync", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 4, "name": "Skills CLI Commands", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 5, "name": "Trust Tiers + Provenance Modes", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 6, "name": "Skills Tab in TUI", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 7, "name": "Init Flow — Skills Import + Meta-Skill", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 8, "name": "Doctor — Structured Scoring + Skills Health", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 9, "name": "Registry — Catalog, Quality Signals, Security Summary, Unified Parser", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 10, "name": "Advanced — Collision Detection, Dependencies, Profile-as-Plugin", "status": "completed", "retryCount": 0, "maxRetries": 3},
-      {"id": 11, "name": "Search + Docs Update", "status": "completed", "retryCount": 0, "maxRetries": 3}
-    ],
-    "lastCheckpoint": "2026-03-30T13:00:00Z"
+    "operations": {
+      "readiness": "built",
+      "notes": "Pure functions for all mutations — servers, groups, plugins, marketplaces, skills, rules, assignments, collisions, deps. 908 lines. 36 tests pass."
+    },
+    "clients": {
+      "readiness": "built",
+      "notes": "17 client definitions, detection, config read/write, TOML writer, server entry conversion, CC settings helpers, import helpers. 558 lines. 14 tests pass."
+    },
+    "sync": {
+      "readiness": "built",
+      "notes": "Server sync with drift detection (SHA-256 hashes), skills symlink fan-out, sync-all, dry-run/force/adopt. 306 lines. 4 tests pass."
+    },
+    "skills": {
+      "readiness": "built",
+      "notes": "SKILL.md frontmatter parser, canonical store CRUD, skill<->frontmatter conversion. 160 lines. 9 tests pass."
+    },
+    "search": {
+      "readiness": "built",
+      "notes": "BM25-style search over servers (name, tools) and skills (name, tags, description). Ranked results. 160 lines. 9 tests pass."
+    },
+    "registry": {
+      "readiness": "built",
+      "notes": "Registry adapter framework, Official + Glama backends, TTL caching, security summary, token cost estimation, install resolution. 390 lines. 7 tests pass."
+    },
+    "doctor": {
+      "readiness": "built",
+      "notes": "8 check types across 5 categories (existence, freshness, grounding, parity, skills-health). Structured scoring. 284 lines. 5 tests pass."
+    },
+    "projects": {
+      "readiness": "built",
+      "notes": "Project registry reader via better-sqlite3 (optional dep). Graceful fallback. 135 lines."
+    },
+    "cli": {
+      "readiness": "built",
+      "notes": "Commander.js CLI with full command surface: servers, groups, clients, assign, sync, plugins, marketplaces, skills, rules, pin/track, collisions, deps, search, registry, doctor, projects. 554 lines. 7 integration tests pass."
+    },
+    "init": {
+      "readiness": "draft",
+      "notes": "Guided onboarding flow. Not yet built. No scenarios defined."
+    },
+    "migration": {
+      "readiness": "draft",
+      "notes": "mcpoyle -> Ensemble migration. Not yet built. No scenarios defined."
+    },
+    "profile-as-plugin": {
+      "readiness": "draft",
+      "notes": "groups export --as-plugin. Not yet built. No scenarios defined."
+    }
+  },
+  "agentOutputs": {
+    "state-owner": {
+      "briefingDigest": "Post-build scan. 50/51 scenarios satisfied. 133 tests pass (10 test files). 10 sections built, 3 remain draft. Only gap: scenario 13 (forward-compat field preservation) — Zod strips unknown fields, needs .passthrough() on EnsembleConfigSchema.",
+      "relevanceManifest": {
+        "tsSource": "src/ (11 modules + CLI, ~3,285 lines total)",
+        "testFiles": "tests/ (10 files, 133 tests)",
+        "specSections": 13,
+        "scenarioFeatures": 13,
+        "unsatisfiedScenarios": 1,
+        "draftSections": 3
+      }
+    }
+  },
+  "upgradeApplied": {
+    "from": "0.78.10",
+    "to": "0.78.14"
   }
 }

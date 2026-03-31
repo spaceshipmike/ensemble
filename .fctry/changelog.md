@@ -1,3 +1,32 @@
+## 2026-03-30T18:00:00Z — /fctry:evolve (TypeScript rewrite — mcpoyle → Ensemble)
+
+- Frontmatter: version 0.15.0 → 1.0.0, synopsis rewritten for library-first TypeScript identity [structural]
+- `#philosophy`: Rewritten for library-first identity — pure functions, app integration, CLI as thin wrapper [modified]
+- `#solution`: Updated for TypeScript library + CLI architecture, Chorus integration [modified]
+- `#library-api`: New section — package exports, config loading pattern, operations as pure functions, Zod schema exports, client resolution API, registry API, integration guidance for app consumers [added]
+- `#cli-surface`: Renamed all commands mcpoyle → ensemble, added `ens` alias, noted Commander.js [modified]
+- `#tui-surface`: Removed entirely — Chorus is the GUI layer [removed]
+- `#config`: Config path ~/.config/mcpoyle/ → ~/.config/ensemble/, skills/cache paths updated [modified]
+- `#config` / Migration from mcpoyle: New subsection — automatic migration of config, skills store, cache, client markers, meta-skill [added]
+- `#skills-management`: Renamed mcpoyle → Ensemble throughout, updated meta-skill to ensemble-usage [modified]
+- `#project-registry`: Updated for better-sqlite3, removed TUI projects tab reference [modified]
+- `#plugins`: Renamed mcpoyle → Ensemble throughout [modified]
+- `#marketplaces`: Renamed mcpoyle → Ensemble throughout [modified]
+- `#sync`: Renamed mcpoyle → Ensemble throughout, updated marker to __ensemble [modified]
+- `#init`: Renamed mcpoyle → Ensemble, updated meta-skill name, removed TUI reference from setup complete message [modified]
+- `#doctor`: Renamed mcpoyle → Ensemble, updated marker to __ensemble [modified]
+- `#registry`: Renamed mcpoyle → Ensemble throughout [modified]
+- `#tech-stack`: Python/click/Textual/httpx/hatch → TypeScript/Commander.js/Zod/Vitest/Biome/tsup/npm + new deps [modified]
+- `#non-goals`: Added GUI/TUI non-goal (Chorus handles UI), added live MCP connections non-goal [modified]
+- `#architecture`: Restructured for TS modules, library-first layout, removed tui.py, added index.ts public API surface [modified]
+- `#design-principles`: Added library-first principle, updated marker __mcpoyle → __ensemble, backup .mcpoyle-backup → .ensemble-backup [modified]
+- `#validated-designs`: Renamed mcpoyle → Ensemble [modified]
+- `#references`: No changes [unchanged]
+- `#future`: Renamed mcpoyle → Ensemble [modified]
+- `#changelog`: Added 1.0.0 entry for TypeScript rewrite [modified]
+- `.fctry/config.json`: spec version 0.15.0 → 1.0.0, external propagation targets updated for package.json [structural]
+(18 modified, 2 added, 1 removed)
+
 ## 2026-03-30T00:00:00Z — /fctry:ref (skills management research incorporation)
 
 <!-- research-trace
