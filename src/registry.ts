@@ -259,23 +259,45 @@ export const glamaAdapter: RegistryAdapter = {
 		}
 
 		try {
-			const url = `${GLAMA_BASE}/servers?${new URLSearchParams({ search: query, limit: String(limit) })}`;
+			const url = `${GLAMA_BASE}/servers?${new URLSearchParams({ query, first: String(limit) })}`;
 			const resp = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
 			if (!resp.ok) return [];
-			const data = await resp.json();
-			const servers = (Array.isArray(data) ? data : (data as Record<string, unknown>)["servers"] ?? []) as Record<string, unknown>[];
+			const data = await resp.json() as Record<string, unknown>;
 
-			const results: RegistryServer[] = servers.map((s) => ({
-				name: (s["name"] as string) || "",
-				description: ((s["description"] as string) || "").slice(0, 120),
-				source: "glama" as const,
-				transport: (s["transport"] as string) || "stdio",
-				qualifiedId: (s["slug"] as string) || (s["name"] as string) || "",
-				stars: (s["stars"] as number) || 0,
-				lastUpdated: (s["updatedAt"] as string) || "",
-				hasReadme: !!s["readmeUrl"],
-				installs: 0,
-			}));
+			// Glama uses GraphQL-style edges/nodes structure
+			let serversRaw: Record<string, unknown>[] = [];
+			if (data["data"]) {
+				const edges = ((data["data"] as Record<string, unknown>)["servers"] as Record<string, unknown>)?.["edges"] as Record<string, unknown>[] ?? [];
+				serversRaw = edges.map((e) => (e["node"] as Record<string, unknown>) ?? e);
+			} else if (data["servers"]) {
+				serversRaw = data["servers"] as Record<string, unknown>[];
+			} else if (data["edges"]) {
+				serversRaw = (data["edges"] as Record<string, unknown>[]).map((e) => (e["node"] as Record<string, unknown>) ?? e);
+			} else if (Array.isArray(data)) {
+				serversRaw = data as Record<string, unknown>[];
+			}
+
+			const results: RegistryServer[] = serversRaw.map((s) => {
+				const name = (s["name"] as string) || (s["slug"] as string) || "";
+				const namespace = (s["namespace"] as string) || "";
+				const qualified = namespace ? `${namespace}/${name}` : name;
+				let transport = "stdio";
+				const attrs = s["attributes"] as string[] | undefined;
+				if (Array.isArray(attrs) && attrs.some((a) => typeof a === "string" && a.toLowerCase().includes("remote"))) {
+					transport = "http";
+				}
+				return {
+					name: qualified || name,
+					description: ((s["description"] as string) || "").slice(0, 120),
+					source: "glama" as const,
+					transport,
+					qualifiedId: qualified || name,
+					stars: 0,
+					lastUpdated: "",
+					hasReadme: false,
+					installs: 0,
+				};
+			});
 
 			if (useCache && results.length > 0) writeCache(key, results);
 			return results;
@@ -297,25 +319,55 @@ export const glamaAdapter: RegistryAdapter = {
 			if (!resp.ok) return null;
 			const s = (await resp.json()) as Record<string, unknown>;
 
+			const name = (s["name"] as string) || (s["slug"] as string) || "";
+			const namespace = (s["namespace"] as string) || "";
+			const qualified = namespace ? `${namespace}/${name}` : name;
+
+			// Parse environmentVariablesJsonSchema (JSON Schema format)
+			const envVars: EnvVarSpec[] = [];
+			const envSchema = s["environmentVariablesJsonSchema"] as Record<string, unknown> | undefined;
+			if (envSchema && typeof envSchema === "object") {
+				const props = (envSchema["properties"] ?? {}) as Record<string, Record<string, unknown>>;
+				const requiredKeys = (envSchema["required"] ?? []) as string[];
+				for (const [key, val] of Object.entries(props)) {
+					envVars.push({
+						name: key,
+						description: (val["description"] as string) || "",
+						required: requiredKeys.includes(key),
+					});
+				}
+			}
+
+			// Parse tools with raw char counting
+			const tools: string[] = [];
+			let toolsRawChars = 0;
+			for (const tool of (s["tools"] as Record<string, unknown>[]) ?? []) {
+				if (typeof tool === "object" && tool !== null) {
+					tools.push((tool["name"] as string) || "");
+					toolsRawChars += JSON.stringify(tool).length;
+				}
+			}
+
+			const homepage = (s["url"] as string) ||
+				(typeof s["repository"] === "object" && s["repository"] !== null
+					? ((s["repository"] as Record<string, string>)["url"] || "")
+					: "");
+
 			const detail: ServerDetail = {
-				name: (s["name"] as string) || "",
+				name: qualified,
 				description: (s["description"] as string) || "",
 				source: "glama",
-				transport: (s["transport"] as string) || "stdio",
-				homepage: (s["repositoryUrl"] as string) || "",
-				envVars: ((s["environmentVariables"] as Record<string, unknown>[]) || []).map((ev) => ({
-					name: (ev["name"] as string) || "",
-					description: (ev["description"] as string) || "",
-					required: ev["required"] === true,
-				})),
-				tools: ((s["tools"] as Record<string, unknown>[]) || []).map((t) => (t["name"] as string) || ""),
-				toolsRawChars: 0,
-				registryType: (s["registryType"] as string) || "",
-				packageIdentifier: (s["packageName"] as string) || "",
+				transport: "stdio",
+				homepage,
+				envVars,
+				tools,
+				toolsRawChars,
+				registryType: "",
+				packageIdentifier: "",
 				packageArgs: [],
-				stars: (s["stars"] as number) || 0,
-				lastUpdated: (s["updatedAt"] as string) || "",
-				hasReadme: !!s["readmeUrl"],
+				stars: 0,
+				lastUpdated: "",
+				hasReadme: false,
 				installs: 0,
 			};
 

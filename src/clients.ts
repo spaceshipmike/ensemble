@@ -452,6 +452,27 @@ export function getExtraMarketplaces(settings: Record<string, unknown>): Record<
 	return (settings["extraKnownMarketplaces"] ?? {}) as Record<string, unknown>;
 }
 
+// --- Orphan detection ---
+
+/** Check if a server name exists as a managed entry in any client config (for diagnostic messages). */
+export function findOrphanedInClients(name: string): string[] {
+	const foundIn: string[] = [];
+	for (const client of Object.values(CLIENTS)) {
+		for (const path of resolvedPaths(client)) {
+			try {
+				const config = readClientConfig(path);
+				const managed = getManagedServers(config, client.serversKey);
+				if (name in managed) {
+					foundIn.push(`${client.name} (${path})`);
+				}
+			} catch {
+				continue;
+			}
+		}
+	}
+	return foundIn;
+}
+
 // --- Project settings helpers ---
 
 export function readProjectSettings(projectPath: string, local = false): Record<string, unknown> {

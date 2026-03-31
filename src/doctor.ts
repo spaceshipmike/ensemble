@@ -29,6 +29,11 @@ export interface DoctorCheck {
 	fix?: { command: string; description: string };
 }
 
+export interface CategoryScore {
+	earned: number;
+	max: number;
+}
+
 export interface DoctorResult {
 	checks: DoctorCheck[];
 	totalPoints: number;
@@ -37,6 +42,11 @@ export interface DoctorResult {
 	errors: number;
 	warnings: number;
 	infos: number;
+	categoryScores: Record<string, CategoryScore>;
+	serverCount: number;
+	groupCount: number;
+	pluginCount: number;
+	skillCount: number;
 }
 
 // --- Check implementations ---
@@ -339,24 +349,36 @@ export function runDoctor(config: EnsembleConfig): DoctorResult {
 		...checkUnresolvedDeps(config),
 	];
 
-	// Calculate baseline points (what a healthy system would score)
-	const baselinePoints =
-		config.servers.filter((s) => s.enabled).length * 10 + // env vars
-		config.servers.filter((s) => s.enabled && s.command).length * 5 + // binaries
-		config.clients.length * 5 + // stale configs
-		config.skills.length * 3; // deps
+	// Calculate scores using additive model (matching Python)
+	const totalPoints = allChecks.reduce((sum, c) => sum + c.maxPoints, 0) || 100;
+	const earnedPoints = allChecks.reduce((sum, c) => sum + c.earnedPoints, 0);
 
-	const failedPoints = allChecks.reduce((sum, c) => sum + c.maxPoints, 0);
-	const totalPoints = Math.max(baselinePoints, failedPoints) || 100;
-	const earnedPoints = totalPoints - failedPoints;
+	// Per-category breakdown
+	const categories = ["existence", "freshness", "grounding", "parity", "skills-health"] as const;
+	const categoryScores: Record<string, CategoryScore> = {};
+	for (const cat of categories) {
+		const catChecks = allChecks.filter((c) => c.category === cat);
+		const max = catChecks.reduce((sum, c) => sum + c.maxPoints, 0);
+		if (max > 0) {
+			categoryScores[cat] = {
+				earned: catChecks.reduce((sum, c) => sum + c.earnedPoints, 0),
+				max,
+			};
+		}
+	}
 
 	return {
 		checks: allChecks,
 		totalPoints,
-		earnedPoints: Math.max(0, earnedPoints),
-		scorePercent: totalPoints > 0 ? Math.round((Math.max(0, earnedPoints) / totalPoints) * 100) : 100,
+		earnedPoints,
+		scorePercent: totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 100,
 		errors: allChecks.filter((c) => c.severity === "error").length,
 		warnings: allChecks.filter((c) => c.severity === "warning").length,
 		infos: allChecks.filter((c) => c.severity === "info").length,
+		categoryScores,
+		serverCount: config.servers.length,
+		groupCount: config.groups.length,
+		pluginCount: config.plugins.length,
+		skillCount: config.skills.length,
 	};
 }

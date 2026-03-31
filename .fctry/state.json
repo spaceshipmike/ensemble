@@ -80,5 +80,9 @@
         "draftSections": 3
       }
     }
+  },
+  "upgradeApplied": {
+    "from": "0.78.10",
+    "to": "0.78.14"
   }
 }

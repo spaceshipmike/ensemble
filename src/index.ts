@@ -103,7 +103,7 @@ export {
 export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo } from "./operations.js";
 
 // Clients
-export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey } from "./clients.js";
+export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey, findOrphanedInClients } from "./clients.js";
 export type { ClientDef, ImportedServer } from "./clients.js";
 
 // Sync
@@ -120,13 +120,13 @@ export type { RegistryServer, ServerDetail, EnvVarSpec, RegistryAdapter } from "
 
 // Doctor
 export { runDoctor } from "./doctor.js";
-export type { DoctorResult, DoctorCheck } from "./doctor.js";
+export type { DoctorResult, DoctorCheck, CategoryScore } from "./doctor.js";
 
 // Skills store
 export { parseFrontmatter, formatFrontmatter, skillToFrontmatter, frontmatterToSkill, readSkillMd, writeSkillMd, deleteSkillMd, listSkillDirs, skillMdPath } from "./skills.js";
 
 // Projects
-export { listProjects, getProject, resolveProjectPath } from "./projects.js";
+export { listProjects, getProject, resolveProjectPath, isAvailable as isProjectRegistryAvailable } from "./projects.js";
 export type { RegistryProject } from "./projects.js";
 
 // Export

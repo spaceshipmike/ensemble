@@ -28,7 +28,7 @@
       "action": "suggest external minor bump"
     }
   },
-  "formatVersion": "0.78.10",
+  "formatVersion": "0.78.14",
   "modelRouting": {
     "interviewer": "claude",
     "stateOwner": "codex",

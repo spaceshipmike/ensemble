@@ -120,7 +120,21 @@ program
 	});
 
 program.command("remove <name>").description("Remove a server").action((name) => {
-	handle(() => removeServer(loadConfig(), name));
+	const config = loadConfig();
+	const { config: newConfig, result } = removeServer(config, name);
+	if (!result.ok) {
+		// Check for orphaned entries in client configs
+		const { findOrphanedInClients } = require("../clients.js") as typeof import("../clients.js");
+		const orphans = findOrphanedInClients(name);
+		if (orphans.length > 0) {
+			console.error(`Error: Server '${name}' not found in ensemble registry, but exists as orphaned entry in: ${orphans.join(", ")}. Run 'ensemble import' to adopt it.`);
+		} else {
+			console.error(`Error: ${result.error}`);
+		}
+		process.exit(1);
+	}
+	for (const msg of result.messages) console.log(msg);
+	saveConfig(newConfig);
 });
 
 program.command("enable <name>").description("Enable a server").action((name) => {
