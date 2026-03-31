@@ -922,6 +922,24 @@ export function removeRule(config: EnsembleConfig, path: string): OpReturn {
 	};
 }
 
+// --- Trust tier ---
+
+export function setTrustTier(
+	config: EnsembleConfig,
+	name: string,
+	tier: "official" | "community" | "local",
+): OpReturn<ServerResult> {
+	const server = getServer(config, name);
+	if (!server) {
+		return { config, result: { ...fail(`Server '${name}' not found.`), server: null } };
+	}
+	const updated = { ...server, origin: { ...server.origin, trust_tier: tier } };
+	return {
+		config: { ...config, servers: config.servers.map((s) => (s.name === name ? updated : s)) },
+		result: { ...ok([`Set trust tier for '${name}' to '${tier}'.`]), server: updated },
+	};
+}
+
 // --- Pin / Track ---
 
 export function pinItem(config: EnsembleConfig, name: string): OpReturn {

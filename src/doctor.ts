@@ -227,6 +227,82 @@ function checkBrokenSkillSymlinks(_config: EnsembleConfig): DoctorCheck[] {
 	return checks;
 }
 
+function checkMissingToolMetadata(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	for (const server of config.servers) {
+		if (!server.enabled) continue;
+		if (server.origin.source === "registry" && server.tools.length === 0) {
+			checks.push({
+				id: "missing-tool-metadata",
+				category: "grounding",
+				maxPoints: 3,
+				earnedPoints: 0,
+				severity: "info",
+				message: `Server '${server.name}' (from registry) has no cached tool metadata`,
+				fix: { command: `ensemble registry show ${server.name}`, description: "Refresh tool metadata" },
+			});
+		}
+	}
+	return checks;
+}
+
+function checkCrossClientParity(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	// Group clients by their assigned group
+	const groupClients = new Map<string, string[]>();
+	for (const assignment of config.clients) {
+		if (assignment.group) {
+			const existing = groupClients.get(assignment.group) ?? [];
+			existing.push(assignment.id);
+			groupClients.set(assignment.group, existing);
+		}
+	}
+	// For groups with multiple clients, check if they have different server hash sets
+	for (const [groupName, clientIds] of groupClients) {
+		if (clientIds.length < 2) continue;
+		const hashSets = clientIds.map((id) => {
+			const a = config.clients.find((c) => c.id === id);
+			return JSON.stringify(Object.keys(a?.server_hashes ?? {}).sort());
+		});
+		const unique = new Set(hashSets);
+		if (unique.size > 1) {
+			checks.push({
+				id: "cross-client-parity",
+				category: "parity",
+				maxPoints: 5,
+				earnedPoints: 0,
+				severity: "warning",
+				message: `Clients with group '${groupName}' have different effective server sets: ${clientIds.join(", ")}`,
+				fix: { command: `ensemble sync`, description: "Re-sync all clients to resolve" },
+			});
+		}
+	}
+	return checks;
+}
+
+function check1PasswordCli(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	const hasOpRefs = config.servers.some((s) =>
+		Object.values(s.env).some((v) => v.startsWith("op://"))
+	);
+	if (hasOpRefs) {
+		try {
+			const { execSync: exec } = require("node:child_process") as typeof import("node:child_process");
+			exec("which op", { stdio: "pipe" });
+		} catch {
+			checks.push({
+				id: "1password-cli-missing",
+				category: "existence",
+				maxPoints: 5,
+				earnedPoints: 0,
+				severity: "warning",
+				message: "Servers reference op:// env vars but 1Password CLI (op) not found on PATH",
+			});
+		}
+	}
+	return checks;
+}
+
 function checkUnresolvedDeps(config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
 	for (const skill of config.skills) {
@@ -251,11 +327,14 @@ function checkUnresolvedDeps(config: EnsembleConfig): DoctorCheck[] {
 export function runDoctor(config: EnsembleConfig): DoctorResult {
 	const allChecks: DoctorCheck[] = [
 		...checkMissingEnvVars(config),
+		...check1PasswordCli(config),
 		...checkUnreachableBinaries(config),
 		...checkStaleConfigs(config),
 		...checkOrphanedEntries(config),
 		...checkConfigParseErrors(),
 		...checkDrift(config),
+		...checkMissingToolMetadata(config),
+		...checkCrossClientParity(config),
 		...checkBrokenSkillSymlinks(config),
 		...checkUnresolvedDeps(config),
 	];

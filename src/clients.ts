@@ -452,6 +452,36 @@ export function getExtraMarketplaces(settings: Record<string, unknown>): Record<
 	return (settings["extraKnownMarketplaces"] ?? {}) as Record<string, unknown>;
 }
 
+// --- Project settings helpers ---
+
+export function readProjectSettings(projectPath: string, local = false): Record<string, unknown> {
+	const resolved = resolve(expandPath(projectPath));
+	const fname = local ? "settings.local.json" : "settings.json";
+	const path = join(resolved, ".claude", fname);
+	if (!existsSync(path)) return {};
+	return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+}
+
+export function writeProjectSettings(
+	projectPath: string,
+	settings: Record<string, unknown>,
+	local = false,
+): void {
+	const resolved = resolve(expandPath(projectPath));
+	const fname = local ? "settings.local.json" : "settings.json";
+	const path = join(resolved, ".claude", fname);
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");
+}
+
+export function ensureProjectEnabledPluginsKey(projectPath: string): void {
+	const settings = readProjectSettings(projectPath, false);
+	if (!("enabledPlugins" in settings)) {
+		settings["enabledPlugins"] = {};
+		writeProjectSettings(projectPath, settings, false);
+	}
+}
+
 // --- Import helpers ---
 
 export interface ImportedServer {

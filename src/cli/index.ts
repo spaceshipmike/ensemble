@@ -49,6 +49,7 @@ import {
 	detectCollisions,
 	checkSkillDependencies,
 	scopeItem,
+	setTrustTier,
 } from "../operations.js";
 import { searchAll } from "../search.js";
 import { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams } from "../registry.js";
@@ -272,23 +273,19 @@ program
 program.command("import <client>").description("Import servers from a client").action((clientId) => {
 	const clientDef = CLIENTS[clientId];
 	if (!clientDef) { console.error(`Unknown client: ${clientId}`); process.exit(1); }
-	const { expandPath, readClientConfig: readCC, importServersFromClient } = require("../clients.js") as typeof import("../clients.js");
-	let config = loadConfig();
-	const configPath = expandPath(clientDef.configPath);
-	const clientConfig = readCC(configPath);
-	const imported = importServersFromClient(clientConfig, clientDef.serversKey);
-	let count = 0;
-	for (const s of imported) {
-		if (config.servers.some((existing) => existing.name === s.name)) continue;
-		const { config: newConfig, result } = addServer(config, {
-			name: s.name, command: s.command, args: s.args, env: s.env,
-			transport: s.transport as "stdio",
-			origin: { source: "import", client: clientId, timestamp: new Date().toISOString() },
-		});
-		if (result.ok) { config = newConfig; count++; }
+	const { doImport } = require("../sync.js") as typeof import("../sync.js");
+	const config = loadConfig();
+	const { config: newConfig, result } = doImport(config, clientId);
+	const total = result.servers.length + result.projectImports.reduce((sum, p) => sum + p.servers.length, 0);
+	if (total > 0) {
+		console.log(`Imported ${result.servers.length} server(s) from ${clientDef.name}.`);
+		for (const proj of result.projectImports) {
+			console.log(`  + ${proj.servers.length} server(s) from project ${proj.path}`);
+		}
+	} else {
+		console.log("No new servers to import.");
 	}
-	console.log(count > 0 ? `Imported ${count} server(s) from ${clientDef.name}.` : "No new servers to import.");
-	saveConfig(config);
+	saveConfig(newConfig);
 });
 
 // --- Scope ---
@@ -491,6 +488,14 @@ program.command("pin <name>").description("Pin a server or skill").action((name)
 });
 program.command("track <name>").description("Track a server or skill for updates").action((name) => {
 	handle(() => trackItem(loadConfig(), name));
+});
+
+program.command("trust <name> <tier>").description("Set trust tier (official/community/local)").action((name, tier) => {
+	if (!["official", "community", "local"].includes(tier)) {
+		console.error(`Invalid tier '${tier}'. Valid: official, community, local`);
+		process.exit(1);
+	}
+	handle(() => setTrustTier(loadConfig(), name, tier as "official" | "community" | "local"));
 });
 
 // --- Collisions / Deps ---

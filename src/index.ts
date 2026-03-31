@@ -98,16 +98,17 @@ export {
 	detectCollisions,
 	checkSkillDependencies,
 	scopeItem,
+	setTrustTier,
 } from "./operations.js";
 export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo } from "./operations.js";
 
 // Clients
-export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry } from "./clients.js";
-export type { ClientDef } from "./clients.js";
+export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey } from "./clients.js";
+export type { ClientDef, ImportedServer } from "./clients.js";
 
 // Sync
-export { syncClient, syncSkills, syncAllClients, computeContextCost } from "./sync.js";
-export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, ContextCostSummary } from "./sync.js";
+export { syncClient, syncSkills, syncAllClients, computeContextCost, doImport } from "./sync.js";
+export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, ContextCostSummary, ImportResult } from "./sync.js";
 
 // Search
 export { searchAll, searchServers, searchSkills } from "./search.js";
