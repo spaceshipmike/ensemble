@@ -108,7 +108,7 @@ export type { ClientDef, ImportedServer } from "./clients.js";
 
 // Sync
 export { syncClient, syncSkills, syncAllClients, computeContextCost, doImport } from "./sync.js";
-export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, ContextCostSummary, ImportResult } from "./sync.js";
+export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, ImportResult } from "./sync.js";
 
 // Search
 export { searchAll, searchServers, searchSkills } from "./search.js";

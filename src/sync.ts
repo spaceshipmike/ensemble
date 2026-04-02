@@ -5,6 +5,7 @@
  * Drift detection via SHA-256 content hashes.
  */
 
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -62,10 +63,17 @@ export interface SkillSyncAction {
 	detail?: string;
 }
 
+export interface SkillConflict {
+	type: "shadow" | "broken-symlink" | "copy-drift";
+	skillName: string;
+	detail: string;
+}
+
 export interface SkillSyncResult {
 	clientId: string;
 	actions: SkillSyncAction[];
 	messages: string[];
+	conflicts: SkillConflict[];
 }
 
 // --- Drift detection ---
@@ -652,12 +660,13 @@ export function syncSkills(
 ): SkillSyncResult {
 	const clientDef = CLIENTS[clientId];
 	if (!clientDef?.skillsDir) {
-		return { clientId, actions: [], messages: [`${clientId}: no skills directory configured`] };
+		return { clientId, actions: [], messages: [`${clientId}: no skills directory configured`], conflicts: [] };
 	}
 
 	const skillsDir = expandPath(clientDef.skillsDir);
 	const skills = resolveSkills(config, clientId);
 	const actions: SkillSyncAction[] = [];
+	const conflicts: SkillConflict[] = [];
 
 	const desiredNames = new Set(skills.map((s) => s.name));
 
@@ -688,6 +697,72 @@ export function syncSkills(
 		}
 	}
 
+	// --- Conflict detection ---
+
+	// Shadow detection: same skill name in both user-scope and project-scope dirs
+	// Check all other clients' skill dirs for the same skill names
+	for (const otherClient of Object.values(CLIENTS)) {
+		if (otherClient.id === clientId || !otherClient.skillsDir) continue;
+		const otherDir = expandPath(otherClient.skillsDir);
+		if (!existsSync(otherDir)) continue;
+		for (const name of desiredNames) {
+			const otherPath = join(otherDir, name);
+			if (existsSync(otherPath)) {
+				conflicts.push({
+					type: "shadow",
+					skillName: name,
+					detail: `Also exists in ${otherClient.name} (${otherDir})`,
+				});
+			}
+		}
+	}
+
+	// Broken symlink detection
+	if (existsSync(skillsDir)) {
+		for (const entry of readdirSync(skillsDir, { withFileTypes: false })) {
+			const fullPath = join(skillsDir, entry as unknown as string);
+			try {
+				const stat = lstatSync(fullPath);
+				if (stat.isSymbolicLink()) {
+					const linkTarget = readlinkSync(fullPath);
+					if (!existsSync(linkTarget)) {
+						conflicts.push({
+							type: "broken-symlink",
+							skillName: entry as unknown as string,
+							detail: `Symlink target missing: ${linkTarget}`,
+						});
+					}
+				}
+			} catch { /* ignore stat errors */ }
+		}
+	}
+
+	// Copy drift detection: if a skill was copied (not symlinked), compare content hash
+	if (existsSync(skillsDir)) {
+		for (const skill of skills) {
+			const target = join(skillsDir, skill.name);
+			if (!existsSync(target)) continue;
+			try {
+				const stat = lstatSync(target);
+				if (!stat.isSymbolicLink() && stat.isDirectory()) {
+					// It's a copy — check if canonical store differs
+					const canonicalDir = getSkillDir(skill.name);
+					if (existsSync(canonicalDir)) {
+						const canonHash = hashDir(canonicalDir);
+						const copyHash = hashDir(target);
+						if (canonHash !== copyHash) {
+							conflicts.push({
+								type: "copy-drift",
+								skillName: skill.name,
+								detail: "Copy differs from canonical store",
+							});
+						}
+					}
+				}
+			} catch { /* ignore */ }
+		}
+	}
+
 	const toAdd = [...desiredNames].filter((n) => !existingManaged.has(n));
 	const toRemove = [...existingManaged].filter((n) => !desiredNames.has(n));
 
@@ -704,7 +779,7 @@ export function syncSkills(
 			} catch { /* not a symlink, might be copied */ }
 		}
 		if (allCorrect) {
-			return { clientId, actions: [], messages: [`${clientDef.name} skills: already in sync`] };
+			return { clientId, actions: [], messages: [`${clientDef.name} skills: already in sync`], conflicts };
 		}
 	}
 
@@ -720,6 +795,7 @@ export function syncSkills(
 			clientId,
 			actions,
 			messages: [`${clientDef.name} skills: would sync ${desiredNames.size} skill(s)`],
+			conflicts,
 		};
 	}
 
@@ -775,7 +851,26 @@ export function syncSkills(
 		clientId,
 		actions,
 		messages: [`${clientDef.name} skills: synced ${desiredNames.size} skill(s)`],
+		conflicts,
 	};
+}
+
+/** Hash the contents of a directory for drift comparison. */
+function hashDir(dirPath: string): string {
+	const hash = createHash("sha256");
+	const entries = readdirSync(dirPath, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+	for (const entry of entries) {
+		const fullPath = join(dirPath, entry.name);
+		if (entry.name === ".ensemble-managed" || entry.name === ".mcpoyle-managed") continue;
+		if (entry.isFile()) {
+			hash.update(entry.name);
+			hash.update(readFileSync(fullPath));
+		} else if (entry.isDirectory()) {
+			hash.update(entry.name);
+			hash.update(hashDir(fullPath));
+		}
+	}
+	return hash.digest("hex");
 }
 
 function copyDirRecursive(src: string, dest: string): void {
