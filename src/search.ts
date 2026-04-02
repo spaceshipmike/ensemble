@@ -1,10 +1,11 @@
 /**
  * Local capability search — BM25-style term frequency matching over servers and skills.
  *
- * Features: query alias expansion, multi-signal quality scoring.
+ * Features: query alias expansion, multi-signal quality scoring, usage-based learning.
  */
 
 import type { EnsembleConfig, Server, Skill } from "./schemas.js";
+import { getUsageScore, type UsageData } from "./usage.js";
 
 export interface SearchResult {
 	name: string;
@@ -163,6 +164,7 @@ export function searchServers(
 	config: EnsembleConfig,
 	query: string,
 	limit = 20,
+	options?: { usageData?: UsageData },
 ): SearchResult[] {
 	const expandedQuery = expandAliases(query);
 	const queryTerms = tokenize(expandedQuery);
@@ -208,8 +210,15 @@ export function searchServers(
 			}
 			if (matchedTools.length > 0) matchedFields.push("tools");
 
-			// Blend BM25 with quality score
-			const qualityScore = computeServerQualityScore(server, config);
+			// Blend BM25 with quality score (and optionally usage score)
+			const staticQuality = computeServerQualityScore(server, config);
+			let qualityScore: number;
+			if (options?.usageData) {
+				const usageScore = getUsageScore(server.name, options.usageData);
+				qualityScore = 0.5 * staticQuality + 0.5 * usageScore;
+			} else {
+				qualityScore = staticQuality;
+			}
 			const maxBm25 = Math.max(bm25Total, 1); // normalize
 			const normalizedBm25 = bm25Total / maxBm25;
 			const finalScore = 0.6 * normalizedBm25 + 0.4 * qualityScore;
@@ -232,6 +241,7 @@ export function searchSkills(
 	config: EnsembleConfig,
 	query: string,
 	limit = 20,
+	options?: { usageData?: UsageData },
 ): SearchResult[] {
 	const expandedQuery = expandAliases(query);
 	const queryTerms = tokenize(expandedQuery);
@@ -274,8 +284,15 @@ export function searchSkills(
 				matchedFields.push("description");
 			}
 
-			// Blend BM25 with quality score
-			const qualityScore = computeSkillQualityScore(skill, config);
+			// Blend BM25 with quality score (and optionally usage score)
+			const staticQuality = computeSkillQualityScore(skill, config);
+			let qualityScore: number;
+			if (options?.usageData) {
+				const usageScore = getUsageScore(skill.name, options.usageData);
+				qualityScore = 0.5 * staticQuality + 0.5 * usageScore;
+			} else {
+				qualityScore = staticQuality;
+			}
 			const maxBm25 = Math.max(bm25Total, 1);
 			const normalizedBm25 = bm25Total / maxBm25;
 			const finalScore = 0.6 * normalizedBm25 + 0.4 * qualityScore;
@@ -298,8 +315,9 @@ export function searchAll(
 	config: EnsembleConfig,
 	query: string,
 	limit = 20,
+	options?: { usageData?: UsageData },
 ): SearchResult[] {
-	const combined = [...searchServers(config, query, limit), ...searchSkills(config, query, limit)];
+	const combined = [...searchServers(config, query, limit, options), ...searchSkills(config, query, limit, options)];
 	combined.sort((a, b) => b.score - a.score);
 	return combined.slice(0, limit);
 }

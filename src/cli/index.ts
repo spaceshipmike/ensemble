@@ -609,15 +609,31 @@ program.command("deps").description("Show skill dependency status").action(() =>
 
 // --- Search ---
 
-program.command("search <query>").option("--limit <n>", "Max results", "20").action((query, opts) => {
-	const results = searchAll(loadConfig(), query, parseInt(opts.limit));
-	if (results.length === 0) { console.log("No results."); return; }
-	for (const r of results) {
-		const type = r.resultType === "server" ? "server" : "skill";
-		const tools = r.matchedTools.length > 0 ? ` (${r.matchedTools.join(", ")})` : "";
-		console.log(`${r.name} [${type}] score=${r.score.toFixed(2)} fields=[${r.matchedFields.join(",")}]${tools}`);
-	}
-});
+program.command("search <query>")
+	.option("--limit <n>", "Max results", "20")
+	.option("--no-usage", "Skip usage-based scoring")
+	.option("--reset-usage", "Clear usage data")
+	.action((query, opts) => {
+		if (opts.resetUsage) {
+			const { clearUsage: clearU } = require("../usage.js") as typeof import("../usage.js");
+			clearU();
+			console.log("Usage data cleared.");
+			return;
+		}
+		const config = loadConfig();
+		let usageData: import("../usage.js").UsageData | undefined;
+		if (opts.usage !== false && config.settings.usage_tracking) {
+			const { loadUsage: loadU } = require("../usage.js") as typeof import("../usage.js");
+			usageData = loadU();
+		}
+		const results = searchAll(config, query, parseInt(opts.limit), { usageData });
+		if (results.length === 0) { console.log("No results."); return; }
+		for (const r of results) {
+			const type = r.resultType === "server" ? "server" : "skill";
+			const tools = r.matchedTools.length > 0 ? ` (${r.matchedTools.join(", ")})` : "";
+			console.log(`${r.name} [${type}] score=${r.score.toFixed(2)} fields=[${r.matchedFields.join(",")}]${tools}`);
+		}
+	});
 
 // --- Registry ---
 

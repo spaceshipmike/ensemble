@@ -148,6 +148,10 @@ export type { MigrationResult, MigrationAction } from "./migration.js";
 export { scanSecrets, scanSkillContent } from "./secrets.js";
 export type { SecretViolation } from "./secrets.js";
 
+// Usage tracking
+export { loadUsage, saveUsage, recordUsage, getUsageScore, clearUsage } from "./usage.js";
+export type { UsageEntry, UsageData } from "./usage.js";
+
 // Init
 export { initAuto, detectClientLandscape, scanServerLandscape, scanSkillLandscape, importSelectedServers } from "./init.js";
 export type { InitResult, DetectedClient, ServerLandscape, SkillLandscape } from "./init.js";

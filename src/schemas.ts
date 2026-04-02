@@ -103,6 +103,7 @@ export const SettingsSchema = z.object({
 	adopt_unmanaged_plugins: z.boolean().default(false),
 	registry_cache_ttl: z.number().default(3600),
 	sync_cost_warning_threshold: z.number().default(50),
+	usage_tracking: z.boolean().default(false),
 });
 
 export const ProfileSchema = z.object({
