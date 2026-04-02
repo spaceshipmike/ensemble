@@ -1,88 +1,64 @@
 {
-  "currentCommand": "review",
-  "completedSteps": [],
+  "currentCommand": "execute",
+  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
   "workflowStep": null,
-  "scenarioScore": {
-    "satisfied": 50,
-    "total": 61
+  "upgradeApplied": {
+    "from": "0.78.17",
+    "to": "0.78.28"
   },
-  "specVersion": "1.0.0",
-  "projectClassification": "existing-has-code",
+  "specVersion": "1.0.3",
   "readinessSummary": {
-    "built": 10,
-    "draft": 3,
-    "aligned": 0,
-    "total": 13
+    "satisfied": 17,
+    "partial": 3,
+    "missing": 0,
+    "total": 20
   },
   "sectionReadiness": {
-    "config": {
-      "readiness": "built",
-      "notes": "Zod schemas, loadConfig/saveConfig with file locking, createConfig, query helpers, resolution helpers. 176 lines. 22 tests pass."
-    },
-    "operations": {
-      "readiness": "built",
-      "notes": "Pure functions for all mutations — servers, groups, plugins, marketplaces, skills, rules, assignments, collisions, deps. 908 lines. 36 tests pass."
-    },
-    "clients": {
-      "readiness": "built",
-      "notes": "17 client definitions, detection, config read/write, TOML writer, server entry conversion, CC settings helpers, import helpers. 558 lines. 14 tests pass."
-    },
-    "sync": {
-      "readiness": "built",
-      "notes": "Server sync with drift detection (SHA-256 hashes), skills symlink fan-out, sync-all, dry-run/force/adopt. 306 lines. 4 tests pass."
-    },
-    "skills": {
-      "readiness": "built",
-      "notes": "SKILL.md frontmatter parser, canonical store CRUD, skill<->frontmatter conversion. 160 lines. 9 tests pass."
-    },
-    "search": {
-      "readiness": "built",
-      "notes": "BM25-style search over servers (name, tools) and skills (name, tags, description). Ranked results. 160 lines. 9 tests pass."
-    },
-    "registry": {
-      "readiness": "built",
-      "notes": "Registry adapter framework, Official + Glama backends, TTL caching, security summary, token cost estimation, install resolution. 390 lines. 7 tests pass."
-    },
-    "doctor": {
-      "readiness": "built",
-      "notes": "8 check types across 5 categories (existence, freshness, grounding, parity, skills-health). Structured scoring. 284 lines. 5 tests pass."
-    },
-    "projects": {
-      "readiness": "built",
-      "notes": "Project registry reader via better-sqlite3 (optional dep). Graceful fallback. 135 lines."
-    },
-    "cli": {
-      "readiness": "built",
-      "notes": "Commander.js CLI with full command surface: servers, groups, clients, assign, sync, plugins, marketplaces, skills, rules, pin/track, collisions, deps, search, registry, doctor, projects. 554 lines. 7 integration tests pass."
-    },
-    "init": {
-      "readiness": "draft",
-      "notes": "Guided onboarding flow. Not yet built. No scenarios defined."
-    },
-    "migration": {
-      "readiness": "draft",
-      "notes": "mcpoyle -> Ensemble migration. Not yet built. No scenarios defined."
-    },
-    "profile-as-plugin": {
-      "readiness": "draft",
-      "notes": "groups export --as-plugin. Not yet built. No scenarios defined."
-    }
+    "library-api": "satisfied",
+    "schema-validation": "satisfied",
+    "config": "satisfied",
+    "server-operations": "satisfied",
+    "sync": "partial",
+    "plugins": "satisfied",
+    "marketplaces": "satisfied",
+    "groups": "satisfied",
+    "skills-management": "partial",
+    "registry": "satisfied",
+    "cli-surface": "partial",
+    "operations-layer": "satisfied",
+    "additive-sync": "satisfied",
+    "init": "satisfied",
+    "migration": "satisfied",
+    "profile-as-plugin": "satisfied",
+    "search-alias-expansion": "satisfied",
+    "search-quality-boost": "satisfied",
+    "search-self-learning": "satisfied",
+    "profiles": "satisfied",
+    "secret-scanning": "satisfied",
+    "context-cost-gating": "satisfied",
+    "skill-health-validation": "satisfied",
+    "skill-sync-conflict-detection": "satisfied"
   },
-  "agentOutputs": {
-    "state-owner": {
-      "briefingDigest": "Post-build scan. 50/51 scenarios satisfied. 133 tests pass (10 test files). 10 sections built, 3 remain draft. Only gap: scenario 13 (forward-compat field preservation) — Zod strips unknown fields, needs .passthrough() on EnsembleConfigSchema.",
-      "relevanceManifest": {
-        "tsSource": "src/ (11 modules + CLI, ~3,285 lines total)",
-        "testFiles": "tests/ (10 files, 133 tests)",
-        "specSections": 13,
-        "scenarioFeatures": 13,
-        "unsatisfiedScenarios": 1,
-        "draftSections": 3
-      }
-    }
+  "buildRun": {
+    "status": "completed",
+    "startedAt": "2026-04-02T12:00:00.000Z",
+    "completedAt": "2026-04-03T00:04:00.000Z",
+    "lastCheckpoint": "2026-04-03T00:04:00.000Z",
+    "specVersionAtBuild": "1.0.3",
+    "plan": {
+      "specVersion": "1.0.3",
+      "totalChunks": 7,
+      "chunks": [
+        { "id": 1, "name": "Secret Scanning + Client Fixes", "status": "completed", "sections": ["secret-scanning"], "completedAt": "2026-03-31T23:50:00Z" },
+        { "id": 2, "name": "Skill Health Validation", "status": "completed", "sections": ["skill-health-validation"], "completedAt": "2026-03-31T23:52:00Z" },
+        { "id": 3, "name": "Skill Sync Conflict Detection", "status": "completed", "sections": ["skill-sync-conflict-detection"], "completedAt": "2026-03-31T23:54:00Z" },
+        { "id": 4, "name": "Query Alias Expansion + Quality Boost", "status": "completed", "sections": ["search-alias-expansion", "search-quality-boost"], "completedAt": "2026-03-31T23:56:00Z" },
+        { "id": 5, "name": "Context Cost Gating", "status": "completed", "sections": ["context-cost-gating"], "completedAt": "2026-03-31T23:58:00Z" },
+        { "id": 6, "name": "Profiles", "status": "completed", "sections": ["profiles"], "gate": true, "completedAt": "2026-04-03T00:01:00Z" },
+        { "id": 7, "name": "Self-Learning Search", "status": "completed", "sections": ["search-self-learning"], "completedAt": "2026-04-03T00:04:00Z" }
+      ]
+    },
+    "chunkProgress": "7/7"
   },
-  "upgradeApplied": {
-    "from": "0.78.10",
-    "to": "0.78.14"
-  }
+  "digestWritten": true
 }
