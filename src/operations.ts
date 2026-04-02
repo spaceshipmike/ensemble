@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { CLIENTS } from "./clients.js";
 import { getClient, getGroup, getMarketplace, getPlugin, getServer, getSkill } from "./config.js";
 import { expandPath } from "./clients.js";
-import type { EnsembleConfig, Group, Marketplace, MarketplaceSource, Plugin, Server, ServerOrigin, Skill, ToolInfo } from "./schemas.js";
+import type { EnsembleConfig, Group, Marketplace, MarketplaceSource, Plugin, Profile, Server, ServerOrigin, Skill, ToolInfo } from "./schemas.js";
 import { RESERVED_MARKETPLACE_NAMES } from "./schemas.js";
 
 // --- Result types ---
@@ -72,6 +72,10 @@ export interface SkillDependencyInfo {
 	satisfied: string[];
 	missing: string[];
 	disabled: string[];
+}
+
+export interface ProfileResult extends OpResult {
+	profile: Profile | null;
 }
 
 // --- Helpers ---
@@ -1042,6 +1046,102 @@ export function detectCollisions(
 	}
 
 	return collisions;
+}
+
+// --- Dependency intelligence ---
+
+// --- Profile operations ---
+
+export function saveProfile(
+	config: EnsembleConfig,
+	name: string,
+): OpReturn<ProfileResult> {
+	const profile: Profile = {
+		name,
+		clients: [...config.clients],
+		rules: [...config.rules],
+		settings: { ...config.settings },
+		createdAt: new Date().toISOString(),
+	};
+
+	const newProfiles = { ...config.profiles, [name]: profile };
+	return {
+		config: { ...config, profiles: newProfiles },
+		result: { ...ok([`Saved profile '${name}'.`]), profile },
+	};
+}
+
+export function activateProfile(
+	config: EnsembleConfig,
+	name: string,
+): OpReturn<ProfileResult> {
+	const profile = config.profiles[name];
+	if (!profile) {
+		return { config, result: { ...fail(`Profile '${name}' not found.`), profile: null } };
+	}
+
+	return {
+		config: {
+			...config,
+			clients: [...profile.clients],
+			rules: [...profile.rules],
+			settings: { ...profile.settings },
+			activeProfile: name,
+		},
+		result: { ...ok([`Activated profile '${name}'.`]), profile },
+	};
+}
+
+export function listProfiles(
+	config: EnsembleConfig,
+): OpReturn<ProfileResult> {
+	const names = Object.keys(config.profiles);
+	if (names.length === 0) {
+		return { config, result: { ...ok(["No profiles saved."]), profile: null } };
+	}
+
+	const messages = names.map((n) => {
+		const active = config.activeProfile === n ? " (active)" : "";
+		return `${n}${active}`;
+	});
+	return { config, result: { ...ok(messages), profile: null } };
+}
+
+export function showProfile(
+	config: EnsembleConfig,
+	name: string,
+): OpReturn<ProfileResult> {
+	const profile = config.profiles[name];
+	if (!profile) {
+		return { config, result: { ...fail(`Profile '${name}' not found.`), profile: null } };
+	}
+
+	const messages = [
+		`Profile: ${name}${config.activeProfile === name ? " (active)" : ""}`,
+		`Clients: ${profile.clients.length}`,
+		`Rules: ${profile.rules.length}`,
+		`Created: ${profile.createdAt}`,
+	];
+	return { config, result: { ...ok(messages), profile } };
+}
+
+export function deleteProfile(
+	config: EnsembleConfig,
+	name: string,
+): OpReturn<ProfileResult> {
+	const profile = config.profiles[name];
+	if (!profile) {
+		return { config, result: { ...fail(`Profile '${name}' not found.`), profile: null } };
+	}
+
+	const newProfiles = { ...config.profiles };
+	delete newProfiles[name];
+	const newActive = config.activeProfile === name ? null : config.activeProfile;
+
+	return {
+		config: { ...config, profiles: newProfiles, activeProfile: newActive },
+		result: { ...ok([`Deleted profile '${name}'.`]), profile },
+	};
 }
 
 // --- Dependency intelligence ---

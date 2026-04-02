@@ -105,6 +105,14 @@ export const SettingsSchema = z.object({
 	sync_cost_warning_threshold: z.number().default(50),
 });
 
+export const ProfileSchema = z.object({
+	name: z.string(),
+	clients: z.array(ClientAssignmentSchema).default([]),
+	rules: z.array(PathRuleSchema).default([]),
+	settings: SettingsSchema.default({}),
+	createdAt: z.string().default(""),
+});
+
 export const EnsembleConfigSchema = z.object({
 	servers: z.array(ServerSchema).default([]),
 	groups: z.array(GroupSchema).default([]),
@@ -114,6 +122,8 @@ export const EnsembleConfigSchema = z.object({
 	rules: z.array(PathRuleSchema).default([]),
 	skills: z.array(SkillSchema).default([]),
 	settings: SettingsSchema.default({}),
+	profiles: z.record(ProfileSchema).default({}),
+	activeProfile: z.string().nullable().default(null),
 }).passthrough();
 
 // --- Inferred types ---
@@ -130,6 +140,7 @@ export type PathRule = z.infer<typeof PathRuleSchema>;
 export type ProjectAssignment = z.infer<typeof ProjectAssignmentSchema>;
 export type ClientAssignment = z.infer<typeof ClientAssignmentSchema>;
 export type Settings = z.infer<typeof SettingsSchema>;
+export type Profile = z.infer<typeof ProfileSchema>;
 export type EnsembleConfig = z.infer<typeof EnsembleConfigSchema>;
 
 // --- Constants ---

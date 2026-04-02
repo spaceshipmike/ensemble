@@ -50,6 +50,11 @@ import {
 	checkSkillDependencies,
 	scopeItem,
 	setTrustTier,
+	saveProfile,
+	activateProfile,
+	listProfiles as listProfilesOp,
+	showProfile,
+	deleteProfile,
 } from "../operations.js";
 import { searchAll } from "../search.js";
 import { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams } from "../registry.js";
@@ -501,6 +506,53 @@ skills.command("sync [client]").option("--dry-run").action((clientId, opts) => {
 			}
 		}
 	}
+});
+
+// --- Profiles ---
+
+const profiles = program.command("profiles").description("Save and switch configuration profiles");
+
+profiles.command("save <name>").description("Save current config as a named profile").action((name) => {
+	const config = loadConfig();
+	const { config: newConfig, result } = saveProfile(config, name);
+	if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
+	for (const msg of result.messages) console.log(msg);
+	saveConfig(newConfig);
+});
+
+profiles.command("activate <name>").description("Switch to a saved profile").action((name) => {
+	const config = loadConfig();
+	const { config: newConfig, result } = activateProfile(config, name);
+	if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
+	for (const msg of result.messages) console.log(msg);
+	saveConfig(newConfig);
+	// Sync all clients after activating
+	const { config: syncedConfig, results: syncResults } = syncAllClients(newConfig);
+	for (const sr of syncResults) {
+		if (sr.hasChanges) {
+			for (const msg of sr.messages) console.log(msg);
+		}
+	}
+	saveConfig(syncedConfig);
+});
+
+profiles.command("list").description("List saved profiles").action(() => {
+	const { result } = listProfilesOp(loadConfig());
+	for (const msg of result.messages) console.log(msg);
+});
+
+profiles.command("show <name>").description("Show profile details").action((name) => {
+	const { result } = showProfile(loadConfig(), name);
+	if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
+	for (const msg of result.messages) console.log(msg);
+});
+
+profiles.command("delete <name>").description("Delete a saved profile").action((name) => {
+	const config = loadConfig();
+	const { config: newConfig, result } = deleteProfile(config, name);
+	if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
+	for (const msg of result.messages) console.log(msg);
+	saveConfig(newConfig);
 });
 
 // --- Rules ---

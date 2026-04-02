@@ -39,6 +39,7 @@ export {
 	PathRuleSchema,
 	ClientAssignmentSchema,
 	SettingsSchema,
+	ProfileSchema,
 	ServerOriginSchema,
 	ToolInfoSchema,
 	MarketplaceSourceSchema,
@@ -60,6 +61,7 @@ export type {
 	ClientAssignment,
 	ProjectAssignment,
 	Settings,
+	Profile,
 	ServerOrigin,
 	ToolInfo,
 } from "./schemas.js";
@@ -99,8 +101,13 @@ export {
 	checkSkillDependencies,
 	scopeItem,
 	setTrustTier,
+	saveProfile,
+	activateProfile,
+	listProfiles,
+	showProfile,
+	deleteProfile,
 } from "./operations.js";
-export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo } from "./operations.js";
+export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo, ProfileResult } from "./operations.js";
 
 // Clients
 export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey, findOrphanedInClients } from "./clients.js";
