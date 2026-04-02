@@ -111,7 +111,7 @@ export { syncClient, syncSkills, syncAllClients, computeContextCost, doImport } 
 export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, ImportResult } from "./sync.js";
 
 // Search
-export { searchAll, searchServers, searchSkills } from "./search.js";
+export { searchAll, searchServers, searchSkills, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
 export type { SearchResult } from "./search.js";
 
 // Registry
