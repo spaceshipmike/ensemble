@@ -888,29 +888,99 @@ function copyDirRecursive(src: string, dest: string): void {
 
 // --- Context cost awareness ---
 
+export interface GroupSplitSuggestion {
+	groupName: string;
+	serverNames: string[];
+	reason: string;
+}
+
 export interface ContextCostSummary {
 	serverCount: number;
 	toolCount: number;
 	estimatedTokens: number;
 	warningThreshold: number;
 	exceedsThreshold: boolean;
+	budgetPercent: number;
+	contextWindow: number;
+	suggestions: GroupSplitSuggestion[];
+}
+
+// Keyword categories for auto-grouping suggestions
+const TOOL_CATEGORIES: Record<string, string[]> = {
+	"data": ["database", "sql", "query", "postgres", "mysql", "sqlite", "mongo", "redis"],
+	"code": ["git", "github", "gitlab", "code", "repo", "commit", "branch"],
+	"web": ["http", "api", "rest", "graphql", "fetch", "request", "url"],
+	"file": ["file", "filesystem", "directory", "path", "read", "write"],
+	"cloud": ["aws", "gcp", "azure", "s3", "lambda", "cloud"],
+	"ai": ["llm", "embedding", "vector", "model", "inference", "openai"],
+};
+
+/**
+ * Suggest group splits when tool count is high, by keyword-categorizing servers.
+ */
+export function suggestGroupSplits(
+	_config: EnsembleConfig,
+	servers: Server[],
+): GroupSplitSuggestion[] {
+	if (servers.length < 5) return [];
+
+	const categorized = new Map<string, string[]>();
+
+	for (const server of servers) {
+		const text = [
+			server.name,
+			...server.tools.map((t) => t.name),
+			...server.tools.map((t) => t.description),
+		].join(" ").toLowerCase();
+
+		for (const [category, keywords] of Object.entries(TOOL_CATEGORIES)) {
+			if (keywords.some((kw) => text.includes(kw))) {
+				const existing = categorized.get(category) ?? [];
+				if (!existing.includes(server.name)) {
+					existing.push(server.name);
+					categorized.set(category, existing);
+				}
+			}
+		}
+	}
+
+	const suggestions: GroupSplitSuggestion[] = [];
+	for (const [category, names] of categorized) {
+		if (names.length >= 2) {
+			suggestions.push({
+				groupName: `${category}-servers`,
+				serverNames: names,
+				reason: `${names.length} servers related to ${category}`,
+			});
+		}
+	}
+
+	return suggestions;
 }
 
 export function computeContextCost(
 	config: EnsembleConfig,
 	clientId: string,
 ): ContextCostSummary {
+	const clientDef = CLIENTS[clientId];
 	const servers = resolveServers(config, clientId);
 	const toolCount = servers.reduce((sum, s) => sum + s.tools.length, 0);
 	// Estimate ~200 tokens per tool (name + description + schema)
 	const estimatedTokens = toolCount * 200;
 	const threshold = config.settings.sync_cost_warning_threshold;
+	const contextWindow = clientDef?.contextWindow ?? 128000;
+	const budgetPercent = contextWindow > 0 ? Math.round((estimatedTokens / contextWindow) * 100) : 0;
+	const suggestions = suggestGroupSplits(config, servers);
+
 	return {
 		serverCount: servers.length,
 		toolCount,
 		estimatedTokens,
 		warningThreshold: threshold,
 		exceedsThreshold: toolCount > threshold,
+		budgetPercent,
+		contextWindow,
+		suggestions,
 	};
 }
 

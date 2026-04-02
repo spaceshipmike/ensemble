@@ -53,7 +53,7 @@ import {
 } from "../operations.js";
 import { searchAll } from "../search.js";
 import { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams } from "../registry.js";
-import { syncClient, syncAllClients, syncSkills } from "../sync.js";
+import { syncClient, syncAllClients, syncSkills, computeContextCost } from "../sync.js";
 import { runDoctor } from "../doctor.js";
 import { listProjects } from "../projects.js";
 import { qualifiedPluginName } from "../schemas.js";
@@ -262,8 +262,31 @@ program
 	.option("--force", "Overwrite manually-edited entries")
 	.option("--adopt", "Accept manual edits into ensemble's registry")
 	.option("--project <path>", "Sync a specific project (Claude Code only)")
+	.option("--budget", "Show context budget visualization")
 	.action((clientId, opts) => {
 		let config = loadConfig();
+
+		if (opts.budget) {
+			const targetClients = clientId ? [clientId] : Object.keys(CLIENTS);
+			for (const cid of targetClients) {
+				const cost = computeContextCost(config, cid);
+				if (cost.toolCount === 0 && !clientId) continue;
+				const bar = "█".repeat(Math.min(Math.round(cost.budgetPercent / 5), 20));
+				const empty = "░".repeat(20 - Math.min(Math.round(cost.budgetPercent / 5), 20));
+				const clientDef = CLIENTS[cid];
+				console.log(`${clientDef?.name ?? cid}:`);
+				console.log(`  [${bar}${empty}] ${cost.budgetPercent}% of ${(cost.contextWindow / 1000).toFixed(0)}k context`);
+				console.log(`  ${cost.serverCount} servers, ${cost.toolCount} tools, ~${cost.estimatedTokens} tokens`);
+				if (cost.suggestions.length > 0) {
+					console.log("  Suggestions:");
+					for (const s of cost.suggestions) {
+						console.log(`    ${s.groupName}: ${s.serverNames.join(", ")} (${s.reason})`);
+					}
+				}
+			}
+			return;
+		}
+
 		if (clientId) {
 			const { config: newConfig, result } = syncClient(config, clientId, opts);
 			config = newConfig;

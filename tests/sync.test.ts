@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENSEMBLE_MARKER } from "../src/clients.js";
 import { createConfig } from "../src/config.js";
 import { addServer, assignClient, createGroup, addServerToGroup, installSkill } from "../src/operations.js";
-import { syncClient, syncSkills } from "../src/sync.js";
+import { syncClient, syncSkills, computeContextCost, suggestGroupSplits } from "../src/sync.js";
 
 let tmpDir: string;
 
@@ -99,5 +99,85 @@ describe("syncSkills conflict detection", () => {
 		const config = createConfig();
 		const result = syncSkills(config, "claude-code");
 		expect(result.conflicts.length).toBe(0);
+	});
+});
+
+describe("computeContextCost", () => {
+	it("returns structured summary with budget fields", () => {
+		const config = createConfig();
+		const cost = computeContextCost(config, "claude-code");
+		expect(typeof cost.budgetPercent).toBe("number");
+		expect(typeof cost.contextWindow).toBe("number");
+		expect(cost.contextWindow).toBe(200000);
+		expect(Array.isArray(cost.suggestions)).toBe(true);
+	});
+
+	it("computes budget percent based on tool count", () => {
+		let config = createConfig();
+		({ config } = addServer(config, {
+			name: "test-server",
+			command: "npx",
+			tools: Array.from({ length: 10 }, (_, i) => ({
+				name: `tool-${i}`,
+				description: `Tool ${i}`,
+			})),
+		}));
+		config = {
+			...config,
+			clients: [{ id: "claude-code", group: null, last_synced: null, projects: {}, server_hashes: {} }],
+		};
+		const cost = computeContextCost(config, "claude-code");
+		expect(cost.toolCount).toBe(10);
+		expect(cost.estimatedTokens).toBe(2000);
+		expect(cost.budgetPercent).toBe(1); // 2000/200000 = 1%
+	});
+
+	it("uses default 128000 for unknown client", () => {
+		const config = createConfig();
+		const cost = computeContextCost(config, "fake-client");
+		expect(cost.contextWindow).toBe(128000);
+	});
+});
+
+describe("suggestGroupSplits", () => {
+	it("returns empty for few servers", () => {
+		let config = createConfig();
+		({ config } = addServer(config, { name: "a", command: "npx" }));
+		const suggestions = suggestGroupSplits(config, config.servers);
+		expect(suggestions.length).toBe(0);
+	});
+
+	it("suggests groups for categorizable servers", () => {
+		let config = createConfig();
+		({ config } = addServer(config, {
+			name: "postgres-mcp",
+			command: "npx",
+			tools: [{ name: "query", description: "Run SQL query on database" }],
+		}));
+		({ config } = addServer(config, {
+			name: "mysql-mcp",
+			command: "npx",
+			tools: [{ name: "execute", description: "Execute SQL statement on database" }],
+		}));
+		({ config } = addServer(config, {
+			name: "github-mcp",
+			command: "npx",
+			tools: [{ name: "search_repos", description: "Search git repositories" }],
+		}));
+		({ config } = addServer(config, {
+			name: "gitlab-mcp",
+			command: "npx",
+			tools: [{ name: "list_repos", description: "List git repos" }],
+		}));
+		({ config } = addServer(config, {
+			name: "aws-s3",
+			command: "npx",
+			tools: [{ name: "list_buckets", description: "List S3 buckets on AWS cloud" }],
+		}));
+		const suggestions = suggestGroupSplits(config, config.servers);
+		expect(suggestions.length).toBeGreaterThan(0);
+		const dataGroup = suggestions.find((s) => s.groupName === "data-servers");
+		expect(dataGroup).toBeDefined();
+		expect(dataGroup?.serverNames.length).toBeGreaterThanOrEqual(2);
 	});
 });

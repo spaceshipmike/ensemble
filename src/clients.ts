@@ -27,6 +27,7 @@ export interface ClientDef {
 	configFormat: "json" | "toml";
 	skillsDir?: string; // unexpanded path for skills directory
 	supportsPlugins?: boolean;
+	contextWindow?: number; // max context window in tokens
 }
 
 // --- Client registry ---
@@ -44,6 +45,7 @@ const clientDefs: ClientDef[] = [
 			"~/Library/Application Support/Claude/claude_desktop_config.json",
 		],
 		configFormat: "json",
+		contextWindow: 200000,
 	},
 	{
 		id: "claude-code",
@@ -54,6 +56,7 @@ const clientDefs: ClientDef[] = [
 		configFormat: "json",
 		skillsDir: "~/.claude/skills",
 		supportsPlugins: true,
+		contextWindow: 200000,
 	},
 	{
 		id: "cursor",
@@ -63,6 +66,7 @@ const clientDefs: ClientDef[] = [
 		detectPaths: ["/Applications/Cursor.app", "~/.cursor/mcp.json"],
 		configFormat: "json",
 		skillsDir: "~/.cursor/skills",
+		contextWindow: 128000,
 	},
 	{
 		id: "vscode",

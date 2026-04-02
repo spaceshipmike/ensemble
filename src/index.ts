@@ -107,8 +107,8 @@ export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, r
 export type { ClientDef, ImportedServer } from "./clients.js";
 
 // Sync
-export { syncClient, syncSkills, syncAllClients, computeContextCost, doImport } from "./sync.js";
-export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, ImportResult } from "./sync.js";
+export { syncClient, syncSkills, syncAllClients, computeContextCost, suggestGroupSplits, doImport } from "./sync.js";
+export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, GroupSplitSuggestion, ImportResult } from "./sync.js";
 
 // Search
 export { searchAll, searchServers, searchSkills, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
