@@ -14,7 +14,8 @@ import {
 	readClientConfig,
 	resolvedPaths,
 } from "./clients.js";
-import { computeEntryHash } from "./config.js";
+import { computeEntryHash, SKILLS_DIR } from "./config.js";
+import { scanSecrets } from "./secrets.js";
 import type { EnsembleConfig } from "./schemas.js";
 
 // --- Types ---
@@ -332,6 +333,156 @@ function checkUnresolvedDeps(config: EnsembleConfig): DoctorCheck[] {
 	return checks;
 }
 
+function checkFrontmatterCompleteness(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	for (const skill of config.skills) {
+		if (!skill.name) {
+			checks.push({
+				id: "skill-frontmatter-completeness",
+				category: "skills-health",
+				maxPoints: 3,
+				earnedPoints: 0,
+				severity: "error",
+				message: `Skill missing name`,
+			});
+		}
+		if (!skill.description) {
+			checks.push({
+				id: "skill-frontmatter-completeness",
+				category: "skills-health",
+				maxPoints: 3,
+				earnedPoints: 0,
+				severity: "warning",
+				message: `Skill '${skill.name}' has no description`,
+			});
+		}
+		if (skill.tags.length === 0) {
+			checks.push({
+				id: "skill-frontmatter-completeness",
+				category: "skills-health",
+				maxPoints: 1,
+				earnedPoints: 0,
+				severity: "info",
+				message: `Skill '${skill.name}' has no tags (recommended for search)`,
+			});
+		}
+	}
+	return checks;
+}
+
+function checkDescriptionFormat(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	for (const skill of config.skills) {
+		if (!skill.description) continue;
+		if (skill.description.includes("\n")) {
+			checks.push({
+				id: "skill-description-format",
+				category: "skills-health",
+				maxPoints: 2,
+				earnedPoints: 0,
+				severity: "warning",
+				message: `Skill '${skill.name}' has multiline description (should be single line)`,
+			});
+		} else if (skill.description.length > 120) {
+			checks.push({
+				id: "skill-description-format",
+				category: "skills-health",
+				maxPoints: 2,
+				earnedPoints: 0,
+				severity: "warning",
+				message: `Skill '${skill.name}' description exceeds 120 chars (${skill.description.length})`,
+			});
+		}
+	}
+	return checks;
+}
+
+function checkBodySize(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	for (const skill of config.skills) {
+		const skillMdPath = join(SKILLS_DIR, skill.name, "SKILL.md");
+		if (!existsSync(skillMdPath)) continue;
+		try {
+			const { readFileSync } = require("node:fs") as typeof import("node:fs");
+			const content = readFileSync(skillMdPath, "utf-8");
+			const lineCount = content.split("\n").length;
+			if (lineCount > 500) {
+				checks.push({
+					id: "skill-body-size",
+					category: "skills-health",
+					maxPoints: 2,
+					earnedPoints: 0,
+					severity: "warning",
+					message: `Skill '${skill.name}' SKILL.md is ${lineCount} lines (recommended: <500)`,
+				});
+			}
+		} catch { /* file read error */ }
+	}
+	return checks;
+}
+
+function checkDirectoryNaming(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	const kebabCase = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+	for (const skill of config.skills) {
+		if (!kebabCase.test(skill.name)) {
+			checks.push({
+				id: "skill-directory-naming",
+				category: "skills-health",
+				maxPoints: 1,
+				earnedPoints: 0,
+				severity: "info",
+				message: `Skill '${skill.name}' name is not kebab-case`,
+			});
+		}
+	}
+	return checks;
+}
+
+function checkBrokenDependency(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	for (const skill of config.skills) {
+		for (const dep of skill.dependencies) {
+			const server = config.servers.find((s) => s.name === dep);
+			if (!server) {
+				// Already covered by checkUnresolvedDeps — skip to avoid duplication
+				continue;
+			}
+			if (!server.enabled) {
+				checks.push({
+					id: "skill-broken-dependency",
+					category: "skills-health",
+					maxPoints: 3,
+					earnedPoints: 0,
+					severity: "warning",
+					message: `Skill '${skill.name}' depends on disabled server '${dep}'`,
+				});
+			}
+		}
+	}
+	return checks;
+}
+
+function checkSecretInEnv(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	for (const server of config.servers) {
+		if (Object.keys(server.env).length === 0) continue;
+		const violations = scanSecrets(server.env, server.name);
+		for (const v of violations) {
+			checks.push({
+				id: "secret-in-env",
+				category: "skills-health",
+				maxPoints: 5,
+				earnedPoints: 0,
+				severity: "error",
+				message: `Server '${server.name}' env var '${v.field}' contains ${v.pattern}`,
+				fix: { command: `ensemble show ${server.name}`, description: "Replace with op:// reference" },
+			});
+		}
+	}
+	return checks;
+}
+
 // --- Main doctor function ---
 
 export function runDoctor(config: EnsembleConfig): DoctorResult {
@@ -347,6 +498,12 @@ export function runDoctor(config: EnsembleConfig): DoctorResult {
 		...checkCrossClientParity(config),
 		...checkBrokenSkillSymlinks(config),
 		...checkUnresolvedDeps(config),
+		...checkFrontmatterCompleteness(config),
+		...checkDescriptionFormat(config),
+		...checkBodySize(config),
+		...checkDirectoryNaming(config),
+		...checkBrokenDependency(config),
+		...checkSecretInEnv(config),
 	];
 
 	// Calculate scores using additive model (matching Python)

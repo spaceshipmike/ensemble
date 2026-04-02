@@ -59,4 +59,94 @@ describe("runDoctor", () => {
 		expect(staleCheck).toBeDefined();
 		expect(staleCheck?.fix?.command).toContain("ensemble sync");
 	});
+
+	it("warns on missing skill description", () => {
+		let config = createConfig();
+		({ config } = installSkill(config, { name: "bare-skill" }));
+		const result = runDoctor(config);
+		const check = result.checks.find(
+			(c) => c.id === "skill-frontmatter-completeness" && c.message.includes("no description"),
+		);
+		expect(check).toBeDefined();
+		expect(check?.severity).toBe("warning");
+	});
+
+	it("info on missing skill tags", () => {
+		let config = createConfig();
+		({ config } = installSkill(config, { name: "no-tags", description: "A skill" }));
+		const result = runDoctor(config);
+		const check = result.checks.find(
+			(c) => c.id === "skill-frontmatter-completeness" && c.message.includes("no tags"),
+		);
+		expect(check).toBeDefined();
+		expect(check?.severity).toBe("info");
+	});
+
+	it("warns on multiline description", () => {
+		let config = createConfig();
+		({ config } = installSkill(config, {
+			name: "multi-desc",
+			description: "line one\nline two",
+		}));
+		const result = runDoctor(config);
+		const check = result.checks.find((c) => c.id === "skill-description-format");
+		expect(check).toBeDefined();
+		expect(check?.message).toContain("multiline");
+	});
+
+	it("warns on long description", () => {
+		let config = createConfig();
+		({ config } = installSkill(config, {
+			name: "long-desc",
+			description: "x".repeat(150),
+		}));
+		const result = runDoctor(config);
+		const check = result.checks.find((c) => c.id === "skill-description-format");
+		expect(check).toBeDefined();
+		expect(check?.message).toContain("exceeds 120");
+	});
+
+	it("info on non-kebab-case skill name", () => {
+		let config = createConfig();
+		({ config } = installSkill(config, { name: "MySkill_v2", description: "test" }));
+		const result = runDoctor(config);
+		const check = result.checks.find((c) => c.id === "skill-directory-naming");
+		expect(check).toBeDefined();
+		expect(check?.severity).toBe("info");
+	});
+
+	it("warns on skill depending on disabled server", () => {
+		let config = createConfig();
+		({ config } = addServer(config, { name: "db-server", command: "npx" }));
+		// Disable the server
+		config = {
+			...config,
+			servers: config.servers.map((s) =>
+				s.name === "db-server" ? { ...s, enabled: false } : s,
+			),
+		};
+		({ config } = installSkill(config, {
+			name: "db-skill",
+			description: "needs db",
+			dependencies: ["db-server"],
+		}));
+		const result = runDoctor(config);
+		const check = result.checks.find((c) => c.id === "skill-broken-dependency");
+		expect(check).toBeDefined();
+		expect(check?.message).toContain("disabled server");
+	});
+
+	it("detects secrets in server env", () => {
+		let config = createConfig();
+		({ config } = addServer(config, {
+			name: "leaky",
+			command: "npx",
+			env: { API_KEY: "sk-abcdefghijklmnopqrstuvwxyz1234567890" },
+		}));
+		const result = runDoctor(config);
+		const check = result.checks.find((c) => c.id === "secret-in-env");
+		expect(check).toBeDefined();
+		expect(check?.severity).toBe("error");
+		expect(check?.message).toContain("OpenAI API Key");
+	});
 });
