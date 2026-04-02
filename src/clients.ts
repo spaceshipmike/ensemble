@@ -107,6 +107,7 @@ const clientDefs: ClientDef[] = [
 		serversKey: "mcpServers",
 		detectPaths: ["~/.gemini/settings.json"],
 		configFormat: "json",
+		skillsDir: "~/.gemini/skills",
 	},
 	{
 		id: "codex-cli",

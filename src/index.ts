@@ -137,6 +137,10 @@ export type { ExportResult } from "./export.js";
 export { migrate, needsMigration } from "./migration.js";
 export type { MigrationResult, MigrationAction } from "./migration.js";
 
+// Secrets
+export { scanSecrets, scanSkillContent } from "./secrets.js";
+export type { SecretViolation } from "./secrets.js";
+
 // Init
 export { initAuto, detectClientLandscape, scanServerLandscape, scanSkillLandscape, importSelectedServers } from "./init.js";
 export type { InitResult, DetectedClient, ServerLandscape, SkillLandscape } from "./init.js";

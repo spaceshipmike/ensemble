@@ -28,6 +28,7 @@ import {
 import { computeEntryHash, getClient, matchRule, resolvePlugins, resolveServers, resolveSkills } from "./config.js";
 import { RESERVED_MARKETPLACE_NAMES, qualifiedPluginName } from "./schemas.js";
 import type { EnsembleConfig, Server } from "./schemas.js";
+import { scanSecrets } from "./secrets.js";
 import { skillDir as getSkillDir } from "./skills.js";
 
 // --- Types ---
@@ -185,6 +186,31 @@ export function syncClient(
 				name,
 				detail: driftedNames.has(name) && force ? "overwriting manual edit" : undefined,
 			});
+		}
+
+		// Secret scanning — block sync of servers with leaked secrets unless forced
+		if (!force) {
+			const secretViolations: { name: string; violations: import("./secrets.js").SecretViolation[] }[] = [];
+			for (const s of servers) {
+				if (Object.keys(s.env).length > 0) {
+					const violations = scanSecrets(s.env, s.name);
+					if (violations.length > 0) {
+						secretViolations.push({ name: s.name, violations });
+					}
+				}
+			}
+			if (secretViolations.length > 0) {
+				const affected = new Set(secretViolations.map((v) => v.name));
+				for (const { name, violations } of secretViolations) {
+					for (const v of violations) {
+						allActions.push({ type: "skip-drift", name, detail: `secret detected: ${v.pattern} in ${v.field}` });
+					}
+				}
+				// Remove affected entries from newEntries
+				for (const name of affected) {
+					delete newEntries[name];
+				}
+			}
 		}
 
 		if (!dryRun && (toAdd.length > 0 || toRemove.length > 0 || toUpdate.length > 0)) {
