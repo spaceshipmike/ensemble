@@ -15,3 +15,9 @@ build/
 
 # OS
 .DS_Store
+
+# Claude Code — track skills/agents, ignore ephemeral
+.claude/settings.*
+.claude/statsig/
+.claude/todos/
+.claude/projects/
