@@ -628,10 +628,22 @@ program.command("search <query>")
 		}
 		const results = searchAll(config, query, parseInt(opts.limit), { usageData });
 		if (results.length === 0) { console.log("No results."); return; }
-		for (const r of results) {
-			const type = r.resultType === "server" ? "server" : "skill";
-			const tools = r.matchedTools.length > 0 ? ` (${r.matchedTools.join(", ")})` : "";
-			console.log(`${r.name} [${type}] score=${r.score.toFixed(2)} fields=[${r.matchedFields.join(",")}]${tools}`);
+		const local = results.filter((r) => r.resultType !== "capability");
+		const caps = results.filter((r) => r.resultType === "capability");
+		if (local.length > 0) {
+			console.log("  Local:");
+			for (const r of local) {
+				const tools = r.matchedTools.length > 0 ? ` (${r.matchedTools.join(", ")})` : "";
+				console.log(`    ${r.name} (${r.resultType}${tools})`);
+			}
+		}
+		if (caps.length > 0) {
+			console.log("\n  Portfolio capabilities (via setlist):");
+			for (const r of caps) {
+				const model = r.invocationModel ?? "internal";
+				const enabled = r.serverEnabled != null ? (r.serverEnabled ? " \u2713 enabled" : " \u2717 not enabled") : "";
+				console.log(`    ${r.name} \u2014 ${r.matchedFields.join(", ")} (${model}${enabled})`);
+			}
 		}
 	});
 
@@ -736,8 +748,15 @@ program.command("migrate").description("Migrate from mcpoyle to Ensemble").optio
 program.command("projects").description("List registry projects").action(() => {
 	const projects = listProjects("active");
 	if (projects.length === 0) { console.log("No projects found (project registry may not be available)."); return; }
+	const { isSetlistAvailable, getProjectCapabilities } = require("../setlist.js") as typeof import("../setlist.js");
+	const hasSetlist = isSetlistAvailable();
 	for (const p of projects) {
-		console.log(`${p.name} (${p.type}) ${p.paths[0] ?? ""}`);
+		let line = `${p.name} (${p.type}) ${p.paths[0] ?? ""}`;
+		if (hasSetlist) {
+			const caps = getProjectCapabilities(p.name);
+			if (caps.length > 0) line += `  capabilities: ${caps.length}`;
+		}
+		console.log(line);
 	}
 });
 

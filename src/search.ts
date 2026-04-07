@@ -5,6 +5,7 @@
  */
 
 import type { EnsembleConfig, Server, Skill } from "./schemas.js";
+import { queryCapabilities as querySetlistCapabilities } from "./setlist.js";
 import { getUsageScore, type UsageData } from "./usage.js";
 
 export interface SearchResult {
@@ -12,7 +13,13 @@ export interface SearchResult {
 	score: number;
 	matchedFields: string[];
 	matchedTools: string[];
-	resultType: "server" | "skill";
+	resultType: "server" | "skill" | "capability";
+	/** For capabilities: the project that owns this capability. */
+	project?: string;
+	/** For capabilities: whether the referenced MCP server is enabled. */
+	serverEnabled?: boolean;
+	/** For capabilities: the invocation model (e.g., "MCP", "internal"). */
+	invocationModel?: string;
 }
 
 // --- Query alias expansion ---
@@ -311,13 +318,82 @@ export function searchSkills(
 	return results.slice(0, limit);
 }
 
+export function searchCapabilities(
+	config: EnsembleConfig,
+	query: string,
+	limit = 20,
+): SearchResult[] {
+	const capabilities = querySetlistCapabilities({ keyword: query });
+	if (capabilities.length === 0) return [];
+
+	const expandedQuery = expandAliases(query);
+	const queryTerms = tokenize(expandedQuery);
+	if (queryTerms.length === 0) return [];
+
+	const enabledServerNames = new Set(config.servers.filter((s) => s.enabled).map((s) => s.name));
+
+	const results: SearchResult[] = [];
+	for (const cap of capabilities) {
+		const tokens = [
+			...Array(3).fill(tokenize(cap.name)).flat(),
+			...tokenize(cap.description),
+			...tokenize(cap.type),
+		];
+
+		let score = 0;
+		for (const term of queryTerms) {
+			const tf = termFrequency(tokens, term);
+			if (tf > 0) score += tf; // simple TF score (no IDF since setlist already filtered by keyword)
+		}
+
+		if (score > 0) {
+			const matchedFields: string[] = [];
+			if (queryTerms.some((term) => tokenize(cap.name).some((t) => t.includes(term)))) {
+				matchedFields.push("name");
+			}
+			if (queryTerms.some((term) => tokenize(cap.description).some((t) => t.includes(term)))) {
+				matchedFields.push("description");
+			}
+
+			// Check if the MCP server referenced by this capability is enabled
+			let serverEnabled: boolean | undefined;
+			if (cap.invocation_model === "MCP" && cap.inputs) {
+				// Convention: inputs may reference a server name
+				const serverName = cap.inputs;
+				serverEnabled = enabledServerNames.has(serverName);
+			}
+
+			results.push({
+				name: `${cap.project}/${cap.name}`,
+				score,
+				matchedFields,
+				matchedTools: [],
+				resultType: "capability",
+				project: cap.project,
+				serverEnabled,
+				invocationModel: cap.invocation_model,
+			});
+		}
+	}
+
+	results.sort((a, b) => b.score - a.score);
+	return results.slice(0, limit);
+}
+
 export function searchAll(
 	config: EnsembleConfig,
 	query: string,
 	limit = 20,
-	options?: { usageData?: UsageData },
+	options?: { usageData?: UsageData; includeCapabilities?: boolean },
 ): SearchResult[] {
-	const combined = [...searchServers(config, query, limit, options), ...searchSkills(config, query, limit, options)];
-	combined.sort((a, b) => b.score - a.score);
-	return combined.slice(0, limit);
+	const local = [...searchServers(config, query, limit, options), ...searchSkills(config, query, limit, options)];
+	local.sort((a, b) => b.score - a.score);
+
+	if (options?.includeCapabilities !== false) {
+		const caps = searchCapabilities(config, query, limit);
+		// Return local results first, then capabilities (separate group)
+		return [...local.slice(0, limit), ...caps.slice(0, limit)];
+	}
+
+	return local.slice(0, limit);
 }

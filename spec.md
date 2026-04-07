@@ -1,14 +1,14 @@
 ---
-version: 1.0.1
+version: 1.1.0
 status: active
-last_updated: 2026-03-30
+last_updated: 2026-04-07
 synopsis:
   short: "Central manager for MCP servers, skills, and plugins across AI clients"
   medium: "Ensemble is a library-first TypeScript toolkit that centrally manages MCP servers, agent skills (SKILL.md files), and Claude Code plugins across 17 AI clients. It exposes pure-function operations with Zod-validated schemas, a CLI for direct use, and package exports for app integration."
   readme: "Ensemble eliminates the pain of maintaining MCP server configurations, agent skills, and Claude Code plugins across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains, and 10 more clients. Define your servers and skills once, organize them into groups, assign groups to clients or projects, and sync. The library-first architecture means every operation is a pure function — load config, call an operation, save config — making Ensemble equally useful as a standalone CLI and as an imported dependency for app-level consumers like Chorus. Skills are SKILL.md files managed via a canonical store with symlink fan-out to each client's skills directory. Registry integration supports extensible backends with trust-tier classification, quality signals, metadata caching, and local capability search. A unified source parser accepts GitHub repos, local paths, and registry slugs through a single command. Zod schemas are exported for runtime validation by consumers."
   tech-stack: [TypeScript, Commander.js, Zod, Vitest, Biome, tsup, npm, better-sqlite3, proper-lockfile, smol-toml, JSON config]
-  patterns: [library-first architecture, pure-function operations, Zod schema exports, additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, multi-registry search, extensible registry adapters, registry metadata caching, server provenance tracking, tool metadata storage, context cost awareness, local capability search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit, guided onboarding, marker-based coexistence, canonical store + symlink fan-out, trust-tier classification, unified source parser, collision detection, pin/track provenance modes, dependency intelligence, pre-install security summary, deterministic config scoring, profile-as-plugin packaging, builtin meta-skill]
-  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, skill lifecycle management, registry discovery + install, project-aware scoping, library API for app consumers, CLI surface, server provenance and capability search, trust-tiered content safety]
+  patterns: [library-first architecture, pure-function operations, Zod schema exports, additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, setlist capability integration, multi-registry search, extensible registry adapters, registry metadata caching, server provenance tracking, tool metadata storage, context cost awareness, local capability search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit, guided onboarding, marker-based coexistence, canonical store + symlink fan-out, trust-tier classification, unified source parser, collision detection, pin/track provenance modes, dependency intelligence, pre-install security summary, deterministic config scoring, profile-as-plugin packaging, builtin meta-skill]
+  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, skill lifecycle management, registry discovery + install, project-aware scoping, library API for app consumers, CLI surface, server provenance and capability search, trust-tiered content safety, portfolio capability awareness via setlist]
 ---
 
 # Ensemble
@@ -562,6 +562,77 @@ ensemble projects                                        # list registry project
 ### Future: Write-Back
 
 In a future version, Ensemble may write `mcp_servers` back to the registry's `project_fields` table, making Ensemble a producer as well as a consumer. This is deferred to keep the initial integration read-only and low-risk.
+
+## Setlist Capability Integration
+
+Ensemble can optionally read from setlist's capability registry via `@setlist/core` to enrich search results, doctor checks, and project views with portfolio-wide capability awareness. This is a read-only interface — Ensemble discovers and surfaces capabilities but never registers them.
+
+### What It Provides
+
+Setlist's capability registry knows what each project can do: named capabilities with types, descriptions, input/output contracts, authentication requirements, invocation models, and intended audiences. Ensemble reads this to:
+
+- **Extend search** — `ensemble search` results include setlist capabilities alongside local servers and skills, giving users a single view of everything available in the portfolio
+- **Verify coverage** — doctor checks can detect gaps where a project declares MCP-invoked capabilities but the required servers aren't enabled
+- **Enrich project views** — `ensemble projects` shows capability counts when setlist is available, revealing which projects are capability-rich vs. thin
+
+### Capability-Aware Search
+
+When setlist is available, `ensemble search <query>` includes matching capabilities in results. Capabilities appear in a separate group below local servers and skills, showing the capability name, owning project, type, and description.
+
+When a capability declares `invocation_model: "MCP"` and names a specific server, the search result indicates whether that server is currently enabled for the capability's project. This helps users spot capabilities they could activate by enabling a server they already have registered.
+
+```
+$ ensemble search "knowledge management"
+  Local:
+    knowmarks-mcp (server, 4 matching tools: save, search, related, refine)
+    research-patterns (skill, tags: knowledge, research)
+
+  Portfolio capabilities (via setlist):
+    knowmarks/search — Full-text search across knowledge base (MCP, server: knowmarks-mcp ✓ enabled)
+    knowmarks/clustering — Auto-cluster bookmarks by topic (MCP, server: knowmarks-mcp ✓ enabled)
+    chorus/knowledge-panel — Surface relevant knowledge in context (internal)
+```
+
+### Doctor Capability Check
+
+A new doctor check category: **capability coverage**. For each project with setlist capabilities that reference MCP servers (`invocation_model: "MCP"`), the doctor verifies those servers are enabled for that project. Gaps appear as warnings — not errors, because Ensemble can't know whether a capability is actively used or intentionally left without its server.
+
+| Check | Category | Severity | What it detects |
+|-------|----------|----------|-----------------|
+| Capability server gap | capability | warning | A setlist capability references an MCP server that isn't enabled for the capability's project |
+
+```
+$ ensemble doctor
+✓ Central config valid (17 servers, 5 skills, 4 groups, 3 plugins)
+✓ claude-desktop: config valid, in sync
+⚠ chorus: capability "knowledge-panel" references server "knowmarks-mcp" but it is not enabled
+ℹ 3 projects have setlist capabilities (12 total, 11 with servers enabled)
+
+Health: 92/100 (92%)
+0 errors, 1 warning, 1 info
+```
+
+### Projects Enrichment
+
+When setlist is available, `ensemble projects` appends a capability count to each project row. This gives users a quick sense of which projects expose capabilities to the portfolio.
+
+```
+$ ensemble projects
+  chorus        active    group: default    servers: 3    capabilities: 5
+  archibald     active    group: default    servers: 2    capabilities: 2
+  ensemble      active    group: dev-tools  servers: 1    capabilities: 0
+  emailer       active    group: default    servers: 1    capabilities: 3
+```
+
+### Integration Pattern
+
+Ensemble imports `@setlist/core` as an optional dependency — the same pattern used for `better-sqlite3` with the project registry. At startup, Ensemble attempts to require `@setlist/core`. If the package isn't installed, all capability features are silently disabled: search shows only local results, doctor skips capability checks, and `ensemble projects` omits the capability column.
+
+This is a direct library import, not an MCP connection. Ensemble is a library/CLI that manages configs — it doesn't maintain live MCP connections to query tools at runtime.
+
+### Boundary
+
+Ensemble reads capabilities, never writes them. Capability registration is each project's responsibility, done via setlist's MCP tools or `@setlist/core` directly. Ensemble's role is to surface what's already registered and check whether the infrastructure (MCP servers) is in place to support it.
 
 ## Plugins (Claude Code)
 
@@ -1161,6 +1232,7 @@ ensemble/
 - **Additional registries** — Smithery and PulseMCP as opt-in sources with API key configuration.
 - **SkillsGate deep integration** — SkillsGate (`skillsgate.ai`) as an additional skills catalog backend alongside claude-plugins.dev. SkillsGate offers lock-file based version pinning and agent-selective removal — features that could enhance Ensemble's skill provenance tracking.
 - **Virtual server mapping** — As AI clients add platform-level integrations (Codex apps, Claude Code plugins, Kiro connectors), Ensemble may need to represent non-traditional "servers" that aren't stdio/HTTP processes. A virtual server pattern would map platform features into the familiar server abstraction, allowing them to participate in groups, assignments, and sync like regular servers. Deferred until client ecosystems stabilize.
+- **Capability-driven recommendations** — Use setlist capability metadata to suggest server installations. When a project declares capabilities that reference servers Ensemble doesn't have registered, surface an actionable recommendation during `ensemble doctor` or `ensemble search`.
 
 ## Validated Designs
 
@@ -1187,6 +1259,7 @@ Patterns confirmed by external research that reinforce existing Ensemble decisio
 
 ## Changelog
 
+- **1.1.0** — Add setlist capability integration as read-only interface via `@setlist/core` optional dependency. Capability-aware search extends `ensemble search` with portfolio capabilities from setlist. New doctor check category (capability coverage) warns when MCP-invoked capabilities lack enabled servers. `ensemble projects` shows per-project capability counts. Same optional-dependency pattern as project-registry (graceful fallback when `@setlist/core` not installed). Add future item: capability-driven recommendations.
 - **1.0.0** — TypeScript rewrite. Rename mcpoyle → Ensemble. Language: Python → TypeScript. Architecture: library-first with pure-function operations and Zod schema exports. Add Library API section (package exports, config loading pattern, operations as pure functions, Zod schema exports, client resolution API, registry API, integration guidance). CLI: click → Commander.js, binary is `ensemble` with `ens` alias. Build: hatch → tsup, pytest → Vitest, Biome for linting/formatting. Dependencies: httpx → native fetch, dataclasses → Zod, pathlib → node:fs, fcntl → proper-lockfile, tomllib → smol-toml, shutil → node:fs, SQLite via better-sqlite3. Config path: `~/.config/mcpoyle/` → `~/.config/ensemble/`. Marker: `__mcpoyle` → `__ensemble`. Add automatic migration from mcpoyle config, skills store, cache, and client markers. Remove TUI surface (Chorus is the GUI). Remove Textual dependency. Add non-goal: GUI/TUI (Chorus handles UI). Add non-goal: live MCP connections (config-only scope). Add design principle: library-first. Update all CLI examples, config paths, and references for Ensemble naming.
 - **0.15.0** — Add skills as third entity type (SKILL.md files with YAML frontmatter). Add canonical store + symlink fan-out sync strategy for skills. Add client skills directory mapping (Claude Code, Cursor, Codex, Windsurf). Add builtin mcpoyle-usage meta-skill. Add skills catalog integration (claude-plugins.dev, ~58K skills). Add unified source parser (`mcpoyle add <source>` infers type from format). Add trust-tier classification (official/community/local) to origin tracking. Add quality signals (stars, last-updated, has-readme) to registry search/show. Add collision detection across scopes for both servers and skills. Add pin/track provenance modes for servers and skills. Add dependency intelligence (skills declare server dependencies). Add pre-install security summary for registry installs. Add deterministic structured scoring to doctor (categories, points, fix suggestions). Add profile-as-plugin packaging (`groups export --as-plugin`). Add skills migration to init flow. Update Group model to include skills. Update sync engine for dual strategy (config-entry + symlink). Update local search to include skills. Research: 16 patterns from 8 external references (skillsmith, TARS, skillbox, ay-claude, caliber, skillsgate, AgentSkillsManager, dotagents).
 - **0.14.0** — Incorporate 8 research patterns from Klavis-AI/klavis and lydakis/mcpx. Add HTTP/SSE transport fields (`url`, `auth_type`, `auth_ref`) to Server model. Add server origin/provenance tracking. Add tool metadata storage at install time. Add mcpx as supported client. Add config auto-discovery display to init flow. Add context cost awareness to sync. Add registry adapter pattern for extensible backends. Add registry metadata caching with configurable TTL. Add local capability search (`mcpoyle search`). Validate no-daemon and hash-based drift detection designs. Note virtual server mapping as future pattern.

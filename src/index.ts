@@ -118,7 +118,7 @@ export { syncClient, syncSkills, syncAllClients, computeContextCost, suggestGrou
 export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, GroupSplitSuggestion, ImportResult } from "./sync.js";
 
 // Search
-export { searchAll, searchServers, searchSkills, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
+export { searchAll, searchServers, searchSkills, searchCapabilities, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
 export type { SearchResult } from "./search.js";
 
 // Registry
@@ -135,6 +135,10 @@ export { parseFrontmatter, formatFrontmatter, skillToFrontmatter, frontmatterToS
 // Projects
 export { listProjects, getProject, resolveProjectPath, isAvailable as isProjectRegistryAvailable } from "./projects.js";
 export type { RegistryProject } from "./projects.js";
+
+// Setlist capability integration
+export { isSetlistAvailable, queryCapabilities as querySetlistCapabilities, getProjectCapabilities, getMcpCapabilities } from "./setlist.js";
+export type { SetlistCapability } from "./setlist.js";
 
 // Export
 export { exportGroupAsPlugin } from "./export.js";

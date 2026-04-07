@@ -16,13 +16,14 @@ import {
 } from "./clients.js";
 import { computeEntryHash, SKILLS_DIR } from "./config.js";
 import { scanSecrets } from "./secrets.js";
+import { getMcpCapabilities } from "./setlist.js";
 import type { EnsembleConfig } from "./schemas.js";
 
 // --- Types ---
 
 export interface DoctorCheck {
 	id: string;
-	category: "existence" | "freshness" | "grounding" | "parity" | "skills-health";
+	category: "existence" | "freshness" | "grounding" | "parity" | "skills-health" | "capability";
 	maxPoints: number;
 	earnedPoints: number;
 	severity: "error" | "warning" | "info";
@@ -483,6 +484,31 @@ function checkSecretInEnv(config: EnsembleConfig): DoctorCheck[] {
 	return checks;
 }
 
+function checkCapabilityGaps(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	const mcpCaps = getMcpCapabilities();
+	if (mcpCaps.length === 0) return checks;
+
+	const enabledServerNames = new Set(config.servers.filter((s) => s.enabled).map((s) => s.name));
+
+	for (const cap of mcpCaps) {
+		// Check if the server name appears in the inputs field (convention for MCP capabilities)
+		if (!cap.inputs) continue;
+		const serverName = cap.inputs;
+		if (config.servers.some((s) => s.name === serverName) && !enabledServerNames.has(serverName)) {
+			checks.push({
+				id: "capability-server-gap",
+				category: "capability",
+				maxPoints: 3,
+				earnedPoints: 0,
+				severity: "warning",
+				message: `${cap.project}: capability '${cap.name}' references server '${serverName}' but it is not enabled`,
+			});
+		}
+	}
+	return checks;
+}
+
 // --- Main doctor function ---
 
 export function runDoctor(config: EnsembleConfig): DoctorResult {
@@ -504,6 +530,7 @@ export function runDoctor(config: EnsembleConfig): DoctorResult {
 		...checkDirectoryNaming(config),
 		...checkBrokenDependency(config),
 		...checkSecretInEnv(config),
+		...checkCapabilityGaps(config),
 	];
 
 	// Calculate scores using additive model (matching Python)
@@ -511,7 +538,7 @@ export function runDoctor(config: EnsembleConfig): DoctorResult {
 	const earnedPoints = allChecks.reduce((sum, c) => sum + c.earnedPoints, 0);
 
 	// Per-category breakdown
-	const categories = ["existence", "freshness", "grounding", "parity", "skills-health"] as const;
+	const categories = ["existence", "freshness", "grounding", "parity", "skills-health", "capability"] as const;
 	const categoryScores: Record<string, CategoryScore> = {};
 	for (const cat of categories) {
 		const catChecks = allChecks.filter((c) => c.category === cat);
