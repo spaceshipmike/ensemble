@@ -166,6 +166,36 @@ describe("dictToToml", () => {
 		expect(toml).toContain("[servers.ctx]");
 		expect(toml).toContain('command = "npx"');
 	});
+
+	it("quotes keys containing special characters and round-trips through parser", async () => {
+		const { parse } = await import("smol-toml");
+		const input: Record<string, unknown> = {
+			"gpt-5.3-codex": "gpt-5.4",
+			"key with spaces": "value",
+			projects: {
+				"/Users/mike/Code/chorus-app": {
+					model: "opus",
+				},
+				"github@openai-curated": {
+					enabled: true,
+				},
+				safe_key: {
+					name: "ok",
+				},
+			},
+		};
+		const tomlStr = dictToToml(input);
+		const parsed = parse(tomlStr);
+		expect(parsed["gpt-5.3-codex"]).toBe("gpt-5.4");
+		expect(parsed["key with spaces"]).toBe("value");
+		expect((parsed.projects as Record<string, unknown>)["/Users/mike/Code/chorus-app"]).toEqual({
+			model: "opus",
+		});
+		expect((parsed.projects as Record<string, unknown>)["github@openai-curated"]).toEqual({
+			enabled: true,
+		});
+		expect((parsed.projects as Record<string, unknown>).safe_key).toEqual({ name: "ok" });
+	});
 });
 
 describe("readClientConfig", () => {

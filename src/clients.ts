@@ -553,6 +553,10 @@ export function importServersFromClient(
 
 // --- TOML writer ---
 
+function tomlKey(k: string): string {
+	return /^[A-Za-z0-9_-]+$/.test(k) ? k : `"${k.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 function tomlValue(v: unknown): string {
 	if (typeof v === "boolean") return v ? "true" : "false";
 	if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(v);
@@ -560,7 +564,7 @@ function tomlValue(v: unknown): string {
 	if (Array.isArray(v)) return `[${v.map(tomlValue).join(", ")}]`;
 	if (typeof v === "object" && v !== null) {
 		const items = Object.entries(v as Record<string, unknown>).map(
-			([k, val]) => `${k} = ${tomlValue(val)}`,
+			([k, val]) => `${tomlKey(k)} = ${tomlValue(val)}`,
 		);
 		return `{${items.join(", ")}}`;
 	}
@@ -575,12 +579,12 @@ export function dictToToml(data: Record<string, unknown>, prefix = ""): string {
 		if (typeof val === "object" && val !== null && !Array.isArray(val)) {
 			tables.push([key, val as Record<string, unknown>]);
 		} else {
-			lines.push(`${key} = ${tomlValue(val)}`);
+			lines.push(`${tomlKey(key)} = ${tomlValue(val)}`);
 		}
 	}
 
 	for (const [tableKey, tableVal] of tables) {
-		const fullKey = prefix ? `${prefix}.${tableKey}` : tableKey;
+		const fullKey = prefix ? `${prefix}.${tomlKey(tableKey)}` : tomlKey(tableKey);
 		lines.push("");
 		lines.push(`[${fullKey}]`);
 		const subTables: [string, Record<string, unknown>][] = [];
@@ -588,22 +592,22 @@ export function dictToToml(data: Record<string, unknown>, prefix = ""): string {
 			if (typeof v === "object" && v !== null && !Array.isArray(v)) {
 				subTables.push([k, v as Record<string, unknown>]);
 			} else {
-				lines.push(`${k} = ${tomlValue(v)}`);
+				lines.push(`${tomlKey(k)} = ${tomlValue(v)}`);
 			}
 		}
 		for (const [subKey, subVal] of subTables) {
-			const subFull = `${fullKey}.${subKey}`;
+			const subFull = `${fullKey}.${tomlKey(subKey)}`;
 			lines.push("");
 			lines.push(`[${subFull}]`);
 			for (const [k, v] of Object.entries(subVal)) {
 				if (typeof v === "object" && v !== null && !Array.isArray(v)) {
 					lines.push("");
-					lines.push(`[${subFull}.${k}]`);
+					lines.push(`[${subFull}.${tomlKey(k)}]`);
 					for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
-						lines.push(`${k2} = ${tomlValue(v2)}`);
+						lines.push(`${tomlKey(k2)} = ${tomlValue(v2)}`);
 					}
 				} else {
-					lines.push(`${k} = ${tomlValue(v)}`);
+					lines.push(`${tomlKey(k)} = ${tomlValue(v)}`);
 				}
 			}
 		}
