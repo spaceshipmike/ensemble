@@ -57,8 +57,11 @@ function checkMissingEnvVars(config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
 	for (const server of config.servers) {
 		if (!server.enabled) continue;
+		if (Object.keys(server.env).length === 0) continue;
+		let missing = false;
 		for (const [key, val] of Object.entries(server.env)) {
 			if (!val || val === "") {
+				missing = true;
 				checks.push({
 					id: "env-vars",
 					category: "existence",
@@ -70,6 +73,16 @@ function checkMissingEnvVars(config: EnsembleConfig): DoctorCheck[] {
 				});
 			}
 		}
+		if (!missing) {
+			checks.push({
+				id: "env-vars",
+				category: "existence",
+				maxPoints: 10,
+				earnedPoints: 10,
+				severity: "info",
+				message: `Server '${server.name}' env vars all set`,
+			});
+		}
 	}
 	return checks;
 }
@@ -80,6 +93,14 @@ function checkUnreachableBinaries(config: EnsembleConfig): DoctorCheck[] {
 		if (!server.enabled || !server.command || server.transport !== "stdio") continue;
 		try {
 			execSync(`which ${server.command}`, { stdio: "pipe" });
+			checks.push({
+				id: "unreachable-binary",
+				category: "grounding",
+				maxPoints: 5,
+				earnedPoints: 5,
+				severity: "info",
+				message: `Server '${server.name}': command '${server.command}' found`,
+			});
 		} catch {
 			checks.push({
 				id: "unreachable-binary",
@@ -97,16 +118,26 @@ function checkUnreachableBinaries(config: EnsembleConfig): DoctorCheck[] {
 function checkStaleConfigs(config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
 	for (const clientAssignment of config.clients) {
+		const clientDef = CLIENTS[clientAssignment.id];
+		const label = clientDef?.name ?? clientAssignment.id;
 		if (!clientAssignment.last_synced) {
-			const clientDef = CLIENTS[clientAssignment.id];
 			checks.push({
 				id: "stale-config",
 				category: "freshness",
 				maxPoints: 5,
 				earnedPoints: 0,
 				severity: "warning",
-				message: `${clientDef?.name ?? clientAssignment.id}: never synced`,
+				message: `${label}: never synced`,
 				fix: { command: `ensemble sync ${clientAssignment.id}`, description: "Run initial sync" },
+			});
+		} else {
+			checks.push({
+				id: "stale-config",
+				category: "freshness",
+				maxPoints: 5,
+				earnedPoints: 5,
+				severity: "info",
+				message: `${label}: synced`,
 			});
 		}
 	}
@@ -115,6 +146,8 @@ function checkStaleConfigs(config: EnsembleConfig): DoctorCheck[] {
 
 function checkOrphanedEntries(config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
+	let scannedCount = 0;
+	let orphanCount = 0;
 	for (const [clientId, clientDef] of Object.entries(CLIENTS)) {
 		for (const path of resolvedPaths(clientDef)) {
 			if (!existsSync(path)) continue;
@@ -122,8 +155,10 @@ function checkOrphanedEntries(config: EnsembleConfig): DoctorCheck[] {
 				const clientConfig = readClientConfig(path);
 				const managed = getManagedServers(clientConfig, clientDef.serversKey);
 				for (const name of Object.keys(managed)) {
+					scannedCount++;
 					const inRegistry = config.servers.some((s) => s.name === name);
 					if (!inRegistry) {
+						orphanCount++;
 						checks.push({
 							id: "orphaned-entry",
 							category: "grounding",
@@ -140,16 +175,28 @@ function checkOrphanedEntries(config: EnsembleConfig): DoctorCheck[] {
 			}
 		}
 	}
+	if (scannedCount > 0 && orphanCount === 0) {
+		checks.push({
+			id: "orphaned-entry",
+			category: "grounding",
+			maxPoints: 5,
+			earnedPoints: 5,
+			severity: "info",
+			message: `No orphaned entries across ${scannedCount} managed server(s)`,
+		});
+	}
 	return checks;
 }
 
 function checkConfigParseErrors(): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
+	let parsedCount = 0;
 	for (const [_clientId, clientDef] of Object.entries(CLIENTS)) {
 		for (const path of resolvedPaths(clientDef)) {
 			if (!existsSync(path)) continue;
 			try {
 				readClientConfig(path);
+				parsedCount++;
 			} catch {
 				checks.push({
 					id: "config-parse-error",
@@ -162,11 +209,23 @@ function checkConfigParseErrors(): DoctorCheck[] {
 			}
 		}
 	}
+	if (parsedCount > 0 && checks.length === 0) {
+		checks.push({
+			id: "config-parse-error",
+			category: "existence",
+			maxPoints: 10,
+			earnedPoints: 10,
+			severity: "info",
+			message: `${parsedCount} client config(s) parsed successfully`,
+		});
+	}
 	return checks;
 }
 
 function checkDrift(config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
+	let checkedCount = 0;
+	let driftCount = 0;
 	for (const clientAssignment of config.clients) {
 		const clientDef = CLIENTS[clientAssignment.id];
 		if (!clientDef || !clientAssignment.server_hashes) continue;
@@ -178,8 +237,10 @@ function checkDrift(config: EnsembleConfig): DoctorCheck[] {
 				for (const [name, entry] of Object.entries(managed)) {
 					const storedHash = clientAssignment.server_hashes[name];
 					if (storedHash) {
+						checkedCount++;
 						const currentHash = computeEntryHash(entry);
 						if (currentHash !== storedHash) {
+							driftCount++;
 							checks.push({
 								id: "drift-detected",
 								category: "freshness",
@@ -200,11 +261,23 @@ function checkDrift(config: EnsembleConfig): DoctorCheck[] {
 			}
 		}
 	}
+	if (checkedCount > 0 && driftCount === 0) {
+		checks.push({
+			id: "drift-detected",
+			category: "freshness",
+			maxPoints: 5,
+			earnedPoints: 5,
+			severity: "info",
+			message: `No drift detected across ${checkedCount} managed server(s)`,
+		});
+	}
 	return checks;
 }
 
 function checkBrokenSkillSymlinks(_config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
+	let symlinkCount = 0;
+	let brokenCount = 0;
 	for (const clientDef of Object.values(CLIENTS)) {
 		if (!clientDef.skillsDir) continue;
 		const skillsDir = expandPath(clientDef.skillsDir);
@@ -216,8 +289,10 @@ function checkBrokenSkillSymlinks(_config: EnsembleConfig): DoctorCheck[] {
 				try {
 					const stat = lstatSync(skillPath);
 					if (stat.isSymbolicLink()) {
+						symlinkCount++;
 						const target = readlinkSync(skillPath);
 						if (!existsSync(target)) {
+							brokenCount++;
 							checks.push({
 								id: "broken-skill-symlink",
 								category: "skills-health",
@@ -236,24 +311,50 @@ function checkBrokenSkillSymlinks(_config: EnsembleConfig): DoctorCheck[] {
 			// Can't read skills dir
 		}
 	}
+	if (symlinkCount > 0 && brokenCount === 0) {
+		checks.push({
+			id: "broken-skill-symlink",
+			category: "skills-health",
+			maxPoints: 5,
+			earnedPoints: 5,
+			severity: "info",
+			message: `${symlinkCount} skill symlink(s) intact`,
+		});
+	}
 	return checks;
 }
 
 function checkMissingToolMetadata(config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
+	let registryCount = 0;
+	let missingCount = 0;
 	for (const server of config.servers) {
 		if (!server.enabled) continue;
-		if (server.origin.source === "registry" && server.tools.length === 0) {
-			checks.push({
-				id: "missing-tool-metadata",
-				category: "grounding",
-				maxPoints: 3,
-				earnedPoints: 0,
-				severity: "info",
-				message: `Server '${server.name}' (from registry) has no cached tool metadata`,
-				fix: { command: `ensemble registry show ${server.name}`, description: "Refresh tool metadata" },
-			});
+		if (server.origin.source === "registry") {
+			registryCount++;
+			if (server.tools.length === 0) {
+				missingCount++;
+				checks.push({
+					id: "missing-tool-metadata",
+					category: "grounding",
+					maxPoints: 3,
+					earnedPoints: 0,
+					severity: "info",
+					message: `Server '${server.name}' (from registry) has no cached tool metadata`,
+					fix: { command: `ensemble registry show ${server.name}`, description: "Refresh tool metadata" },
+				});
+			}
 		}
+	}
+	if (registryCount > 0 && missingCount === 0) {
+		checks.push({
+			id: "missing-tool-metadata",
+			category: "grounding",
+			maxPoints: 3,
+			earnedPoints: 3,
+			severity: "info",
+			message: `${registryCount} registry server(s) have tool metadata`,
+		});
 	}
 	return checks;
 }
@@ -270,14 +371,18 @@ function checkCrossClientParity(config: EnsembleConfig): DoctorCheck[] {
 		}
 	}
 	// For groups with multiple clients, check if they have different server hash sets
+	let multiGroupCount = 0;
+	let parityIssues = 0;
 	for (const [groupName, clientIds] of groupClients) {
 		if (clientIds.length < 2) continue;
+		multiGroupCount++;
 		const hashSets = clientIds.map((id) => {
 			const a = config.clients.find((c) => c.id === id);
 			return JSON.stringify(Object.keys(a?.server_hashes ?? {}).sort());
 		});
 		const unique = new Set(hashSets);
 		if (unique.size > 1) {
+			parityIssues++;
 			checks.push({
 				id: "cross-client-parity",
 				category: "parity",
@@ -288,6 +393,16 @@ function checkCrossClientParity(config: EnsembleConfig): DoctorCheck[] {
 				fix: { command: `ensemble sync`, description: "Re-sync all clients to resolve" },
 			});
 		}
+	}
+	if (multiGroupCount > 0 && parityIssues === 0) {
+		checks.push({
+			id: "cross-client-parity",
+			category: "parity",
+			maxPoints: 5,
+			earnedPoints: 5,
+			severity: "info",
+			message: `${multiGroupCount} multi-client group(s) in parity`,
+		});
 	}
 	return checks;
 }
@@ -301,6 +416,14 @@ function check1PasswordCli(config: EnsembleConfig): DoctorCheck[] {
 		try {
 			const { execSync: exec } = require("node:child_process") as typeof import("node:child_process");
 			exec("which op", { stdio: "pipe" });
+			checks.push({
+				id: "1password-cli-missing",
+				category: "existence",
+				maxPoints: 5,
+				earnedPoints: 5,
+				severity: "info",
+				message: "1Password CLI (op) available for op:// references",
+			});
 		} catch {
 			checks.push({
 				id: "1password-cli-missing",
@@ -466,13 +589,17 @@ function checkBrokenDependency(config: EnsembleConfig): DoctorCheck[] {
 
 function checkSecretInEnv(config: EnsembleConfig): DoctorCheck[] {
 	const checks: DoctorCheck[] = [];
+	let scannedCount = 0;
+	let violationCount = 0;
 	for (const server of config.servers) {
 		if (Object.keys(server.env).length === 0) continue;
+		scannedCount++;
 		const violations = scanSecrets(server.env, server.name);
 		for (const v of violations) {
+			violationCount++;
 			checks.push({
 				id: "secret-in-env",
-				category: "skills-health",
+				category: "existence",
 				maxPoints: 5,
 				earnedPoints: 0,
 				severity: "error",
@@ -480,6 +607,16 @@ function checkSecretInEnv(config: EnsembleConfig): DoctorCheck[] {
 				fix: { command: `ensemble show ${server.name}`, description: "Replace with op:// reference" },
 			});
 		}
+	}
+	if (scannedCount > 0 && violationCount === 0) {
+		checks.push({
+			id: "secret-in-env",
+			category: "existence",
+			maxPoints: 5,
+			earnedPoints: 5,
+			severity: "info",
+			message: `No plaintext secrets detected in ${scannedCount} server(s)`,
+		});
 	}
 	return checks;
 }
@@ -491,22 +628,59 @@ function checkCapabilityGaps(config: EnsembleConfig): DoctorCheck[] {
 
 	const enabledServerNames = new Set(config.servers.filter((s) => s.enabled).map((s) => s.name));
 
+	let gapCount = 0;
+	let checkedCount = 0;
 	for (const cap of mcpCaps) {
 		// Check if the server name appears in the inputs field (convention for MCP capabilities)
 		if (!cap.inputs) continue;
 		const serverName = cap.inputs;
-		if (config.servers.some((s) => s.name === serverName) && !enabledServerNames.has(serverName)) {
-			checks.push({
-				id: "capability-server-gap",
-				category: "capability",
-				maxPoints: 3,
-				earnedPoints: 0,
-				severity: "warning",
-				message: `${cap.project}: capability '${cap.name}' references server '${serverName}' but it is not enabled`,
-			});
+		if (config.servers.some((s) => s.name === serverName)) {
+			checkedCount++;
+			if (!enabledServerNames.has(serverName)) {
+				gapCount++;
+				checks.push({
+					id: "capability-server-gap",
+					category: "capability",
+					maxPoints: 3,
+					earnedPoints: 0,
+					severity: "warning",
+					message: `${cap.project}: capability '${cap.name}' references server '${serverName}' but it is not enabled`,
+				});
+			}
 		}
 	}
+	if (checkedCount > 0 && gapCount === 0) {
+		checks.push({
+			id: "capability-server-gap",
+			category: "capability",
+			maxPoints: 3,
+			earnedPoints: 3,
+			severity: "info",
+			message: `${checkedCount} capability reference(s) satisfied`,
+		});
+	}
 	return checks;
+}
+
+function checkSkillsSummary(config: EnsembleConfig): DoctorCheck[] {
+	if (config.skills.length === 0) {
+		return [{
+			id: "skills-summary",
+			category: "skills-health",
+			maxPoints: 5,
+			earnedPoints: 5,
+			severity: "info",
+			message: "No skills registered (add with `ensemble skills add`)",
+		}];
+	}
+	return [{
+		id: "skills-summary",
+		category: "skills-health",
+		maxPoints: 5,
+		earnedPoints: 5,
+		severity: "info",
+		message: `${config.skills.length} skill(s) registered`,
+	}];
 }
 
 // --- Main doctor function ---
@@ -531,6 +705,7 @@ export function runDoctor(config: EnsembleConfig): DoctorResult {
 		...checkBrokenDependency(config),
 		...checkSecretInEnv(config),
 		...checkCapabilityGaps(config),
+		...checkSkillsSummary(config),
 	];
 
 	// Calculate scores using additive model (matching Python)

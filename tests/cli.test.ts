@@ -37,7 +37,7 @@ function cli(args: string, env?: Record<string, string>): string {
 describe("CLI", () => {
 	it("shows version", () => {
 		const output = cli("--version");
-		expect(output).toContain("1.0.0");
+		expect(output).toContain("1.0.7");
 	});
 
 	it("shows help", () => {

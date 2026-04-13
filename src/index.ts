@@ -129,6 +129,10 @@ export type { RegistryServer, ServerDetail, EnvVarSpec, RegistryAdapter } from "
 export { runDoctor } from "./doctor.js";
 export type { DoctorResult, DoctorCheck, CategoryScore } from "./doctor.js";
 
+// Discover
+export { discover, discoveredSkillToInstallParams, discoveredPluginToInstallParams } from "./discover.js";
+export type { DiscoveryReport, DiscoveredSkill, DiscoveredPlugin, DiscoverOptions } from "./discover.js";
+
 // Skills store
 export { parseFrontmatter, formatFrontmatter, skillToFrontmatter, frontmatterToSkill, readSkillMd, writeSkillMd, deleteSkillMd, listSkillDirs, skillMdPath } from "./skills.js";
 

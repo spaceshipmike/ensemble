@@ -16,8 +16,8 @@ import type { EnsembleConfig } from "./schemas.js";
 
 // --- Paths ---
 
-export const CONFIG_DIR = join(homedir(), ".config", "ensemble");
-export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+export const CONFIG_DIR = process.env.ENSEMBLE_CONFIG_DIR ?? join(homedir(), ".config", "ensemble");
+export const CONFIG_PATH = process.env.ENSEMBLE_CONFIG_PATH ?? join(CONFIG_DIR, "config.json");
 export const SKILLS_DIR = join(CONFIG_DIR, "skills");
 export const CACHE_DIR = join(CONFIG_DIR, "cache", "registry");
 

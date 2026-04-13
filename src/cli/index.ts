@@ -60,6 +60,10 @@ import { searchAll } from "../search.js";
 import { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams } from "../registry.js";
 import { syncClient, syncAllClients, syncSkills, computeContextCost } from "../sync.js";
 import { runDoctor } from "../doctor.js";
+import { discover, discoveredSkillToInstallParams } from "../discover.js";
+import { copyFileSync, existsSync as fsExistsSync, mkdirSync as fsMkdirSync } from "node:fs";
+import { join as pathJoin } from "node:path";
+import { SKILLS_DIR as ENSEMBLE_SKILLS_DIR } from "../config.js";
 import { listProjects } from "../projects.js";
 import { qualifiedPluginName } from "../schemas.js";
 import type { OpResult, OpReturn } from "../operations.js";
@@ -70,7 +74,7 @@ const program = new Command();
 program
 	.name("ensemble")
 	.description("Central manager for MCP servers, skills, and plugins across AI clients")
-	.version("1.0.0");
+	.version("1.0.7");
 
 // --- Helper ---
 
@@ -707,6 +711,140 @@ program.command("doctor").option("--json", "Output structured JSON").action((opt
 	console.log(`\nHealth: ${result.earnedPoints}/${result.totalPoints} (${result.scorePercent}%)`);
 	console.log(`${result.errors} errors, ${result.warnings} warnings, ${result.infos} info`);
 });
+
+// --- Discover ---
+
+const discoverCmd = program
+	.command("discover")
+	.description("Scan Claude Code directories for unregistered skills and plugins")
+	.option("--skills", "Skills only")
+	.option("--plugins", "Plugins only")
+	.option("--unregistered", "Only items not yet in ensemble")
+	.option("--no-projects", "Skip per-project scanning")
+	.option("--json", "Machine-readable output")
+	.action((opts) => {
+		const report = discover(loadConfig(), { includeProjects: opts.projects !== false });
+
+		let skills = report.skills;
+		let plugins = report.plugins;
+		if (opts.unregistered) {
+			skills = skills.filter((s) => !s.registered);
+			plugins = plugins.filter((p) => !p.registered);
+		}
+		if (opts.plugins && !opts.skills) skills = [];
+		if (opts.skills && !opts.plugins) plugins = [];
+
+		if (opts.json) {
+			console.log(JSON.stringify({ ...report, skills, plugins }, null, 2));
+			return;
+		}
+
+		if (skills.length === 0 && plugins.length === 0) {
+			console.log("Nothing discovered.");
+			console.log(`Scanned ${report.scannedPaths.length} path(s), ${report.projectsScanned} project(s).`);
+			return;
+		}
+
+		if (skills.length > 0) {
+			console.log(`Skills (${skills.length}):`);
+			for (const s of skills) {
+				const mark = s.registered ? "✓" : "+";
+				const loc = s.source === "user" ? "~/.claude" : s.projectPath ?? "project";
+				console.log(`  ${mark} ${s.name}  [${loc}]`);
+				if (s.skill.description) console.log(`      ${s.skill.description.slice(0, 80)}`);
+			}
+		}
+
+		if (plugins.length > 0) {
+			if (skills.length > 0) console.log("");
+			console.log(`Plugins (${plugins.length}):`);
+			for (const p of plugins) {
+				const mark = p.registered ? "✓" : "+";
+				const where = p.projectPaths.length > 0 ? ` (${p.projectPaths.length} project${p.projectPaths.length === 1 ? "" : "s"})` : "";
+				console.log(`  ${mark} ${p.id}  ${p.version}  [${p.scope}]${where}`);
+			}
+		}
+
+		const unregSkills = skills.filter((s) => !s.registered).length;
+		const unregPlugins = plugins.filter((p) => !p.registered).length;
+		console.log(`\nScanned ${report.scannedPaths.length} path(s), ${report.projectsScanned} project(s).`);
+		console.log(`✓ = already registered    + = unregistered`);
+		if (unregSkills + unregPlugins > 0) {
+			console.log(`\nRun 'ensemble discover import <name>' to import a specific item,`);
+			console.log(`or 'ensemble discover import --all-skills' / '--all-plugins' to bulk import.`);
+		}
+	});
+
+discoverCmd
+	.command("import [name]")
+	.description("Import a discovered skill or plugin into ensemble")
+	.option("--all-skills", "Import all unregistered discovered skills")
+	.option("--all-plugins", "Import all unregistered discovered plugins")
+	.option("--link", "Symlink SKILL.md into ensemble store instead of copying (not yet implemented)")
+	.action((name, opts) => {
+		const config = loadConfig();
+		const report = discover(config);
+		const messages: string[] = [];
+		let newConfig = config;
+
+		const importSkill = (d: typeof report.skills[number]) => {
+			if (d.registered) {
+				messages.push(`∘ skill '${d.name}' already registered, skipping`);
+				return;
+			}
+			const params = discoveredSkillToInstallParams(d);
+			// Copy SKILL.md into ensemble's canonical store
+			const destDir = pathJoin(ENSEMBLE_SKILLS_DIR, d.name);
+			if (!fsExistsSync(destDir)) fsMkdirSync(destDir, { recursive: true });
+			const destPath = pathJoin(destDir, "SKILL.md");
+			if (!fsExistsSync(destPath)) copyFileSync(d.sourcePath, destPath);
+			const { config: nextConfig, result } = installSkill(newConfig, { ...params, path: destPath });
+			if (!result.ok) {
+				messages.push(`✗ ${d.name}: ${result.error}`);
+				return;
+			}
+			newConfig = nextConfig;
+			messages.push(`+ imported skill '${d.name}' from ${d.source === "user" ? "~/.claude" : d.projectPath}`);
+		};
+
+		const importPlugin = (d: typeof report.plugins[number]) => {
+			if (d.registered) {
+				messages.push(`∘ plugin '${d.name}' already registered, skipping`);
+				return;
+			}
+			const { config: nextConfig, result } = installPlugin(newConfig, d.name, d.marketplace || undefined);
+			if (!result.ok) {
+				messages.push(`✗ ${d.name}: ${result.error}`);
+				return;
+			}
+			newConfig = nextConfig;
+			messages.push(`+ imported plugin '${d.id}' (${d.scope})`);
+		};
+
+		if (opts.allSkills) {
+			for (const s of report.skills) if (!s.registered) importSkill(s);
+		}
+		if (opts.allPlugins) {
+			for (const p of report.plugins) if (!p.registered) importPlugin(p);
+		}
+		if (name) {
+			const skill = report.skills.find((s) => s.name === name);
+			const plugin = report.plugins.find((p) => p.name === name || p.id === name);
+			if (skill) importSkill(skill);
+			else if (plugin) importPlugin(plugin);
+			else {
+				console.error(`Error: '${name}' not found in discovery scan`);
+				process.exit(1);
+			}
+		}
+		if (!opts.allSkills && !opts.allPlugins && !name) {
+			console.error("Error: specify <name>, --all-skills, or --all-plugins");
+			process.exit(1);
+		}
+
+		for (const msg of messages) console.log(msg);
+		saveConfig(newConfig);
+	});
 
 // --- Init ---
 
