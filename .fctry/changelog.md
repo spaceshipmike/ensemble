@@ -1,3 +1,80 @@
+## 2026-04-13 — Normalized v1.3 install-state terminology in pre-existing scenarios to library-first language; 41 new scenarios untouched.
+
+## 2026-04-13 — Removed mcpoyle migration path — dead code, migration window closed.
+
+## 2026-04-13 — v2.0.1 refinement (migration plan)
+
+Simplified v2.0.1 migration plan from deprecation-by-rename-with-guards to clean-slate-plus-one-shot-import, acknowledging the single-user-single-machine constraint. Spec stays at 2.0.1 (refinement within version). Touched §Library API (operations), §CLI Surface (added `import-legacy`, narrowed Legacy → Retained Surface, deleted v1.3 install-state verbs from listing), added new top-level §Migration (v1.3 → v2.0.1), §Architecture module table (added `import-legacy.ts` throwaway), §Design Principles (added #11 single-user/single-machine). No spec-version bump.
+
+## 2026-04-13 — /fctry:review drift fixes
+
+CLAUDE.md rolled back to v1.3 reality with v2.0.1 targets broken out; discover.ts and mcpoyle/ added to spec architecture table.
+
+## 2026-04-12T23:30:00Z — /fctry:evolve (library as primary interface; install as property; pivot-based IA)
+
+- Frontmatter: spec-version 2.0.0 → 2.0.1; synopsis medium rewritten to lead with "library as primary interface, install state as property"; patterns adds "library as primary interface", "install-state-as-property", "pivot-based IA" [structural]
+- `#core-concepts`: Added new "Resource Lifecycle Model" subsection introducing Marketplace / Library / Install state / Pivot as first-class concepts with pivot table; split into "Resource Types" for existing resource entries; rewrote Marketplace bullet as discovery-only; added "Library membership vs. install state" bullet; rewrote Sync bullet to clarify "projects install state into clients, does not touch library membership" [modified]
+- `#library-api` / Operations: Added v2.0.1 library-vs-install-state split — pullFromMarketplace, addToLibrary, removeFromLibrary, installResource, uninstallResource, getInstallState, getLibraryByPivot; clarified legacy aliases under strict library-first semantics [modified]
+- `#library-api` / Zod Schemas: Added InstallStateSchema, PivotSpecSchema to exports block [modified]
+- `#cli-surface`: Added "Lifecycle Verbs (v2.0.1)" subsection with pull/add/install/uninstall/remove semantics; added "Library Subcommand" subsection (list/show/pivot); added "Per-Project Install State" subsection clarifying Claude-Code-only scoping and error handling for other clients; reframed prior CLI dump as "Legacy Surface" [modified]
+- `#desktop-app` / Layout: Replaced the 7-subsection Resources group with a pivot-based sidebar — Library (default, with resource-type filter bar), By Project, By Group, By Client, Marketplace; workflow sections (Sync, Doctor, Snapshots, Profiles, Rules) moved below; added IA rationale note [modified]
+- `#sync`: Prepended framing paragraph — sync projects install state into clients, never touches library membership [modified]
+- `#design-principles`: Added principle #0 "The library is the primary interface. Install state is a property, not a location." [added]
+- `#non-goals`: Added non-goal "library as a backup of client configs" — clarifies library is authoritative inventory, not a dump of client state [added]
+- `#changelog`: Added 2.0.1 entry [modified]
+(7 modified, 2 added, 0 removed)
+
+## 2026-04-12T18:00:00Z — /fctry:ref (level up ensemble — 6 references, v2.0 scope expansion)
+
+- Frontmatter: spec-version 1.3.1 → 2.0.0, short/medium/readme rewritten as "Claude Code extension platform manager", tech-stack adds Ink + fuzzysort, patterns adds non-destructive settings.json merge + safe apply/rollback + fuzzy search across installed + discoverable + marketplace filter syntax + card/slim view modes + dynamic marketplace registry + meta-loop, goals expanded for 7 resource types + rollback + TUI browse + 21-client sync [structural]
+- `#problem`: Rewritten to enumerate the 7 declarative artifact types in `.claude/` and frame fragmentation as spreading across client ecosystem [modified]
+- `#solution`: Rewritten to describe Claude Code extension platform manager scope, per-resource sync strategies, rollback snapshots, browse TUI [modified]
+- `#core-concepts`: Added 4 new concept entries — Agent, Command, Hook, Setting; added Safe apply / rollback snapshot; expanded Group and Sync definitions; expanded Trust Tier to cover all resource types [modified]
+- `#library-api` / Package Exports: Added 5 new subpath exports (agents, commands, hooks, settings, snapshots, browse) [modified]
+- `#library-api` / Operations: Added addAgent/removeAgent/enableAgent/disableAgent, addCommand/removeCommand/enableCommand/disableCommand, addHook/removeHook/enableHook/disableHook, setSetting/removeSetting [modified]
+- `#library-api` / Zod Schemas: Added AgentSchema, CommandSchema, HookSchema, SettingSchema, PluginSchema, SnapshotSchema [modified]
+- `#library-api` / Client Resolution: Added resolveAgents, resolveCommands, resolveHooks, resolveSettings [modified]
+- `#library-api` / Registry API: Added discoverMarketplaces (dynamic registry), fuzzySearchAll (unified discovery), cloud catalog formalization [modified]
+- `#cli-surface`: Added full command groups for agents, commands, hooks, settings; added `ensemble browse` TUI command with view/type/marketplace flags; added `ensemble snapshots list/show` and `ensemble rollback`; added groups add/remove verbs for all new resource types [modified]
+- `#desktop-app` / Layout: Restructured sidebar into collapsible Resources group (7 types) plus workflow top-level sections; added Agents, Commands, Hooks, Settings, Snapshots sections [modified]
+- `#desktop-app` / Visual Extras: Extended drag-and-drop to all resource types; added Card/Slim toggle; added unified fuzzy search bar with @marketplace filter chips; added rollback affordances [modified]
+- `#sync`: Added per-resource strategy description for all 7 types; added non-destructive merge description for hooks and settings [modified]
+- `#sync` / Safe Apply and Rollback Snapshots: New subsection — pre-write snapshot capture, restore operations, retention pruning [added]
+- `#supported-clients`: Added Antigravity, CodeBuddy, Qoder, Trae (17 → 21); added framing paragraph citing AgentSkillsManager [modified]
+- `#architecture`: Added agents.ts, commands.ts, hooks.ts, settings.ts, snapshots.ts, browse.ts to src/ tree and modules table [modified]
+- `#tech-stack`: Added Ink (TUI) and fuzzysort [modified]
+- `#non-goals`: Clarified GUI framework non-goal to accommodate Ink-based `ensemble browse` as presentation-only [modified]
+- `#design-principles`: Added principle 9 (non-destructive settings.json merge) and principle 10 (safe apply with rollback snapshots) [added]
+- `#references`: Added plum and claude-forge; extended TARS, ay-claude-templates, skillbox, AgentSkillsManager with v2.0 contributions [modified]
+- `#changelog`: Added 2.0.0 entry [modified]
+(17 modified, 3 added, 0 removed)
+
+## 2026-04-12T00:00:00Z — /fctry:evolve (add Electron desktop app)
+
+- Frontmatter: version 1.2.0 → 1.3.0, synopsis updated for desktop app, tech-stack adds Electron/React/Tailwind/Playwright, patterns adds monorepo/sidebar/drag-drop/visual-drift/autonomous-testing, goals adds desktop app [structural]
+- `#desktop-app`: New section — Electron desktop app as third presentation layer with full CLI parity. macOS sidebar + detail panel layout (10 sections). Visual extras: drag-and-drop group assignment, visual drift diffing, interactive dependency graphs, registry cards. IPC architecture (main→preload→renderer). Shared config with fs.watch live reload. Playwright autonomous testing. Distribution TBD. [added]
+- `#philosophy`: Updated for three presentation layers (CLI, desktop app, scripting) [modified]
+- `#solution`: Updated to mention desktop app and visual extras [modified]
+- `#non-goals`: Replaced "no GUI/TUI" with "no standalone GUI framework" — Chorus remains separate consumer [modified]
+- `#architecture`: Added monorepo layout with npm workspaces, packages/desktop/ tree, desktop module row [modified]
+- `#tech-stack`: Added Electron, React, Tailwind CSS, Playwright, electron-builder, electron-vite [modified]
+- `#design-principles`: Updated library-first to acknowledge desktop app as consumer [modified]
+- `#changelog`: Added 1.3.0 entry [modified]
+- Scenarios: 19 new scenarios across 6 features in Desktop category (launch/layout, server management, sync/drift, registry browser, doctor/health, autonomous testing) [added]
+(7 modified, 2 added, 0 removed)
+
+## 2026-04-11T00:00:00Z — /fctry:evolve (document 5 code-ahead features)
+
+- Frontmatter: version 1.1.0 → 1.2.0, date updated, synopsis patterns/goals expanded [structural]
+- Configuration Profiles: New section — save/activate/list/show/delete named config snapshots capturing client assignments, rules, and settings [added]
+- `#cli-surface`: Added profiles subcommand group (save, activate, list, show, delete) [modified]
+- `#config`: Added settings and profiles fields to config schema example [modified]
+- `#sync` / Group Split Suggestions: New subsection — keyword-categorized server grouping proposals for high tool counts [added]
+- `#registry` / Secret Scanning: New subsection — regex detection of 8 credential patterns in env values and skill content [added]
+- `#registry` / Local Capability Search: Expanded with query alias expansion (~30 mappings), multi-signal quality scoring, usage-based self-learning search [modified]
+- `#changelog`: Added 1.2.0 entry [modified]
+(4 modified, 3 added, 0 removed)
+
 ## 2026-03-30T18:00:00Z — /fctry:evolve (TypeScript rewrite — mcpoyle → Ensemble)
 
 - Frontmatter: version 0.15.0 → 1.0.0, synopsis rewritten for library-first TypeScript identity [structural]

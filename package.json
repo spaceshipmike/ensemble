@@ -2,6 +2,9 @@
   "name": "ensemble",
   "version": "1.0.7",
   "description": "Central manager for MCP servers, skills, and plugins across AI clients",
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

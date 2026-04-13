@@ -1,15 +1,18 @@
----
-version: 1.1.0
+```yaml
+title: Ensemble
+spec-version: 2.0.1
+spec-format: nlspec-v2
 status: active
-last_updated: 2026-04-07
+date: 2026-04-12
+author: Michael Lebowitz
 synopsis:
-  short: "Central manager for MCP servers, skills, and plugins across AI clients"
-  medium: "Ensemble is a library-first TypeScript toolkit that centrally manages MCP servers, agent skills (SKILL.md files), and Claude Code plugins across 17 AI clients. It exposes pure-function operations with Zod-validated schemas, a CLI for direct use, and package exports for app integration."
-  readme: "Ensemble eliminates the pain of maintaining MCP server configurations, agent skills, and Claude Code plugins across Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains, and 10 more clients. Define your servers and skills once, organize them into groups, assign groups to clients or projects, and sync. The library-first architecture means every operation is a pure function — load config, call an operation, save config — making Ensemble equally useful as a standalone CLI and as an imported dependency for app-level consumers like Chorus. Skills are SKILL.md files managed via a canonical store with symlink fan-out to each client's skills directory. Registry integration supports extensible backends with trust-tier classification, quality signals, metadata caching, and local capability search. A unified source parser accepts GitHub repos, local paths, and registry slugs through a single command. Zod schemas are exported for runtime validation by consumers."
-  tech-stack: [TypeScript, Commander.js, Zod, Vitest, Biome, tsup, npm, better-sqlite3, proper-lockfile, smol-toml, JSON config]
-  patterns: [library-first architecture, pure-function operations, Zod schema exports, additive sync, central registry, group-based assignment, path-rule auto-assignment, project-registry integration, setlist capability integration, multi-registry search, extensible registry adapters, registry metadata caching, server provenance tracking, tool metadata storage, context cost awareness, local capability search, presentation-agnostic core, operations layer, content-hash drift detection, deterministic health audit, guided onboarding, marker-based coexistence, canonical store + symlink fan-out, trust-tier classification, unified source parser, collision detection, pin/track provenance modes, dependency intelligence, pre-install security summary, deterministic config scoring, profile-as-plugin packaging, builtin meta-skill]
-  goals: [single source of truth for MCP configs, cross-client sync, plugin lifecycle management, skill lifecycle management, registry discovery + install, project-aware scoping, library API for app consumers, CLI surface, server provenance and capability search, trust-tiered content safety, portfolio capability awareness via setlist]
----
+  short: "Claude Code extension platform manager — servers, skills, plugins, agents, commands, hooks, and settings across 21 AI clients"
+  medium: "Ensemble is a library-first TypeScript toolkit that manages every declarative artifact in .claude/ — MCP servers, skills, plugins, subagents, slash commands, hooks, and settings — across 21 AI clients. The user's owned inventory lives in a single flat library; install state is a property of each library resource, tracked per client and per project, not a tier above or below it. Ensemble exposes pure-function operations with Zod-validated schemas, a CLI with clean pull/add/install/uninstall/remove verbs, an Electron desktop app with a pivot-based sidebar (Library, By Project, By Group, By Client, Marketplace), a TUI-grade discovery experience, safe apply/rollback snapshots, and package exports for app integration."
+  readme: "Ensemble is a Claude Code extension platform manager. v2.0 expands scope from MCP servers, skills, and plugins to every declarative resource Claude Code and its siblings consume: subagents (.claude/agents/), slash commands (.claude/commands/), hooks (PreToolUse, PostToolUse, SessionStart, UserPromptSubmit, PreCompact, Stop, Notification), and managed settings.json values (permissions.allow, env, model). Define every resource once, organize into groups, assign groups to clients or projects, and sync across 21 AI clients — Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains, Antigravity, CodeBuddy, Qoder, Trae, and 10 more. The library-first architecture means every operation is a pure function — load config, call an operation, save config — making Ensemble equally useful as a standalone CLI, a desktop app, and an imported dependency for app-level consumers like Chorus. Settings.json merges are non-destructive: Ensemble preserves any keys it does not manage, coexisting safely with manual edits and other tools. Every sync run produces a rollback-capable snapshot, so any operation can be undone. The Electron desktop app provides a collapsible Resources sidebar (Servers, Skills, Plugins, Agents, Commands, Hooks, Settings) plus Groups, Clients, Sync, Doctor, Registry, Profiles, and Rules sections. A new `ensemble browse` TUI command provides fuzzy search across installed and discoverable resources, @marketplace-name filter syntax, Card and Slim view modes, and one-key install. Dynamic marketplace registry auto-discovers new marketplaces and notifies on availability. Zod schemas are exported for runtime validation by consumers."
+  tech-stack: [TypeScript, Commander.js, Zod, Vitest, Biome, tsup, npm, better-sqlite3, proper-lockfile, smol-toml, JSON config, Electron, React, Tailwind CSS, Playwright, Ink, fuzzysort]
+  patterns: [library as primary interface, install-state-as-property, pivot-based IA, library-first architecture, pure-function operations, Zod schema exports, additive sync, non-destructive settings.json merge, central registry, group-based assignment, path-rule auto-assignment, configuration profiles, project-registry integration, setlist capability integration, multi-registry search, extensible registry adapters, dynamic marketplace registry, registry metadata caching, server provenance tracking, tool metadata storage, context cost awareness, group split suggestions, local capability search, fuzzy search across installed + discoverable, marketplace filter syntax, card/slim view modes, query alias expansion, multi-signal quality scoring, usage-based self-learning search, secret scanning, presentation-agnostic core, operations layer, content-hash drift detection, safe apply/rollback snapshots, deterministic health audit, guided onboarding, marker-based coexistence, canonical store + symlink fan-out, trust-tier classification, unified source parser, collision detection, pin/track provenance modes, dependency intelligence, pre-install security summary, deterministic config scoring, profile-as-plugin packaging, builtin meta-skill, monorepo workspaces, sidebar + detail panel layout, collapsible resources sidebar, visual drift diffing, drag-and-drop group assignment, autonomous UI testing, TUI-grade discovery browser, meta-loop (ensemble manages fctry)]
+  goals: [single source of truth for all Claude Code extension artifacts, cross-client sync across 21 clients, MCP server lifecycle management, skill lifecycle management, plugin lifecycle management, subagent lifecycle management, slash command lifecycle management, hook lifecycle management, declarative settings.json management, non-destructive settings merge, safe apply with rollback snapshots, registry discovery + install, dynamic marketplace discovery, fuzzy search across installed + discoverable, TUI-grade browse experience, cloud catalog integration (claude-plugins.dev), project-aware scoping, library API for app consumers, CLI surface, desktop app for visual management, server provenance and capability search, trust-tiered content safety, portfolio capability awareness via setlist, secret detection for credential hygiene, self-learning search refinement]
+```
 
 # Ensemble
 
@@ -17,31 +20,76 @@ A library-first TypeScript toolkit for centrally managing MCP server configurati
 
 ## Philosophy
 
-Ensemble is designed to be equally useful as an imported library, a CLI tool, and a scripting target. Every operation is a pure function that takes a config object and returns an updated config plus a result — no side effects, no hidden state. This means an app like Chorus can import Ensemble's operations directly, a human can use the CLI, and an AI agent can script the CLI for fleet management. Structured output where it matters, deterministic behavior, no interactive prompts in the default path, and clear exit codes. The CLI is a thin wrapper over the library; the library is the real product.
+Ensemble is designed to be equally useful as an imported library, a CLI tool, a desktop app, and a scripting target. Every operation is a pure function that takes a config object and returns an updated config plus a result — no side effects, no hidden state. This means an app like Chorus can import Ensemble's operations directly, a human can use the CLI or the desktop app, and an AI agent can script the CLI for fleet management. Structured output where it matters, deterministic behavior, no interactive prompts in the default CLI path, and clear exit codes. The CLI and desktop app are thin presentation layers over the library; the library is the real product.
 
 ## Problem
 
-Each AI client (Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains) maintains its own MCP server config in its own format. Adding a server means editing multiple files. There's no way to assign different server sets to different clients.
+Each AI client (Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed, JetBrains, and newer entrants like Antigravity, CodeBuddy, Qoder, and Trae) maintains its own MCP server config in its own format. Adding a server means editing multiple files. There's no way to assign different server sets to different clients. The client ecosystem continues to fragment — each new IDE or agent harness adds its own skills directory, its own plugin conventions, its own settings format.
 
-Claude Code also has a plugin/marketplace system with configuration in `~/.claude/settings.json` (`enabledPlugins`, `extraKnownMarketplaces`) and a plugin cache at `~/.claude/plugins/cache/`. Managing plugins — installing, enabling, organizing across projects — requires manual JSON editing or the Claude Code UI. The native scope system (user/project/local) has known bugs around cross-scope visibility, making programmatic management even more valuable.
+Claude Code has a plugin/marketplace system with configuration in `~/.claude/settings.json` (`enabledPlugins`, `extraKnownMarketplaces`) and a plugin cache at `~/.claude/plugins/cache/`. But plugins are only one of seven declarative artifact types Claude Code consumes:
 
-AI clients are also gaining support for agent skills — instruction files (SKILL.md) that live in client-specific directories and teach agents workflows, coding patterns, and domain knowledge. Skills are a different artifact type from servers (runtime processes) and plugins (code extensions): they're static markdown files with YAML frontmatter. Each client uses its own skills directory path, creating the same fragmentation problem that exists for server configs.
+1. **MCP servers** (`~/.claude.json` → `mcpServers`)
+2. **Skills** (`~/.claude/skills/` or per-project `.claude/skills/`)
+3. **Plugins** (`~/.claude/settings.json` → `enabledPlugins`)
+4. **Subagents** (`.claude/agents/*.md` with YAML frontmatter)
+5. **Slash commands** (`.claude/commands/*.md` with YAML frontmatter)
+6. **Hooks** (`~/.claude/settings.json` → `hooks` — PreToolUse, PostToolUse, SessionStart, UserPromptSubmit, PreCompact, Stop, Notification)
+7. **Settings** (`~/.claude/settings.json` — `permissions.allow`, `env`, `model`, and dozens of other keys)
+
+Managing any of these — installing, enabling, organizing across projects, keeping them in sync across machines — requires manual JSON/YAML/markdown editing or an ever-growing pile of single-purpose tools. The fragmentation that existed for MCP servers now exists for every resource type in `.claude/`, and the same problem is spreading across sibling clients that adopt the same patterns. A unified management layer is needed.
 
 ## Solution
 
-A TypeScript library and CLI that manages a central registry of servers, skills, and plugins, organizes them into groups, and syncs the right configuration to the right clients. Servers sync via config-entry writes; skills sync via canonical store with symlink fan-out to each client's skills directory. For Claude Code, this extends to full plugin lifecycle management: install, uninstall, enable, disable, and marketplace registration. App consumers (like Chorus) import Ensemble as a dependency and call operations directly.
+A TypeScript library, CLI, and desktop app that manages a central registry of every Claude Code extension artifact — servers, skills, plugins, subagents, slash commands, hooks, and settings — organizes them into groups, and syncs the right configuration to the right clients. Each resource type has its own sync strategy: servers and plugins sync via config-entry writes, skills and agents and commands sync via canonical store with symlink or file fan-out, hooks sync via non-destructive merge into `settings.json` under the `hooks` key, and managed settings sync via non-destructive key-level merge that preserves any fields Ensemble does not own. Every sync run produces a rollback-capable snapshot: any operation can be undone. The Electron desktop app provides visual management with a collapsible Resources sidebar plus Groups, Clients, Sync, Doctor, Registry, Profiles, and Rules sections. A new TUI-grade browse experience (`ensemble browse`) provides fuzzy search across installed and discoverable resources, `@marketplace-name` filter syntax, Card and Slim view modes, and one-key install. App consumers (like Chorus) import Ensemble as a dependency and call operations directly.
+
+v2.0 reframes Ensemble from "MCP/skills/plugins manager" to a **Claude Code extension platform manager** — managing every declarative artifact in `.claude/` across every AI client that adopts the pattern. The library-first architecture stays. The pure-function operations stay. Only the data model and sync surface grow.
 
 ## Core Concepts
 
+### Resource Lifecycle Model (v2.0.1 refinement)
+
+Ensemble's lifecycle is organized around three concepts — **Marketplace**, **Library**, and **Install state** — with **Pivots** as named views over the library. This replaces the earlier implicit hierarchy (marketplace → library → installed) with a flat, property-based model.
+
+- **Marketplace** — a remote discovery surface. GitHub marketplaces, catalogs, and registries (claude-plugins.dev, Official MCP Registry, Glama, community marketplaces like plum's 12). Marketplaces are **not owned by the user**; they are the source from which library pulls happen. Once a resource is pulled, it becomes a library resource and is user-owned, even if later uninstalled from every client.
+
+- **Library** — the user's owned inventory, and **Ensemble's primary interface**. A single flat set of every resource the user has ever pulled from a marketplace or locally authored: servers, skills, plugins, agents, commands, hooks, and settings — all side by side. The library is the canonical store (`~/.config/ensemble/`) and the source of truth from which clients are synced. The library is not a staging area for uninstalled resources; it is the authoritative inventory. A resource's presence in the library is independent of whether it is currently installed anywhere.
+
+- **Install state** — a **property** of a library resource, not a tier. Each library resource carries a per-client/per-project install matrix describing where it is currently installed. A resource may be installed on client A and not on client B, or installed for project X under Claude Code but not for project Y. "Uninstall" removes a resource from a specific (client, project?) scope — it does **not** remove the resource from the library. Only `ensemble remove` deletes a resource from the library entirely.
+
+- **Pivot** — a named view over the library, filtered and faceted along a single dimension. The same library data can be browsed through multiple pivots, and install/uninstall actions are available from **every** pivot via row-level controls. The core pivots:
+
+  | Pivot | Shows | Install gesture |
+  |-------|-------|-----------------|
+  | **Library** (default) | Every owned resource with install-state indicators (which clients/projects it is installed for). Resource-type filter bar at top. | Toggle install per client/project from the row |
+  | **By Project** | Resources installed for a specific project path (Claude Code project scoping) | Install = add to this project's assignment; uninstall = remove |
+  | **By Group** | Resources that belong to a named group | Install = assign the group to a client; uninstall = unassign. Removing from group cascades uninstall from any clients using that group. |
+  | **By Client** | Resources installed for a specific client | Install/uninstall per this client |
+  | **Marketplace** | Resources available to pull that are **not yet in the library** | Pull → adds to library |
+
+  Resource type (server, skill, plugin, agent, command, hook, setting) is a **filter** applied within the Library pivot, not a pivot in its own right. Users who think in resource types filter the Library; users who think in clients, projects, or groups use the corresponding pivot. Same underlying data.
+
+### Resource Types
+
 - **Server** — an MCP server definition (name, command, args, env, transport, and optionally url, auth, origin, and tool metadata). Servers are runtime processes that provide tools to AI agents.
-- **Skill** — an agent instruction file (SKILL.md with YAML frontmatter: name, description, and optionally dependencies, tags). Skills are static markdown files that teach agents workflows, coding patterns, and domain knowledge. They are not runtime processes (servers) or code extensions (plugins).
-- **Plugin** — a Claude Code plugin (name, marketplace, scope, enabled state)
-- **Marketplace** — a source of plugins (GitHub repo or local directory)
-- **Group** — a named collection of servers, skills, and/or plugins (e.g., "dev-tools", "work", "personal")
-- **Client** — an AI application that consumes MCP servers and optionally skills (detected automatically)
-- **Sync** — writing the correct servers, skills, and plugin state to each client's config and skills directory, filtered by group assignment. Servers sync via config-entry writes; skills sync via symlink fan-out from the canonical store.
-- **Origin** — provenance metadata tracking where a server or skill was imported from, when, by what method, and its trust tier
-- **Trust Tier** — classification of registry content: `official` (verified publishers), `community` (unverified registry content), `local` (user-defined). Displayed in search results and `show` output.
+- **Skill** — an agent instruction file (SKILL.md with YAML frontmatter: name, description, and optionally dependencies, tags). Skills are static markdown files that teach agents workflows, coding patterns, and domain knowledge.
+- **Plugin** — a Claude Code plugin (name, marketplace, scope, enabled state).
+- **Agent** — a Claude Code subagent definition. Stored as `.claude/agents/<name>.md` with YAML frontmatter (`name`, `description`, `tools`, optional `model`) followed by the system prompt body. Agents are invokable personalities with scoped tool access; they are distinct from skills (which teach workflows) and from plugins (which ship code). Ensemble manages user-level agents (`~/.claude/agents/`) and project-level agents (`<project>/.claude/agents/`) as first-class resources.
+- **Command** — a Claude Code slash command. Stored as `.claude/commands/<name>.md` with YAML frontmatter (`description`, optional `allowed-tools`, optional `argument-hint`) followed by the prompt body. Commands are user-invoked shortcuts; they fan out to `~/.claude/commands/` or `<project>/.claude/commands/`.
+- **Hook** — a Claude Code hook entry stored inside `~/.claude/settings.json` (or `<project>/.claude/settings.json`) under the `hooks` key. Hooks fire on lifecycle events: `PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, `Notification`. Each hook declares a matcher and a command to run. Because hooks live inside `settings.json` alongside keys Ensemble does not manage, hook sync uses non-destructive merge.
+- **Setting** — a Claude Code configuration value in `settings.json` that Ensemble manages declaratively. Examples: `permissions.allow` (tool allowlists), `env` (environment variable defaults), `model` (default model selection), and other top-level keys. Ensemble owns only the specific keys the user explicitly places under management; every other key in `settings.json` is preserved untouched on every write.
+- **Marketplace** — a remote source of pullable resources (GitHub repo, registry, or local directory). Marketplaces are discovery-only; they are never owned by the user. `ensemble pull` copies a resource from a marketplace into the library, after which the resource is library-owned. v2.0 adds a **dynamic marketplace registry** that auto-discovers new marketplaces and notifies when a new one becomes available (pattern from plum).
+- **Group** — a named collection of any resource type (servers, skills, plugins, agents, commands, hooks). Settings are client-level, not group-level, because they are client-wide configuration rather than installable units.
+- **Client** — an AI application that consumes one or more resource types (detected automatically). v2.0 supports 21 clients (see §Supported Clients).
+- **Library membership vs. install state** — two orthogonal axes. Library membership is controlled by `pull` / `add` / `remove`. Install state is controlled by `install` / `uninstall`. Uninstalling a resource from every client leaves it in the library (still owned, still browseable); only `ensemble remove` evicts it from the library.
+
+- **Sync** — writing the currently-installed state of every library resource to each client's filesystem and config. Sync **projects install state into client configs**; it does **not** touch library membership. The library is authoritative; sync is the downstream projection. Per-resource strategy:
+  - **Servers, plugins:** config-entry writes (JSON/TOML) — existing strategy.
+  - **Skills, agents, commands:** canonical store + symlink (or file) fan-out to each client's resource directory.
+  - **Hooks:** non-destructive merge into `settings.json` under the `hooks` key.
+  - **Settings:** non-destructive key-level merge into `settings.json` — Ensemble writes only the keys it manages, preserves everything else.
+- **Safe apply / rollback snapshot** — every `ensemble sync` run captures a snapshot of each touched file before writing. Snapshots are stored in `~/.config/ensemble/snapshots/<timestamp>/` and can be restored with `ensemble rollback`. This is richer than additive-sync alone: even additive writes produce a rollback point, so manual overrides, bad registry installs, and accidental overwrites are all recoverable. (Pattern from TARS.)
+- **Origin** — provenance metadata tracking where any resource (server, skill, plugin, agent, command, hook, setting) was imported from, when, by what method, and its trust tier.
+- **Trust Tier** — classification of registry content: `official` (verified publishers), `community` (unverified registry content), `local` (user-defined). Displayed in search results and `show` output for every resource type.
 
 ## Library API
 
@@ -59,11 +107,19 @@ Ensemble is published as `ensemble` on npm. The package exposes multiple entry p
     "./registry": "./dist/registry.js",
     "./sync": "./dist/sync.js",
     "./skills": "./dist/skills.js",
+    "./agents": "./dist/agents.js",
+    "./commands": "./dist/commands.js",
+    "./hooks": "./dist/hooks.js",
+    "./settings": "./dist/settings.js",
+    "./snapshots": "./dist/snapshots.js",
+    "./browse": "./dist/browse.js",
     "./search": "./dist/search.js",
     "./doctor": "./dist/doctor.js"
   }
 }
 ```
+
+v2.0 adds five new subpath exports — `agents`, `commands`, `hooks`, `settings`, and `snapshots` — plus the `browse` entry point for the TUI-grade discovery surface. Each resource type module mirrors `skills.ts`: a canonical-store reader/writer plus frontmatter parsing helpers where relevant.
 
 ### Config Loading Pattern
 
@@ -96,8 +152,80 @@ function enableServer(config: EnsembleConfig, name: string): OperationResult<Ser
 function disableServer(config: EnsembleConfig, name: string): OperationResult<Server>;
 function assignGroup(config: EnsembleConfig, clientId: string, group: string, project?: string): OperationResult<void>;
 function unassignGroup(config: EnsembleConfig, clientId: string, project?: string): OperationResult<void>;
+
+// v2.0 — same pattern for every new resource type
+function addAgent(config: EnsembleConfig, params: AddAgentParams): OperationResult<Agent>;
+function removeAgent(config: EnsembleConfig, name: string): OperationResult<{ removed: Agent }>;
+function enableAgent(config: EnsembleConfig, name: string): OperationResult<Agent>;
+function disableAgent(config: EnsembleConfig, name: string): OperationResult<Agent>;
+
+function addCommand(config: EnsembleConfig, params: AddCommandParams): OperationResult<Command>;
+function removeCommand(config: EnsembleConfig, name: string): OperationResult<{ removed: Command }>;
+function enableCommand(config: EnsembleConfig, name: string): OperationResult<Command>;
+function disableCommand(config: EnsembleConfig, name: string): OperationResult<Command>;
+
+function addHook(config: EnsembleConfig, params: AddHookParams): OperationResult<Hook>;
+function removeHook(config: EnsembleConfig, id: string): OperationResult<{ removed: Hook }>;
+function enableHook(config: EnsembleConfig, id: string): OperationResult<Hook>;
+function disableHook(config: EnsembleConfig, id: string): OperationResult<Hook>;
+
+function setSetting(config: EnsembleConfig, params: SetSettingParams): OperationResult<Setting>;
+function removeSetting(config: EnsembleConfig, key: string): OperationResult<{ removed: Setting }>;
+
 // ... same pattern for skills, plugins, groups, marketplaces, rules
 ```
+
+All v2.0 operations follow the same immutable `(config, params) → { config, result }` contract. No I/O, no side effects. The new resource types are additions to the data model, not new abstractions — every app consumer that already integrates `addServer` can integrate `addAgent` with identical wiring.
+
+**v2.0.1 — library vs. install-state split.** The operations layer cleanly separates library-membership mutations from install-state mutations. Library mutations change what the user owns; install-state mutations change where an owned resource is projected.
+
+```ts
+// Library membership mutations (what the user owns)
+function pullFromMarketplace(
+  config: EnsembleConfig,
+  params: { source: string; type?: ResourceType }
+): OperationResult<{ added: LibraryResource }>;
+
+function addToLibrary(
+  config: EnsembleConfig,
+  params: AddToLibraryParams   // explicit local/manual authoring
+): OperationResult<{ added: LibraryResource }>;
+
+function removeFromLibrary(
+  config: EnsembleConfig,
+  params: { name: string; type: ResourceType }
+): OperationResult<{ removed: LibraryResource }>;
+
+// Install-state mutations (where owned resources are projected)
+function installResource(
+  config: EnsembleConfig,
+  params: { name: string; type: ResourceType; client: string; project?: string }
+): OperationResult<InstallState>;
+
+function uninstallResource(
+  config: EnsembleConfig,
+  params: { name: string; type: ResourceType; client: string; project?: string }
+): OperationResult<InstallState>;
+
+// Query helpers
+function getInstallState(
+  config: EnsembleConfig,
+  params: { name: string; type: ResourceType }
+): InstallState;                            // per-client/per-project matrix
+
+function getLibraryByPivot(
+  config: EnsembleConfig,
+  pivot: PivotSpec                          // { kind: 'library' | 'project' | 'group' | 'client' | 'marketplace', ... }
+): LibraryResource[];
+```
+
+Schemas add `InstallState` (a map from `client` → `{ installed: boolean, projects: string[] }`) and `PivotSpec`. Every library resource schema (`ServerSchema`, `SkillSchema`, `PluginSchema`, `AgentSchema`, `CommandSchema`, `HookSchema`, `SettingSchema`) gains an `installState: InstallState` field, replacing per-client enable/disable booleans where they exist. Install state is **never a boolean** on a library resource — it is always a per-client-per-project map, because the same resource can have different install state on different clients or in different projects.
+
+**Clean-slate verb surface.** v2.0.1 is a clean rewrite of the install-state surface, not a backwards-compatible extension. The v1.3 install-state verbs — `installPlugin`, `uninstallPlugin`, `installSkill`, `uninstallSkill`, `enablePlugin`, `disablePlugin`, `enableServer`, `disableServer` — are **deleted outright** from `operations.ts`, the package exports, and the public `ensemble` type surface. There are no JSDoc deprecation annotations, no runtime compatibility shims, no `Legacy`-suffixed wrappers, no migration-gated guards, and no dual-code-path CLI. The only install-state verbs that exist in v2.0.1 are `installResource` and `uninstallResource`.
+
+The library-membership verbs follow the opposite rule: the pre-refinement `addServer`, `addAgent`, `addCommand`, `addHook`, `setSetting`, and their `remove*` counterparts **remain**, because library membership is semantically unchanged and there is no reason to churn those call sites. They route through `addToLibrary` / `removeFromLibrary` with the appropriate `type` tag; under strict library-first semantics (see Design Principles) they leave `installState` empty unless an explicit `install` parameter is passed. `removeServer` / `removeAgent` / … are aliases for `removeFromLibrary` and are destructive — they evict the resource from the library entirely.
+
+Call sites that previously used `enableServer` / `disableServer` / `installPlugin` / etc. for the "assign to one client" semantics must migrate to `installResource` / `uninstallResource`. See §Migration for the cross-repo coordination plan.
 
 Operations take an immutable config and return a new config plus a typed result. They never perform I/O. Side effects (file writes, network calls) live in `sync`, `registry`, and `config` modules.
 
@@ -106,26 +234,57 @@ Operations take an immutable config and return a new config plus a typed result.
 All data types are defined as Zod schemas and exported for runtime validation by consumers:
 
 ```ts
-import { ServerSchema, SkillSchema, EnsembleConfigSchema, GroupSchema } from 'ensemble/schemas';
+import {
+  ServerSchema,
+  SkillSchema,
+  PluginSchema,
+  AgentSchema,
+  CommandSchema,
+  HookSchema,
+  SettingSchema,
+  EnsembleConfigSchema,
+  GroupSchema,
+  SnapshotSchema,
+  InstallStateSchema,  // v2.0.1 — per-client/per-project install matrix
+  PivotSpecSchema,     // v2.0.1 — view descriptor for library pivots
+} from 'ensemble/schemas';
 
 // Validate external data
 const server = ServerSchema.parse(untrustedInput);
+const agent = AgentSchema.parse(agentFrontmatter);
+const hook = HookSchema.parse(hookEntry);
 
 // Infer types
-import type { Server, Skill, EnsembleConfig } from 'ensemble/schemas';
+import type {
+  Server, Skill, Plugin, Agent, Command, Hook, Setting,
+  EnsembleConfig, Snapshot,
+} from 'ensemble/schemas';
 ```
+
+`AgentSchema`, `CommandSchema`, `HookSchema`, and `SettingSchema` are new in v2.0. They validate parsed markdown frontmatter (agents, commands) or JSON values (hooks, settings) and are consumable by any app that integrates Ensemble.
 
 Schemas serve as both runtime validators and TypeScript type sources (via `z.infer`). This eliminates the need for separate type definitions and validation logic.
 
 ### Client Resolution API
 
 ```ts
-import { resolveServers, resolveSkills, resolvePlugins } from 'ensemble';
+import {
+  resolveServers,
+  resolveSkills,
+  resolvePlugins,
+  resolveAgents,
+  resolveCommands,
+  resolveHooks,
+  resolveSettings,
+} from 'ensemble';
 import { detectClients } from 'ensemble/clients';
 
 const clients = detectClients();                         // scan for installed AI clients
 const servers = resolveServers(config, 'cursor');        // servers that would sync to Cursor
 const skills = resolveSkills(config, 'claude-code');     // skills that would sync to Claude Code
+const agents = resolveAgents(config, 'claude-code');     // subagents that would sync to Claude Code
+const hooks = resolveHooks(config, 'claude-code');       // hooks that would be written to settings.json
+const settings = resolveSettings(config, 'claude-code'); // managed settings.json keys
 ```
 
 The resolve functions live in `config.ts` and are re-exported from the root `ensemble` package. `detectClients` is in `clients.ts`. Resolution applies group filtering, path rules, and project-level overrides — the same logic the sync engine uses, exposed for consumers who need to inspect without writing.
@@ -133,14 +292,32 @@ The resolve functions live in `config.ts` and are re-exported from the root `ens
 ### Registry API
 
 ```ts
-import { searchRegistry, showRegistry, resolveFromRegistry } from 'ensemble/registry';
+import {
+  searchRegistries,
+  showRegistry,
+  resolveInstallParams,
+  discoverMarketplaces,
+  fuzzySearchAll,
+} from 'ensemble/registry';
 
-const results = await searchRegistry('database');            // searches all enabled backends
-const detail = await showRegistry('postgres');                // full server details from registry
-const serverConfig = await resolveFromRegistry('postgres');   // ready-to-add server config
+const results = await searchRegistries('database');            // searches all enabled backends
+const detail = await showRegistry('postgres');                 // full server details from registry
+const installParams = await resolveInstallParams('postgres');  // ready-to-add server config
+
+// v2.0 — dynamic marketplace registry and unified fuzzy search
+const newMarketplaces = await discoverMarketplaces();          // auto-discover new marketplaces
+const merged = await fuzzySearchAll(config, 'review', {        // fuzzy search installed + discoverable
+  filter: '@official',                                         //   @marketplace-name filter syntax
+  types: ['skill', 'agent', 'command'],
+  view: 'card',                                                //   'card' | 'slim'
+});
 ```
 
-Registry functions are async (they make network calls). Results include trust tier, quality signals, and transport details.
+Registry functions are async (they make network calls). Results include trust tier, quality signals, transport details, and resource type. v2.0 adds:
+
+- **`discoverMarketplaces()`** — scans known registry endpoints for new marketplaces and returns any that aren't yet registered in the user's config. The CLI surfaces these as notifications on next invocation. (Pattern from plum's "dynamic registry with auto-update notification.")
+- **`fuzzySearchAll(config, query, opts)`** — single search across installed resources and discoverable catalog content, with `@marketplace-name` filter syntax parsed from the query. Returns a unified result stream with `installed: boolean` and `resourceType` fields. This is the engine behind `ensemble browse`. (Pattern from plum.)
+- **Cloud catalog integration** — `claude-plugins.dev` (~58K skills) is the canonical skill catalog for `ensemble skills search` and `fuzzySearchAll`. v2.0 formalizes this from opt-in backend to default source. (Pattern from AgentSkillsManager.)
 
 ### Integration Guidance
 
@@ -157,14 +334,92 @@ Ensemble manages configs and sync. It does NOT spawn, proxy, or manage live MCP 
 
 ## CLI Surface
 
+### Lifecycle Verbs (v2.0.1)
+
+The CLI exposes five lifecycle verbs that map directly onto the library/install-state split:
+
+```
+ensemble pull <source> [--type server|skill|plugin|agent|command|hook]
+                                           # marketplace → library
+                                           # source: owner/repo, registry:slug, URL, ./path
+ensemble pull <source> --install <client> [--project <path>]
+                                           # convenience: pull and install in one step
+
+ensemble add <name> --command <cmd> [--args ...] [--env KEY=VAL ...]
+                                           # local/manual authoring → library
+                                           # strict library-first: leaves install state empty
+ensemble add <name> --command <cmd> --install <client> [--project <path>]
+                                           # convenience: add and install in one step
+
+ensemble install <name> --client <client> [--project <path>]
+                                           # library → installed for a specific (client, project?) scope
+ensemble install <name> --group <group>    # install via group assignment
+
+ensemble uninstall <name> --client <client> [--project <path>]
+                                           # installed → not-installed for that scope
+                                           # NON-DESTRUCTIVE — resource stays in library
+
+ensemble remove <name> [--type <type>]     # library → gone (destructive; confirms)
+                                           # cascades uninstall from every client first
+```
+
+Verb semantics are strict:
+
+- **`pull`** and **`add`** are the only verbs that create library membership. `pull` is for remote sources; `add` is for explicit local definitions. Both default to **strict library-first** — the resource lands in the library with an empty install matrix and must be installed with a separate `install` call (or the `--install` convenience flag).
+- **`install`** and **`uninstall`** mutate install state only. They never create or destroy library membership. `uninstall` removing the last install scope leaves the resource in the library, discoverable under the **Library** pivot with an empty install indicator.
+- **`remove`** is the only destructive verb. It evicts a resource from the library entirely and cascades uninstall from every client where it was installed. It confirms before acting unless `--yes` is passed. `remove` and `uninstall` are deliberately different words because they do fundamentally different things; `library-add`/`library-remove` vs. `install`/`uninstall` was considered and rejected as noisier without resolving the ambiguity.
+
+### Library Subcommand
+
+```
+ensemble library list [--type <type>] [--installed] [--uninstalled]
+                                           # list library with optional filters
+                                           # --installed: only resources installed on ≥1 client
+                                           # --uninstalled: only resources in library but not installed anywhere
+ensemble library show <name> [--type <type>]
+                                           # show one resource and its per-client/per-project install matrix
+ensemble library pivot project [--project <path>]
+                                           # list library as-seen-from a specific project
+ensemble library pivot client <client>     # list library as-seen-from a specific client
+ensemble library pivot group <group>       # list library as-seen-from a specific group
+ensemble library pivot marketplace         # list pullable resources not yet in library
+```
+
+`ensemble browse` (the TUI) defaults to the Library pivot with a pivot selector in the top bar.
+
+### Per-Project Install State
+
+Per-project install state is only meaningful where the client supports it. **Claude Code** supports project-scoped servers and plugins; `--project <path>` is accepted for `install`/`uninstall` against `claude-code` and is stored in the install matrix as a per-project entry. For clients that do not support project scoping (every other client in the supported set, as of v2.0.1), passing `--project` is an error that reports "client `<id>` does not support per-project install state; use a user-level install instead." The install matrix for such clients has a single `global` entry per resource rather than a list of project paths. `ensemble library show` renders both cases uniformly.
+
+### One-Shot Import (transitional, v2.0.1 only)
+
+```
+ensemble import-legacy [--dry-run]          # translate v1.3 config → v2.0.1 library + install-state matrix
+                                            # uses current ~/.config/ensemble/config.json as one input
+                                            # and a live scan of every detected client's on-disk config
+                                            # as the ground truth for "what is actually installed where"
+                                            # writes a backup to ~/.config/ensemble/config.v1.bak.json
+                                            # prints a human summary of resources imported and install
+                                            # state reconstructed. Runs once. Deleted in a follow-up
+                                            # commit after the user confirms the v2.0.1 config is right.
+```
+
+`ensemble import-legacy` is explicitly a **throwaway subcommand**, not a permanent part of the CLI. It exists only for the pre-v2 transition window, is run once against the user's single machine, and is removed (along with `src/import-legacy.ts`) in a follow-up commit after the user verifies the translated config. See §Migration for the full rationale.
+
+### Retained Surface
+
+The following commands are **retained unchanged** in v2.0.1. They are library-membership, query, sync, group, and workflow commands whose semantics are unchanged — they route through the v2.0.1 operations layer where appropriate (most legacy `add`/`remove` commands route to `addToLibrary` / `removeFromLibrary`, and group assignment commands route through `installResource` / `uninstallResource` at sync time).
+
+**Deleted in v2.0.1 (clean slate).** The following v1.3 install-state commands are **removed outright** and do not appear below: `ensemble enable <server>`, `ensemble disable <server>`, `ensemble plugins install`, `ensemble plugins uninstall`, `ensemble plugins enable`, `ensemble plugins disable`. Their function is subsumed by `ensemble install` / `ensemble uninstall` from the §Lifecycle Verbs block. Script call sites that relied on them must migrate in the same coordination window as the operations rename (see §Migration).
+
 ```
 ensemble list                              # list all servers
 ensemble add <name> --command <cmd> [--args ...] [--env KEY=VAL ...]   # explicit server add
                                               # (or use unified: ensemble add <source> — see below)
 ensemble remove <name>
-ensemble enable <name>
-ensemble disable <name>
 ensemble show <name>                       # show server details
+                                           # (server enable/disable deleted in v2.0.1 — use
+                                           #  ensemble install/uninstall from the Lifecycle Verbs block)
 
 ensemble groups list                       # list all groups
 ensemble groups create <name> [--description ...]
@@ -204,12 +459,11 @@ ensemble skills sync [<client>]                # sync skills to client skills di
 ensemble skills sync --dry-run                 # preview skill sync plan (file operations, backup)
 
 ensemble plugins list                      # list all plugins (installed + enabled state)
-ensemble plugins install <name> [--marketplace <name>]
-ensemble plugins uninstall <name>
-ensemble plugins enable <name>
-ensemble plugins disable <name>
 ensemble plugins show <name>               # show plugin details
 ensemble plugins import                    # import existing plugins into ensemble registry
+                                           # (plugins install/uninstall/enable/disable deleted
+                                           #  in v2.0.1 — use ensemble install/uninstall with
+                                           #  --type plugin from the Lifecycle Verbs block)
 
 ensemble marketplaces list                 # list known marketplaces
 ensemble marketplaces add <name> --repo <owner/repo>
@@ -221,11 +475,70 @@ ensemble groups add-skill <group> <skill>
 ensemble groups remove-skill <group> <skill>
 ensemble groups add-plugin <group> <plugin>
 ensemble groups remove-plugin <group> <plugin>
+ensemble groups add-agent <group> <agent>
+ensemble groups remove-agent <group> <agent>
+ensemble groups add-command <group> <command>
+ensemble groups remove-command <group> <command>
+ensemble groups add-hook <group> <hook>
+ensemble groups remove-hook <group> <hook>
 ensemble groups export <group> --as-plugin     # compile group into a CC plugin (profile-as-plugin)
+
+ensemble agents list                            # list all subagents
+ensemble agents add <name> --from <source>      # add agent from GitHub, local path, or catalog
+ensemble agents remove <name>
+ensemble agents enable <name>
+ensemble agents disable <name>
+ensemble agents show <name>                     # show frontmatter (name, description, tools, model) + body preview
+ensemble agents search <query>                  # search agent catalog
+ensemble agents sync [<client>]                 # sync agents to client agents directories
+
+ensemble commands list                          # list all slash commands
+ensemble commands add <name> --from <source>    # add command from GitHub, local path, or catalog
+ensemble commands remove <name>
+ensemble commands enable <name>
+ensemble commands disable <name>
+ensemble commands show <name>                   # show frontmatter (description, allowed-tools, argument-hint) + body
+ensemble commands search <query>
+ensemble commands sync [<client>]
+
+ensemble hooks list                             # list all hooks (grouped by event)
+ensemble hooks add --event <event> --matcher <m> --command <cmd> [--name <name>]
+                                                 # events: PreToolUse, PostToolUse, SessionStart,
+                                                 #         UserPromptSubmit, PreCompact, Stop, Notification
+ensemble hooks remove <id>
+ensemble hooks enable <id>
+ensemble hooks disable <id>
+ensemble hooks show <id>
+ensemble hooks sync [<client>]                  # merge hooks into client settings.json (non-destructive)
+
+ensemble settings list                          # list all managed settings.json keys
+ensemble settings set <key> <value>             # manage a setting declaratively (JSON-parsed value)
+ensemble settings unset <key>                   # stop managing a setting (leaves existing value untouched)
+ensemble settings show <key>
+ensemble settings sync [<client>]               # merge managed keys into settings.json (non-destructive)
+
+ensemble browse                                 # interactive TUI browser: fuzzy search across
+                                                 #   installed + discoverable resources, @marketplace
+                                                 #   filter syntax, Card/Slim view toggle, one-key install
+ensemble browse --view card|slim                # select default view mode
+ensemble browse --type server|skill|plugin|agent|command|hook
+                                                 # restrict to one resource type
+ensemble browse --marketplace <name>             # restrict to one marketplace
+
+ensemble snapshots list                         # list rollback snapshots
+ensemble snapshots show <id>                    # show snapshot contents (files touched, sizes)
+ensemble rollback <id>                          # restore a snapshot
+ensemble rollback --latest                      # restore the most recent sync snapshot
 
 ensemble rules list                        # list all path rules
 ensemble rules add <path> <group>          # auto-assign group to projects under path
 ensemble rules remove <path>
+
+ensemble profiles save <name>             # snapshot current clients/rules/settings as a named profile
+ensemble profiles activate <name>         # restore a profile and sync all clients
+ensemble profiles list                    # list saved profiles (marks active)
+ensemble profiles show <name>             # show profile details (client count, rules, created date)
+ensemble profiles delete <name>           # delete a saved profile
 
 ensemble scope <name> --project <path>     # move server/plugin to project-only
 
@@ -233,8 +546,6 @@ ensemble projects                          # list registry projects with MCP ser
 
 ensemble collisions                        # detect scope conflicts between global and project groups
 ensemble deps                              # show skill dependency status
-
-ensemble migrate [--dry-run]               # migrate from mcpoyle to Ensemble
 
 ensemble registry cache-clear              # clear file-based registry response cache
 
@@ -246,6 +557,136 @@ ensemble reference                         # show full command reference
 ```
 
 The CLI binary is `ensemble` with `ens` as a short alias. Built with Commander.js as a thin wrapper over the operations and sync modules.
+
+## Migration (v1.3 → v2.0.1)
+
+v2.0.1 replaces v1.3's install-state surface with a clean-slate rewrite. There is no deprecation-by-rename, no migration-gated runtime guard layer, no `Legacy`-suffixed shim, and no wave-based deprecation timeline. The old install-state verbs are **deleted in v2.0.1 itself**, in the same commit that lands the new verbs. The transition is a one-shot import and a coordinated cross-repo rename, nothing more.
+
+### Why clean slate is acceptable here
+
+Ensemble is personal infrastructure with a single known consumer set: the user's own CLI and desktop usage on a single machine, plus exactly one dependent repo (`chorus-app`) that the same user controls. There are no external consumers, no published scripts in third-party projects, no documentation pinned to the old verb names, and no coordination cost with anyone but the user themselves. Under these constraints, "preserve backward compatibility via deprecation → guard → retire" is strictly worse than "rip it out once" — it trades a permanent ongoing code-path tax for avoidance of a single afternoon of coordinated renaming.
+
+This approach **would not apply** to a library with external users. External-consumer migration genuinely needs the compatibility dance: staged deprecation, guard-rail runtime errors, cross-version grace windows. Ensemble just doesn't have those constraints, and the spec records the decision honestly rather than pretending the library is something it isn't.
+
+### One-shot import
+
+A single transitional subsystem — `ensemble import-legacy`, backed by `src/import-legacy.ts` — translates the user's existing v1.3 config shape into a fresh v2.0.1 library plus install-state matrix.
+
+**Inputs.**
+
+1. The current `~/.config/ensemble/config.json` (v1.3 shape — `servers` / `plugins` with `enabled: boolean`, per-client group assignments, etc.).
+2. A live filesystem scan of every detected client's actual on-disk config files (Claude Desktop, Claude Code, Cursor, VS Code, and every other client in §Supported Clients). The live scan is the **ground truth** for "what is actually installed where right now." The v1.3 config alone is insufficient because it tracks intent, not outcome.
+
+**Outputs.**
+
+1. A new `~/.config/ensemble/config.json` in the v2.0.1 shape: every server, skill, and plugin is placed in the library; per-client/per-project install state is reconstructed from the disk scan.
+2. A backup at `~/.config/ensemble/config.v1.bak.json` — the user's pre-import v1.3 config, untouched, available for rollback.
+3. A human-readable summary printed to stdout: "Imported N servers, M skills, K plugins. Install state reconstructed across C clients. Library contains R total resources."
+
+**Ambiguity handling.** If the disk scan finds a resource that exists in a client's config but not in the v1.3 ensemble registry — or vice versa — the script reports the ambiguity, imports the resource conservatively as "in library, not installed" (so nothing is silently dropped), and lets the user correct it manually. There is no clever reconciliation logic: the user is present at the one-time import and can fix anything that looks wrong.
+
+**Lifecycle.** `ensemble import-legacy` is explicitly a **throwaway**, not a permanent subsystem. It runs once on the user's machine, the user confirms the translated config, and then the entire `src/import-legacy.ts` module and its CLI subcommand are **deleted in a follow-up commit**. The spec records the module with this intent so that no future agent is tempted to generalize it, extend it, or preserve it beyond the one-shot window.
+
+### Coordinated cross-repo rename
+
+Once `import-legacy` has landed and the user has run it, the v1.3 install-state verbs are removed from ensemble in one atomic sweep, and chorus-app is updated in lockstep. The scope is small because both repos are controlled by the same user.
+
+- **Ensemble side (~40 call sites, one commit).** The verbs `installPlugin`, `uninstallPlugin`, `installSkill`, `uninstallSkill`, `enablePlugin`, `disablePlugin`, `enableServer`, `disableServer` are removed from `operations.ts`, the package exports, the public types, `cli/index.ts`, and every test file in the same commit. The new verbs `installResource` / `uninstallResource` are the only install-state surface.
+- **Chorus side (one file, ~25 lines).** `chorus-app/src/main/services/ensemble-config.ts` is the sole consumer in chorus. Imports of `enablePlugin` / `disablePlugin` / `enableServer` / `disableServer` are replaced with calls into `installResource` / `uninstallResource`. `addServer` / `removeServer` and group operations stay semantically similar but now route through library-first operations — they do not need to be renamed, only updated where they implicitly assumed install-state semantics. Estimated ~25 lines changed.
+- **Order.** `import-legacy` lands and runs first (so the on-disk config is already v2.0.1 shape before any rename touches code). Then the ensemble rename sweep and the chorus update land together, in the same coordination window. Then `import-legacy.ts` and its CLI subcommand are deleted.
+
+### Build order
+
+1. Schemas and new operations in ensemble: library model, install-state matrix, 7 resource types, pull/add/install/uninstall/remove verbs on top of `addToLibrary` / `removeFromLibrary` / `installResource` / `uninstallResource`.
+2. `src/import-legacy.ts` + `ensemble import-legacy` CLI subcommand.
+3. **User runs `ensemble import-legacy` on their machine once**, inspects the translated `~/.config/ensemble/config.json`, and confirms it looks right. `config.v1.bak.json` stays on disk as a rollback anchor for the rest of the build.
+4. Coordinated rename sweep: ensemble deletes the 8 v1.3 install-state verbs, adds the v2.0.1 verbs, and updates ~40 call sites (CLI, desktop IPC handlers, tests, library exports) — plus chorus-app updates `ensemble-config.ts` (~25 lines) — all in the same coordination window.
+5. `src/import-legacy.ts` and the `ensemble import-legacy` subcommand are **deleted** in a follow-up commit.
+6. Everything else on the v2.0.1 track: `sync.ts` rewrite for the library → install-state projection, `settings.ts`, `snapshots.ts`, the remaining resource types (agents, commands, hooks), the 4 new clients, `browse.ts` TUI, and the desktop pivot-based IA rewrite.
+
+## Desktop App
+
+An Electron desktop application providing full visual management of Ensemble's capabilities. The desktop app is a presentation layer over the same library operations that power the CLI — it calls the Ensemble library via Electron IPC, not via CLI subprocess calls. Changes made in the desktop app are immediately visible in the CLI and vice versa, because both read and write the same `~/.config/ensemble/config.json`.
+
+### Why a Desktop App
+
+The CLI is the right interface for agents and scripting. But to understand the ergonomics of Ensemble's operations — how group assignment feels, whether drift detection is legible, whether registry browsing is discoverable — requires a visual surface. The desktop app exists to make Ensemble's full capability set tangible and to inform the ongoing design of the library API through direct use.
+
+### Layout
+
+macOS-style sidebar + detail panel. The sidebar is organized around **pivots over the library**, not around resource types. Resource type is a filter bar at the top of the Library pivot, not a sidebar section — users who think in resource types filter the Library view; users who think in clients, projects, or groups use the corresponding pivot. Install/uninstall actions are available from **every** pivot via row-level controls.
+
+**Pivots** (top of sidebar):
+
+| Sidebar Section | Content |
+|----------------|---------|
+| **Library** (default) | Every owned resource, regardless of install state. Resource-type filter bar at top (All / Servers / Skills / Plugins / Agents / Commands / Hooks / Settings). Each row shows install-state indicators — a compact matrix of which clients and projects the resource is installed for. Row controls toggle install state per client/project. Default sort: recently pulled. |
+| **By Project** | For a selected project path, the resources currently installed for that project (Claude Code only for v2.0.1). Install gesture: add to this project's assignment. Uninstall gesture: remove from this project. |
+| **By Group** | For a selected group, the resources that belong to the group. Drag-and-drop membership. Install gesture on a group: assign the group to a client. Uninstall: unassign. Removing a resource from a group cascades uninstall from any clients using that group. |
+| **By Client** | For a selected client, the resources currently installed on that client with per-client sync state visible. Install/uninstall per this client. |
+| **Marketplace** | Remote discovery surface. Browse catalogs and registries; shows only resources **not yet in the library**. Action on a row: **Pull** → adds to library. A separate "Pull + install on…" menu offers the one-step convenience flow. |
+
+**Workflow** (below the pivots, always visible):
+
+| Sidebar Section | Content |
+|----------------|---------|
+| **Sync** | One-click sync with visual preview of changes per client; drift detection with side-by-side diff; rollback snapshot indicator. Projects install state into client configs; does not touch library membership. |
+| **Doctor** | Visual health report — category scores, fix suggestions with one-click actions where possible |
+| **Snapshots** | List of rollback snapshots; inspect contents; one-click restore |
+| **Profiles** | Save/activate/show/delete named configuration profiles |
+| **Rules** | Path rule management for auto-assignment |
+
+**Information architecture note.** The pivot-based IA replaces v2.0's seven-section Resources group. The motivating insight: **the library is the primary interface, and install state is a property of library resources, not a location above or below them.** Users browse the library through whichever pivot matches their mental model — by project, by group, by client, or by type — and install/uninstall from wherever they are. The same underlying data is viewed five different ways. This keeps the sidebar short (five pivots + five workflow sections = ten total, down from fifteen) and resolves the "where does a server live — Servers or Clients?" ambiguity that the v2.0 layout inherited.
+
+### Visual Extras
+
+Features that go beyond CLI parity — interactions that only make sense in a GUI:
+
+- **Drag-and-drop group assignment** — Drag any resource (server, skill, plugin, agent, command, hook) onto groups. Visual feedback shows current membership.
+- **Visual drift detection** — Side-by-side diff showing what changed manually in client configs vs. what Ensemble expects. Overwrite, adopt, or rollback actions inline.
+- **Interactive dependency graph** (stretch) — Visualize skill/agent-to-server dependencies as a directed graph. Highlight missing dependencies. Not yet implemented.
+- **Registry cards and slim rows** — Rich Card view for registry search results showing trust tier, quality signals, tool count, and one-click install. Slim view toggle collapses each result to a one-line row for dense browsing. Both views apply to installed-resource lists as well. (Pattern from plum.)
+- **Unified fuzzy search bar** — A single search field at the top of every resource list searches both installed and discoverable items simultaneously, with `@marketplace-name` filter chips parsed from the query. Results include an "installed" badge and a one-click install button for discoverable entries. (Pattern from plum.)
+- **Rollback affordances** — After every sync, a persistent "Undo last sync" button surfaces the latest snapshot. A dedicated Snapshots section provides deeper history with per-file restore granularity. (Pattern from TARS.)
+
+### IPC Architecture
+
+The desktop app uses Electron's contextBridge to expose Ensemble library operations to the React renderer process:
+
+1. **Main process** — Imports the Ensemble library directly (`import { loadConfig, saveConfig } from 'ensemble'`). Registers IPC handlers for each operation category (config, servers, skills, plugins, groups, clients, sync, doctor, registry, profiles, rules).
+2. **Preload script** — Exposes a typed `window.ensemble` API to the renderer via `contextBridge.exposeInMainWorld`.
+3. **Renderer process** — React components call `window.ensemble.*` methods. Custom hooks (`useConfig`, `useServers`, `useSync`, etc.) wrap the IPC calls with loading states and error handling.
+
+This architecture means the renderer has no direct filesystem or Node.js access — all operations go through the main process, which calls the Ensemble library. The same security boundary Electron enforces for web content.
+
+### Config
+
+The desktop app reads and writes the same `~/.config/ensemble/config.json` used by the CLI. No separate data store.
+
+When the config file changes on disk (e.g., from a CLI command while the app is open), the app detects the change and reloads. This uses `fs.watch` on the config file — the desktop app is the only Ensemble component that watches files, and only its own shared config.
+
+**Stretch:** App-specific preferences (window size, sidebar width, theme, last-active section) will be stored in a separate `~/.config/ensemble/desktop-prefs.json` to avoid polluting the shared config. Not yet implemented — the app currently uses Electron defaults.
+
+### Testing
+
+Playwright with Electron support provides autonomous UI testing:
+
+- **Launch** — Playwright's Electron integration launches the app programmatically, no manual setup.
+- **Interaction** — Tests navigate the sidebar, fill forms, click buttons, drag elements, and verify state.
+- **Verification** — Screenshot capture and DOM assertions verify layout, content, and behavior.
+- **CI** — Playwright tests run headlessly in CI alongside Vitest unit tests.
+
+Tests live in `packages/desktop/e2e/` and use data-testid attributes for stable selectors.
+
+### Distribution
+
+Distribution model is TBD. Options under consideration:
+
+- **npm + npx** — `npx ensemble-desktop` for developers, consistent with CLI distribution.
+- **DMG / standalone binary** — macOS app bundle via electron-builder for non-developer users.
+- **Both** — npm for developers, GitHub release binary for everyone else.
+
+The packaging configuration (`electron-builder.yml`) supports all options. Distribution decision deferred until the app reaches usable state.
 
 ## Config
 
@@ -325,23 +766,17 @@ Central config at `~/.config/ensemble/config.json`:
   ],
   "rules": [
     {"path": "~/Code/work", "group": "work"}
-  ]
+  ],
+  "settings": {
+    "usage_tracking": false,
+    "sync_cost_warning_threshold": 50
+  },
+  "profiles": {},
+  "activeProfile": null
 }
 ```
 
 When `group` is `null`, the client receives all enabled servers (default behavior).
-
-### Migration from mcpoyle
-
-On first run, Ensemble detects the legacy mcpoyle installation and migrates automatically:
-
-- **Config file:** `~/.config/mcpoyle/config.json` is copied to `~/.config/ensemble/config.json`. The original is preserved as a backup.
-- **Skills store:** `~/.config/mcpoyle/skills/` is moved to `~/.config/ensemble/skills/`. Symlinks in client skills directories are updated to point to the new canonical paths.
-- **Cache:** `~/.config/mcpoyle/cache/` is moved to `~/.config/ensemble/cache/`.
-- **Client markers:** `__mcpoyle` markers in client config files are replaced with `__ensemble` during the next sync.
-- **Meta-skill:** The `mcpoyle-usage` builtin skill is replaced with `ensemble-usage`.
-
-Migration is idempotent — running it again after completion is a no-op. If both `~/.config/mcpoyle/` and `~/.config/ensemble/` exist, Ensemble uses `~/.config/ensemble/` and does not re-migrate.
 
 ### Server Model Fields
 
@@ -450,6 +885,49 @@ ensemble rules list                        # list all path rules
 ensemble rules add <path> <group>          # add a rule (group must exist)
 ensemble rules remove <path>               # remove a rule
 ```
+
+## Configuration Profiles
+
+Profiles snapshot the current client assignments, path rules, and settings under a named label. This allows switching between different configuration contexts — for example, a "work" profile with corporate servers and rules vs. a "personal" profile with hobby projects.
+
+### What a Profile Captures
+
+A profile stores:
+- **Client assignments** — which groups are assigned to which clients (the full `clients` array)
+- **Path rules** — the auto-assignment rules (the full `rules` array)
+- **Settings** — the settings object (sync cost threshold, usage tracking, etc.)
+- **Created timestamp** — when the profile was saved
+
+A profile does **not** capture servers, groups, skills, or plugins. These are shared infrastructure that persists across profiles. Profiles only capture the _assignments_ and _rules_ that determine how that infrastructure maps to clients.
+
+### Operations
+
+All profile operations are pure functions following the standard `(config, params) → { config, result }` pattern:
+
+- **`saveProfile(config, name)`** — Snapshots the current `clients`, `rules`, and `settings` into `config.profiles[name]`. Overwrites if a profile with that name already exists.
+- **`activateProfile(config, name)`** — Restores the profile's `clients`, `rules`, and `settings` onto the config and sets `config.activeProfile` to the profile name. The CLI follows activation with a full `syncAllClients` to propagate the restored assignments.
+- **`listProfiles(config)`** — Returns all profile names, marking the active profile.
+- **`showProfile(config, name)`** — Returns the profile's client count, rule count, and creation timestamp.
+- **`deleteProfile(config, name)`** — Removes the profile. If the deleted profile was active, clears `activeProfile`.
+
+### Config Schema
+
+```json
+{
+  "profiles": {
+    "work": {
+      "name": "work",
+      "clients": [...],
+      "rules": [...],
+      "settings": {...},
+      "createdAt": "2026-04-01T12:00:00Z"
+    }
+  },
+  "activeProfile": "work"
+}
+```
+
+`profiles` is a record keyed by name. `activeProfile` is nullable — `null` means no profile is active (manual configuration).
 
 ## Skills Management
 
@@ -781,14 +1259,31 @@ The generated plugin is written to a local marketplace directory (`~/.config/ens
 
 ## Sync
 
-When a group contains servers, skills, and/or plugins, `ensemble sync` handles all three via their respective strategies:
+Sync is the projection of **install state** (a property of library resources) into client config files. It never touches library membership — a resource's presence in `~/.config/ensemble/` is unaffected by any sync outcome. The inputs to sync are: the library, each resource's install matrix, path rules, group assignments, and project scopes. The outputs are additive writes to client configs plus a rollback snapshot. Uninstalling a resource from a client and running sync removes it from that client's config (via additive-delete of the Ensemble-marked entry) but leaves the library untouched.
+
+When a group contains any combination of resource types, `ensemble sync` handles all of them via their respective strategies:
 
 - **Servers** are synced by writing entries to the target client's config file (JSON/TOML). All clients.
-- **Skills** are synced by creating symlinks from the canonical store to the client's skills directory (file-level operations). Only clients with `skills_dir` support.
+- **Skills** are synced by creating symlinks from the canonical store to the client's skills directory. Only clients with `skills_dir` support.
 - **Plugins** are synced to Claude Code's plugin config (Claude Code only).
-- Skill entries in groups are silently ignored for clients without skills support. Plugin entries are silently ignored for non-Claude Code clients.
+- **Agents** are synced by creating symlinks (or file copies, fallback) from the canonical store to the client's agents directory. Claude Code only in v2.0; clients that adopt subagent support (Antigravity, CodeBuddy, Qoder, Trae as they expose equivalents) will be added as they stabilize.
+- **Commands** are synced via symlink (or file copy) to the client's commands directory. Claude Code only in v2.0; same extensibility plan as agents.
+- **Hooks** are synced by **non-destructive merge** into `~/.claude/settings.json` (or the project-level `.claude/settings.json`) under the `hooks` key. Ensemble reads the existing file, merges its managed hook entries, and writes the result — preserving every key and every hook entry Ensemble does not own. Ensemble-owned hook entries are tagged with a `__ensemble: <id>` sidecar so additive sync can identify them on subsequent runs.
+- **Settings** are synced by **non-destructive key-level merge** into `settings.json`. Ensemble owns only the specific keys the user placed under management (via `ensemble settings set`). On every write, Ensemble reads the current file, replaces its managed keys with the desired values, and preserves every other key — `permissions.allow`, `env`, `model`, `hooks` entries Ensemble doesn't own, and any third-party keys — untouched. This is the same preservation pattern plum applies for `permissions.allow` and `hooks`; v2.0 generalizes it to every key in `settings.json`.
+- Resource entries in groups are silently ignored for clients that don't support that resource type (e.g., skill entries for Claude Desktop, hook entries for non-Claude-Code clients).
 
-`ensemble sync --dry-run` shows server, skill, and plugin changes. Skills preview shows the file operations (create symlink, update symlink, remove symlink) rather than config diff.
+`ensemble sync --dry-run` shows a per-resource-type change preview. File-level resources (skills, agents, commands) show file operations (create symlink, update, remove). Merge-based resources (hooks, settings) show a key-level JSON diff.
+
+### Safe Apply and Rollback Snapshots
+
+Every `ensemble sync` run produces a rollback-capable snapshot before writing. The snapshot captures the pre-sync contents of every file Ensemble is about to touch (client configs, settings.json files, agents/commands/hooks directories) into `~/.config/ensemble/snapshots/<iso-timestamp>/` along with a manifest describing the operation. This is richer than additive-sync alone:
+
+- **Additive sync** protects the user's _unmanaged_ entries from deletion.
+- **Rollback snapshots** additionally protect the user's _managed_ entries from mistakes — bad registry installs, accidental group assignment, config rewrites from `--force`, and any other operation that produces an undesired outcome.
+
+After sync, `ensemble rollback --latest` restores the most recent snapshot. `ensemble rollback <id>` restores an arbitrary snapshot. `ensemble snapshots list` and `ensemble snapshots show <id>` inspect history. Snapshots older than `settings.snapshot_retention_days` (default 30) are pruned automatically on each sync.
+
+Snapshot creation is synchronous and blocking — `sync` waits for the snapshot to be written and fsync'd before touching any client file. This makes rollback reliable even if the sync itself crashes midway. (Pattern from TARS's "safe apply/rollback operations.")
 
 ### Drift Detection
 
@@ -825,9 +1320,27 @@ Proceed? [Y/n]
 
 The warning threshold is configurable via `settings.sync_cost_warning_threshold` (default: 50 tools). `--dry-run` includes cost summaries without the confirmation prompt. `--yes` skips the prompt.
 
+### Group Split Suggestions
+
+When the context cost summary reveals a high tool count, Ensemble suggests how to split the offending server set into smaller groups. The `suggestGroupSplits` function keyword-categorizes servers based on their names, tool names, and tool descriptions, then proposes logical groupings.
+
+**Categories:** Servers are matched against six keyword categories — `data` (database, sql, postgres, etc.), `code` (git, github, repo, etc.), `web` (http, api, rest, etc.), `file` (filesystem, directory, etc.), `cloud` (aws, gcp, azure, etc.), and `ai` (llm, embedding, vector, etc.). A server can match multiple categories.
+
+**Triggering:** Suggestions are only generated when 5 or more servers are being synced to a client. A category produces a suggestion only when it contains 2 or more servers. Each suggestion names a proposed group (e.g., `data-servers`) and lists the servers that would belong to it.
+
+**Output:** Suggestions appear as part of the `computeContextCost` summary, alongside the tool count and token estimates. They are advisory — the user decides whether to act on them.
+
 ## Init
 
 `ensemble init` is a guided onboarding command for first-time setup. It walks the user through client detection, optional server import, group creation, and initial assignment — replacing the need to run multiple commands manually.
+
+### Discovery (discover.ts)
+
+Before the guided flow prompts the user to import, `discover.ts` walks the filesystem looking for existing installed skills and plugins (`.claude/skills/` directories and plugin install locations across detected clients) and produces a `DiscoveryReport`. Its surface is a `DiscoverOptions` input, `discoveredSkillToInstallParams` and `discoveredPluginToInstallParams` helpers, and the report itself.
+
+Under v2.0.1 lifecycle semantics, discover feeds its results into `addToLibrary` (pull local filesystem → library), mirroring how marketplace pulls flow `pullFromMarketplace → addToLibrary`. The filesystem is treated as another source of library candidates, not a parallel store.
+
+Discovery is exposed via the CLI as part of `ensemble init` (the guided-onboarding entry point). The user sees a prompt like "found 12 existing skills and 3 plugins; add to library?" before the standard import and group-assignment steps. `discover.ts` and `tests/discover.test.ts` live in `src/` and are re-exported from `src/index.ts` for library consumers who want to run discovery outside the init flow.
 
 ### Flow
 
@@ -1098,9 +1611,31 @@ Registry search and show results surface upstream quality signals when available
 
 Quality signals are shown in `registry search` results (compact: star count + last-updated) and `registry show` output (full detail). They are informational — Ensemble does not gate installs on quality thresholds.
 
+### Secret Scanning
+
+Ensemble detects hardcoded credentials in server env values and skill content. Values referencing 1Password (`op://` prefix) are exempt — the scanning specifically targets plaintext secrets that should have been stored in a secret manager.
+
+**Detected patterns:**
+| Pattern | Regex signature |
+|---------|----------------|
+| OpenAI API Key | `sk-[a-zA-Z0-9]{20,}` |
+| AWS Access Key | `AKIA[0-9A-Z]{16}` |
+| GitHub PAT | `ghp_[a-zA-Z0-9]{36}` |
+| GitHub User Token | `ghu_[a-zA-Z0-9]{36}` |
+| GitHub Server Token | `ghs_[a-zA-Z0-9]{36}` |
+| Slack Token | `xox[bpas]-[a-zA-Z0-9-]+` |
+| Private Key | `-----BEGIN.*PRIVATE KEY-----` |
+| GitLab PAT | `glpat-[a-zA-Z0-9-]{20}` |
+
+**Two scan targets:**
+- **`scanSecrets(env, serverName?)`** — Scans a server's env record. Each violation reports the matched pattern name, the env key, the server name, and a truncated snippet (first 8 characters + `...`).
+- **`scanSkillContent(content)`** — Scans the raw text body of a SKILL.md file for embedded secrets.
+
+Both return an array of `SecretViolation` objects. The truncated snippet ensures the full secret is never logged or displayed. This feeds into `doctor` checks and can be used by library consumers for pre-sync validation.
+
 ### Local Capability Search
 
-`ensemble search <query>` searches across the user's registered servers and skills by capability — matching against server names, descriptions, tool names/descriptions, and skill names/descriptions/tags. This is a local search (no network calls) using lightweight text matching (BM25-style term frequency scoring over the stored metadata).
+`ensemble search <query>` searches across the user's registered servers and skills by capability — matching against server names, descriptions, tool names/descriptions, and skill names/descriptions/tags. This is a local search (no network calls) using BM25 term frequency scoring over stored metadata, enhanced with query alias expansion, multi-signal quality scoring, and optional usage-based learning.
 
 ```
 $ ensemble search "database query"
@@ -1109,13 +1644,51 @@ $ ensemble search "database query"
   sql-patterns (skill, tags: database, sql, query)
 ```
 
-Useful for users with many servers and skills who need to find which provides a specific capability.
+#### Query Alias Expansion
+
+Before scoring, query terms are expanded through a built-in alias table. Abbreviations and acronyms map to their full forms — `k8s` expands to include `kubernetes`, `db` includes `database`, `auth` includes `authentication` and `authorization`, `ts` includes `typescript`, etc. The alias table covers ~30 common abbreviations across infrastructure, languages, and tooling domains. Expanded terms are OR-joined with the original query, broadening recall without requiring the user to type full terms.
+
+#### Multi-Signal Quality Scoring
+
+Search results blend BM25 text relevance (60% weight) with a quality score (40% weight). The quality score is computed from static signals:
+
+**Server quality signals:**
+- Has tool metadata (completeness)
+- Origin timestamp recency (decays over 90 days)
+- Trust tier (official: 1.0, community: 0.5, local: 0.25)
+- Enabled state
+
+**Skill quality signals:**
+- Frontmatter completeness (name, description, tags)
+- Has declared dependencies (indicates quality)
+- Enabled state
+
+Each signal contributes equally. The composite quality score is the average of all signal scores for that item.
+
+#### Usage-Based Self-Learning Search
+
+When `settings.usage_tracking` is enabled, search incorporates historical usage data to boost frequently successful items and demote unreliable ones. Usage data is stored at `~/.config/ensemble/usage.json`.
+
+**Per-item tracking:**
+- `invocations` — total times used
+- `lastUsed` — ISO timestamp of most recent use
+- `successes` / `failures` — outcome counts
+
+**Scoring formula:** For items with 5+ invocations (the cold-start threshold), the usage score blends success rate (70% weight) with recency (30% weight, decaying over 90 days). Items below the threshold receive a neutral score of 0.5, ensuring new items are neither penalized nor promoted. When usage data is active, the quality score becomes a 50/50 blend of the static quality score and the usage score.
+
+**CLI flags:**
+- `--no-usage` — skip usage-based scoring for this search (use static quality only)
+- `--reset-usage` — clear all usage data and exit
+
+Usage tracking is opt-in via `settings.usage_tracking` (default: `false`). The `recordUsage(name, outcome)` function is available to library consumers for recording outcomes programmatically.
 
 ### Future Registry Support
 
 Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-in sources when the user provides API keys. MCP Scoreboard provides quality grades across six dimensions (schema, protocol, reliability, docs, security, usability).
 
 ## Supported Clients
+
+v2.0 expands from 17 to 21 detected clients. The four new entries — Antigravity, CodeBuddy, Qoder, and Trae — are IDE-class AI clients that consume MCP servers and (to varying degrees) agent skills. AgentSkillsManager validates that skills work across these clients; Ensemble adds them as first-class detection targets and path adapters.
 
 | Client | Config Path | Format | Plugins |
 |--------|-------------|--------|---------|
@@ -1139,8 +1712,12 @@ Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-i
 | OpenCode | `~/.config/opencode/config.json` | JSON | No |
 | Amp | `~/.amp/mcp.json` | JSON | No |
 | mcpx | `~/.config/mcpx/config.toml` → `servers` | TOML | No |
+| Antigravity | `~/.antigravity/mcp.json` | JSON | No |
+| CodeBuddy | `~/.codebuddy/mcp.json` | JSON | No |
+| Qoder | `~/.qoder/settings.json` → `mcpServers` | JSON | No |
+| Trae | `~/.trae/mcp.json` | JSON | No |
 
-**Note:** VS Code uses `mcp.servers` (dot-separated key path) instead of `mcpServers`. Zed uses `context_servers`. Some clients require a `"type": "stdio"` field in server entries. Codex CLI and mcpx use TOML format instead of JSON. Cline and Roo Code store configs in VS Code's `globalStorage` directory.
+**Note:** VS Code uses `mcp.servers` (dot-separated key path) instead of `mcpServers`. Zed uses `context_servers`. Some clients require a `"type": "stdio"` field in server entries. Codex CLI and mcpx use TOML format instead of JSON. Cline and Roo Code store configs in VS Code's `globalStorage` directory. Exact config paths for Antigravity, CodeBuddy, Qoder, and Trae will be confirmed against each client's current docs during implementation — the paths above are the expected shape but may shift. AgentSkillsManager is the upstream source validating that skills (and therefore Ensemble's resource model) work across these clients.
 
 ## Tech Stack
 
@@ -1148,52 +1725,91 @@ Additional registries (Smithery, PulseMCP, MCP Scoreboard) can be added as opt-i
 - **Runtime:** Node.js 20+
 - **CLI framework:** Commander.js
 - **Validation:** Zod (schemas exported for consumer use)
-- **Testing:** Vitest
+- **Testing:** Vitest (library/CLI unit tests), Playwright (desktop E2E tests)
 - **Linting/Formatting:** Biome
-- **Build:** tsup (dual CJS/ESM output)
-- **Package manager:** npm
-- **Distribution:** npm registry (`npm install ensemble` / `npx ensemble`)
+- **Build:** tsup (library, dual CJS/ESM output), electron-vite (desktop app)
+- **Package manager:** npm (workspaces for monorepo)
+- **Distribution:** npm registry (`npm install ensemble` / `npx ensemble`); desktop app distribution TBD
 - **Config:** JSON (read/write via node:fs)
 - **TOML parsing:** smol-toml (for Codex CLI and mcpx configs)
+- **TUI rendering:** Ink (React-based terminal UI for `ensemble browse`)
+- **Fuzzy matching:** fuzzysort (for fuzzy search across installed + discoverable resources)
 - **File operations:** node:fs (native, for skill sync, migration, backups)
 - **File locking:** proper-lockfile (for atomic config writes)
 - **SQLite:** better-sqlite3 (for project registry reads)
 - **HTTP:** native fetch (for registry API calls)
 - **Secrets:** 1Password CLI (`op://`) references in env values — Ensemble stores the references, not plaintext
+- **Desktop runtime:** Electron
+- **Desktop UI:** React + Tailwind CSS
+- **Desktop build/packaging:** electron-builder
+- **Desktop bundler:** Vite (via electron-vite)
 
 ## Non-Goals
 
+- **Library as a backup of client configs** — The library is the authoritative inventory **from which clients are synced**, not a dump of whatever each client happens to have installed. Importing servers from an existing client (via `ensemble import`) seeds the library; from that moment forward the library is the source of truth and clients are projections. Ensemble is not a git-for-client-configs, not a backup service, and not a diff tool across client installations.
 - Running or proxying MCP servers — Ensemble only manages configs
 - **Live MCP connections** — Ensemble is config-only. It does not spawn, proxy, or manage running MCP server processes. That responsibility belongs to the consuming app (e.g., Chorus) or the AI client itself.
-- **Daemon / background process** — Ensemble runs on demand, no file watching, no long-running service. Validated by examining mcpx's daemon model: the complexity of daemon lifecycle management (startup, shutdown, health, port conflicts) is disproportionate to the config-management problem. On-demand is the correct design.
+- **Daemon / background process** — The library and CLI run on demand with no file watching and no long-running service. (The desktop app is a long-running Electron process that watches the config file for external changes — this is presentation-layer behavior, not a library concern.) Validated by examining mcpx's daemon model: the complexity of daemon lifecycle management (startup, shutdown, health, port conflicts) is disproportionate to the config-management problem. On-demand is the correct design for the core.
 - Server runtime health checks or monitoring — `ensemble doctor` audits config files, not running processes
 - Multi-machine sync (single machine only)
 - Marketplace auto-update management — controlled via Claude Code's UI, not JSON
 - Plugin development tooling — Ensemble manages installed plugins, not authoring
 - Project/local plugin scopes (v1) — deferred until Claude Code stabilizes scope bugs
-- **GUI / TUI** — Ensemble provides no graphical interface. Chorus is the GUI layer; it imports Ensemble as a library dependency.
+- **Standalone GUI framework** — The desktop app uses Electron + React. Ensemble does not implement a custom UI framework. The `ensemble browse` TUI is built on Ink (React for the terminal) and is presentation-only — it calls the same library operations as the CLI and desktop app, so it does not constitute a separate framework. Chorus remains a separate app consumer that imports Ensemble as a library dependency.
 
 ## Architecture
 
-Core logic is organized into four layers: data model, operations, sync engine, and presentation. The CLI is a thin presentation layer over a shared operations + sync + config core. App consumers (like Chorus) import the same operations and sync modules directly. All mutations (install, uninstall, enable, disable, assign, scope, etc.) live in the operations layer, never in presentation code. All operations are pure functions: `(config, params) → { config, result }` — they never perform I/O directly.
+Core logic is organized into four layers: data model, operations, sync engine, and presentation. The CLI and desktop app are both thin presentation layers over a shared operations + sync + config core. App consumers (like Chorus) import the same operations and sync modules directly. All mutations (install, uninstall, enable, disable, assign, scope, etc.) live in the operations layer, never in presentation code. All operations are pure functions: `(config, params) → { config, result }` — they never perform I/O directly.
+
+The project is structured as a monorepo with npm workspaces. The library and CLI remain at the root; the desktop app lives in `packages/desktop/`.
 
 ```
 ensemble/
-├── src/
-│   ├── schemas.ts        # Zod schemas, TypeScript types (via z.infer), constants
-│   ├── config.ts         # loadConfig/saveConfig (atomic writes), query helpers, resolution helpers
-│   ├── operations.ts     # Pure business logic (addServer, removeServer, enable, disable, assign, scope, etc.)
-│   ├── clients.ts        # Client definitions (17 clients), detection, format adapters
-│   ├── sync.ts           # Sync engine — write configs per client, symlink fan-out for skills
-│   ├── skills.ts         # Skill store — SKILL.md I/O, canonical store operations
-│   ├── search.ts         # BM25-style local capability search
-│   ├── registry.ts       # Registry adapters (Official + Glama), quality signals, metadata caching
-│   ├── doctor.ts         # Deterministic health audit
-│   ├── projects.ts       # Project registry reader (better-sqlite3)
-│   └── index.ts          # Public API surface — re-exports for library consumers
+├── src/                              # Library + CLI (root package)
+│   ├── schemas.ts                    # Zod schemas, TypeScript types (via z.infer), constants
+│   ├── config.ts                     # loadConfig/saveConfig (atomic writes), query helpers, resolution helpers
+│   ├── operations.ts                 # Pure business logic (addServer, removeServer, enable, disable, assign, scope, etc.)
+│   ├── clients.ts                    # Client definitions (17 clients), detection, format adapters
+│   ├── sync.ts                       # Sync engine — write configs per client, symlink fan-out, hook/settings merge, snapshot creation
+│   ├── skills.ts                     # Skill store — SKILL.md I/O, canonical store operations
+│   ├── agents.ts                     # Subagent store — .claude/agents/ frontmatter + canonical store
+│   ├── commands.ts                   # Slash command store — .claude/commands/ frontmatter + canonical store
+│   ├── hooks.ts                      # Hook store — settings.json non-destructive merge under hooks key
+│   ├── settings.ts                   # Settings store — declarative non-destructive key-level merge
+│   ├── snapshots.ts                  # Safe apply / rollback snapshots
+│   ├── browse.ts                     # TUI-grade discovery engine (fuzzy search + Card/Slim render)
+│   ├── search.ts                     # BM25-style local capability search
+│   ├── registry.ts                   # Registry adapters (Official + Glama), quality signals, metadata caching, dynamic marketplace discovery
+│   ├── doctor.ts                     # Deterministic health audit
+│   ├── projects.ts                   # Project registry reader (better-sqlite3)
+│   ├── secrets.ts                    # Secret scanning (env values, skill content)
+│   ├── usage.ts                      # Usage tracking for self-learning search
+│   ├── setlist.ts                    # Setlist capability integration (read-only)
+│   └── index.ts                      # Public API surface — re-exports for library consumers
 ├── src/cli/
-│   └── index.ts          # Commander.js CLI — thin wrapper over operations
-├── package.json
+│   └── index.ts                      # Commander.js CLI — thin wrapper over operations
+├── packages/
+│   └── desktop/                      # Electron desktop app
+│       ├── src/
+│       │   ├── main/                 # Electron main process
+│       │   │   ├── index.ts          # App lifecycle, window creation
+│       │   │   ├── ipc-handlers.ts   # IPC handlers wrapping Ensemble library operations
+│       │   │   └── config-watcher.ts # fs.watch on config.json for external changes
+│       │   ├── renderer/             # React renderer
+│       │   │   ├── App.tsx           # Root component — sidebar + detail panel layout
+│       │   │   ├── components/       # Shared UI components
+│       │   │   ├── pages/            # Section pages (Servers, Skills, Plugins, Groups, etc.)
+│       │   │   └── hooks/            # React hooks wrapping Ensemble library calls via IPC
+│       │   └── preload/              # Electron preload scripts (IPC bridge)
+│       │       └── index.ts          # Expose Ensemble operations to renderer via contextBridge
+│       ├── e2e/                      # Playwright E2E tests
+│       │   └── *.spec.ts             # Autonomous UI tests
+│       ├── package.json              # Desktop-specific deps (electron, react, tailwind, playwright)
+│       ├── electron-builder.yml      # Build/packaging config
+│       ├── tailwind.config.ts
+│       ├── tsconfig.json
+│       └── electron.vite.config.ts   # Main/preload/renderer build config (electron-vite)
+├── package.json                      # Root package.json with workspaces config
 ├── tsconfig.json
 ├── tsup.config.ts
 └── biome.json
@@ -1204,19 +1820,32 @@ ensemble/
 | `schemas.ts` | Zod schemas, TypeScript types (via `z.infer`), constants |
 | `config.ts` | `loadConfig`/`saveConfig` with atomic writes, query helpers, resolution helpers (`resolveServers`, `resolveSkills`, `resolvePlugins`) |
 | `clients.ts` | Client definitions (17 clients, including `skills_dir`), detection, config file read/write, CC settings helpers |
-| `operations.ts` | Pure business logic for all mutations — shared by CLI and library consumers |
+| `operations.ts` | Pure business logic for all mutations — shared by CLI, desktop app, and library consumers |
 | `projects.ts` | Project registry reader — reads project-registry SQLite DB via better-sqlite3 |
 | `sync.ts` | Sync engine — dual strategy: config-entry writes for servers, symlink fan-out for skills. Uses resolution helpers from `config.ts` |
 | `skills.ts` | Skill store — SKILL.md frontmatter parsing, canonical store CRUD |
-| `registry.ts` | Registry adapter framework — search, show, install across extensible backends (servers + skills catalog) |
+| `agents.ts` | Subagent store — `.claude/agents/*.md` frontmatter parsing (name, description, tools, model), canonical store CRUD, fan-out to client agents directories |
+| `commands.ts` | Slash command store — `.claude/commands/*.md` frontmatter parsing (description, allowed-tools, argument-hint), canonical store CRUD, fan-out to client commands directories |
+| `hooks.ts` | Hook store — validation of the 7 lifecycle event types, non-destructive merge into client `settings.json` under the `hooks` key, `__ensemble` tagging for additive detection |
+| `settings.ts` | Settings store — declarative management of individual `settings.json` keys with non-destructive key-level merge; per-client diff generation |
+| `snapshots.ts` | Safe apply / rollback snapshots — pre-write capture of every file Ensemble touches, restore operations, retention pruning |
+| `browse.ts` | TUI-grade discovery engine — fuzzy search across installed + discoverable resources, `@marketplace-name` filter parsing, Card/Slim render modes, drives both `ensemble browse` CLI and the desktop Registry page |
+| `registry.ts` | Registry adapter framework — search, show, install across extensible backends; dynamic marketplace discovery with auto-update notification |
 | `search.ts` | Local capability search — BM25 scoring across servers and skills |
 | `doctor.ts` | Deterministic health audit with structured scoring across 5 categories |
+| `secrets.ts` | Secret scanning — regex-based detection of hardcoded secrets in env values and skill content |
+| `usage.ts` | Usage tracking — records command/search usage for self-learning search scoring |
+| `setlist.ts` | Setlist capability integration — read-only interface to `@setlist/core` for portfolio capability awareness |
+| `discover.ts` | Filesystem scan for existing installed skills and plugins; produces a `DiscoveryReport` that feeds `addToLibrary` during `ensemble init` |
+| `import-legacy.ts` | **Throwaway.** One-shot v1.3 → v2.0.1 config translator backing `ensemble import-legacy`. Reads the current v1.3 `config.json` plus a live scan of every detected client's on-disk config, writes a v2.0.1-shaped library + install-state matrix, and backs up the original to `config.v1.bak.json`. Runs once on the user's machine during the v2.0.1 transition, then the file and its CLI subcommand are deleted in a follow-up commit. Explicitly not a permanent subsystem — see §Migration. |
 | `index.ts` | Public API surface — re-exports for `ensemble`, `ensemble/operations`, `ensemble/schemas`, etc. |
 | `cli/index.ts` | Commander.js CLI — thin wrapper that calls operations and formats output |
+| `packages/desktop/` | Electron desktop app — React + Tailwind UI over the same library operations via IPC |
 
 ## Design Principles
 
-1. **Library-first** — Ensemble is a library that happens to have a CLI, not a CLI with importable internals. Operations are pure functions. Config I/O is explicit. Consumers own the read/write lifecycle.
+0. **The library is the primary interface. Install state is a property, not a location.** The user's owned inventory lives in a single flat library. Every resource in the library is owned regardless of whether it is currently installed anywhere. Install state is a per-client/per-project property of a library resource — never a tier above or below the library. Uninstalling removes a resource from a client's config; only `ensemble remove` evicts it from the library. Every UI surface must respect this distinction: pivots are views over the same flat library, and install/uninstall is a row-level action available from every view. (v2.0.1 refinement.)
+1. **Library-first** — Ensemble is a library that happens to have a CLI and a desktop app, not an app with importable internals. Operations are pure functions. Config I/O is explicit. Consumers — CLI, desktop app, Chorus, or any other app — own the read/write lifecycle.
 2. **Additive only on sync** — Ensemble manages its own servers in client configs. It never deletes servers it didn't create. A `__ensemble` marker comment or metadata key identifies managed entries.
 3. **Backwards compatible defaults** — no group assignment = sync all enabled servers.
 4. **Idempotent** — running `ensemble sync` twice produces the same result.
@@ -1224,6 +1853,9 @@ ensemble/
 6. **Dry-run support** — `ensemble sync --dry-run` shows what would change without writing.
 7. **Config backup** — before writing to any client's config file for the first time, Ensemble creates a `.ensemble-backup` copy alongside the original. Subsequent writes do not overwrite the backup.
 8. **Marker-based coexistence** — Ensemble tags every server entry it writes with a `__ensemble: true` marker. On sync, Ensemble reads all servers, preserves entries without the marker untouched, and only manages its own. This means Ensemble coexists safely with other tools that write to the same config files (e.g., ToolHive, Caliber, manual edits). However, other tools that don't use markers may overwrite Ensemble's entries during their own sync. Users running multiple config management tools should sync Ensemble last, or use `ensemble doctor` to detect unexpected changes via drift detection.
+9. **Non-destructive settings.json merge** — Every write to `settings.json` (for hooks or for managed settings keys) is a key-level merge that preserves every field Ensemble does not own. `permissions.allow`, `env`, `model`, third-party keys, and hook entries Ensemble doesn't manage all survive every sync untouched. This is the plum-validated pattern generalized to the entire file. The invariant: after any `ensemble sync`, the set of keys and values in `settings.json` that Ensemble does not manage must be byte-identical to their pre-sync state.
+10. **Safe apply with rollback snapshots** — Every `ensemble sync` captures a pre-write snapshot of every file it will touch. Any sync can be undone with `ensemble rollback --latest`. This is in addition to additive sync and marker-based coexistence — the three protections layer. Additive sync prevents deletion of unmanaged entries; markers keep Ensemble's own entries identifiable; snapshots make every operation reversible even when the user asked for it.
+11. **Single-user, single-machine is a real constraint and a real license** — Ensemble is personal infrastructure with a single known consumer set: the user's own CLI and desktop usage on one machine, plus exactly one dependent repo (`chorus-app`) that the same user controls. There are no external consumers, no published scripts in third-party projects, and no coordination cost with anyone but the user. This does not make Ensemble sloppy — operations are still pure, additive sync still holds, snapshots still cover every write — but it does change what kinds of churn are affordable. Breaking changes that would be unacceptable for a public library are acceptable here when they simplify the code, because the compatibility cost budget can be **spent once** rather than amortized forever. v2.0.1's migration approach (§Migration) is the canonical example: a clean-slate verb rewrite plus a one-shot import, rather than a deprecation → guard → retire staged dance. Design choices that rely on this principle must say so explicitly, and must not silently generalize to a world Ensemble doesn't live in.
 
 ## Future
 
@@ -1249,16 +1881,23 @@ Patterns confirmed by external research that reinforce existing Ensemble decisio
 - **Klavis-AI/klavis (open-strata)** — Open-source MCP server platform with managed/hosted backends, diff-based sync, and context cost awareness. Informed patterns: context cost awareness on sync (#3), drift detection validation (#6), and the registry adapter concept. Repo: `github.com/Klavis-AI/klavis`.
 - **lydakis/mcpx** — MCP server multiplexer with daemon model, auto-discovery, and TOML config. Informed patterns: config auto-discovery display during init (#1), registry metadata caching (#5), no-daemon validation (#4), and virtual server mapping concept (#7). Added as supported client. Repo: `github.com/lydakis/mcpx`.
 - **smith-horn/skillsmith** — Trust-tier classification, quality scoring from upstream signals, dependency intelligence, security scanning. Informed patterns: trust tiers, quality signals, dependency modeling, pre-install security summary. Repo: `github.com/smith-horn/skillsmith`.
-- **inceptyon-labs/TARS** — Profile-as-plugin packaging, collision detection across scopes, diff-plan-apply with backup, pin/track provenance modes. Informed patterns: profile-as-plugin, collision detection, backup strategy, provenance modes. Repo: `github.com/inceptyon-labs/TARS`.
-- **christiananagnostou/skillbox** — Canonical store + symlink fan-out, auto-detect agents, self-referential meta-skill. Informed patterns: symlink distribution, meta-skill concept. Repo: `github.com/christiananagnostou/skillbox`.
-- **walidboulanouar/ay-claude-templates** — Multi-source parser, bundle install, manifest dependencies. Informed patterns: unified source parser. Repo: `github.com/walidboulanouar/ay-claude-templates`.
+- **inceptyon-labs/TARS** — Profile-as-plugin packaging, collision detection across scopes, diff-plan-apply with backup, pin/track provenance modes. **v2.0 additions:** Centralized hub pattern for managing skills, agents, commands, hooks, MCP servers, and plugins in one visual interface; safe apply/rollback operations as a first-class operation-level safety model; profile-based configuration sharing across projects. Informed patterns: profile-as-plugin, collision detection, backup strategy, provenance modes, rollback snapshots, multi-resource-type scope (agents/commands/hooks as first-class types). Repo: `github.com/inceptyon-labs/TARS`.
+- **christiananagnostou/skillbox** — Canonical store + symlink fan-out, auto-detect agents, self-referential meta-skill. **v2.0 framing:** Self-described as "local-first, agent-agnostic skills manager" — the same presentation-agnostic core philosophy Ensemble's library-first architecture embodies. Confirmatory reference for Ensemble's identity. Informed patterns: symlink distribution, meta-skill concept, presentation-agnostic core. Repo: `github.com/christiananagnostou/skillbox`.
+- **walidboulanouar/ay-claude-templates** — Multi-source parser, bundle install, manifest dependencies. **v2.0 additions:** Cross-platform package manager scoped to Claude Skills, Agents, Commands, Hooks, Plugins, MCPs, and Settings as seven distinct resource types. Second independent source (alongside TARS) validating that the v2.0 scope expansion is the right direction for a Claude Code extension manager. Informed patterns: unified source parser, seven-resource-type data model, settings as a managed resource. Repo: `github.com/walidboulanouar/ay-claude-templates`.
 - **caliber-ai-org/ai-setup** — Content-hash state comparison, deterministic scoring with categories, quality gate. Informed patterns: structured doctor scoring. Repo: `github.com/caliber-ai-org/ai-setup`.
 - **skillsgate/skillsgate** — Canonical + symlink, lock file, multi-source parser, security scanning. Informed patterns: symlink fan-out validation, security scanning. Repo: `github.com/skillsgate/skillsgate`.
-- **lasoons/AgentSkillsManager** — IDE-specific skills directories, cloud catalog (58K skills via claude-plugins.dev API). Informed patterns: client skills directory mapping, skills catalog integration. Repo: `github.com/lasoons/AgentSkillsManager`.
+- **lasoons/AgentSkillsManager** — IDE-specific skills directories, cloud catalog (58K skills via claude-plugins.dev API). **v2.0 additions:** Validates that skill management extends to Antigravity, CodeBuddy, Cursor, Qoder, Trae, Windsurf, and VS Code — driving the 17→21 client expansion. Formalizes claude-plugins.dev as the canonical cloud catalog for Ensemble's skill search. Informed patterns: client skills directory mapping, skills catalog integration, IDE client roster expansion, cloud catalog as default backend. Repo: `github.com/lasoons/AgentSkillsManager`.
 - **iannuttall/dotagents** — Symlink fan-out, migration with conflict detection, backup+undo, skill frontmatter validation, client path mapping. Informed patterns: skills migration, backup strategy, client path mapping. Repo: `github.com/iannuttall/dotagents`.
+- **itsdevcoffee/plum** — Fast TUI discovering 750+ Claude Code plugins from 12 marketplaces. Features: fuzzy search across installed + discoverable in a single bar, dynamic registry with auto-update notification, `@marketplace-name` filter syntax, Card/Slim view modes, one-key install (`c`/`y`), non-destructive preservation of `settings.json` fields (`permissions.allow`, `hooks`, etc.). **v2.0 additions:** Drives the Part 2 discovery UX upgrade — `ensemble browse` TUI command, dynamic marketplace registry, fuzzy-search-all, filter syntax, view modes, and the generalized non-destructive settings.json merge invariant. Informed patterns: TUI-grade discovery, dynamic marketplace registry, fuzzy search across installed + discoverable, marketplace filter syntax, Card/Slim view modes, one-key install, non-destructive settings.json merge. Repo: `github.com/itsdevcoffee/plum`.
+- **bgreenwell/claude-forge** — Hub for plugins, marketplaces, and components. Confirmatory reference for the hub-of-marketplaces model and cross-marketplace discovery. Informed patterns: multi-marketplace aggregation, cross-marketplace component browsing. Repo: `github.com/bgreenwell/claude-forge`.
 
 ## Changelog
 
+- **2.0.1** — **v2.0 refinement: library as primary interface; install as property, not tier; pivot-based IA for desktop.** Recast the resource lifecycle model around three concepts (Marketplace, Library, Install state) with Pivot as a named view. The user's owned inventory lives in a single flat library regardless of whether resources are installed anywhere; install state is a per-client/per-project property of each library resource, not a tier above or below it. Rework §Core Concepts with a new "Resource Lifecycle Model" subsection, add Library / Install state / Pivot as first-class concepts, and clarify Marketplace as discovery-only. Split the operations layer into library-membership mutations (`pullFromMarketplace`, `addToLibrary`, `removeFromLibrary`) and install-state mutations (`installResource`, `uninstallResource`), with query helpers `getInstallState` and `getLibraryByPivot`. Add `InstallStateSchema` (per-client/per-project matrix) and `PivotSpecSchema` to the schema exports. Add five lifecycle CLI verbs (`pull`, `add`, `install`, `uninstall`, `remove`) with strict semantics: `pull`/`add` govern library membership, `install`/`uninstall` govern install state non-destructively, and `remove` is the only destructive verb. Adopt **strict library-first** for manual adds — `ensemble add` leaves install state empty by default, with `--install <client>` as a convenience for the one-step case. Add `ensemble library` subcommand group (`list`, `show`, `pivot …`). Replace the v2.0 seven-subsection Resources sidebar with a **pivot-based sidebar**: Library (default, with resource-type filter bar), By Project, By Group, By Client, Marketplace; workflow sections (Sync, Doctor, Snapshots, Profiles, Rules) move below. Clarify §Sync as the projection of install state into client configs — it never touches library membership. Add design principle #0 ("The library is the primary interface. Install state is a property, not a location."). Add non-goal ("library as a backup of client configs"). Address per-project install state scoping: Claude Code supports it; other clients do not, and `--project` against a non-supporting client is an error. No new external references; refinement driven by user insight.
+- **2.0.0** — **Level up: Claude Code extension platform manager.** Expand scope from MCP servers, skills, and plugins to every declarative artifact in `.claude/`. Add four new first-class resource types: **agents** (`.claude/agents/*.md` subagents with name/description/tools/model frontmatter), **commands** (`.claude/commands/*.md` slash commands with description/allowed-tools/argument-hint frontmatter), **hooks** (settings.json `hooks` entries across the 7 lifecycle events — PreToolUse, PostToolUse, SessionStart, UserPromptSubmit, PreCompact, Stop, Notification), and **settings** (declarative management of individual settings.json keys). Add corresponding Zod schemas (AgentSchema, CommandSchema, HookSchema, SettingSchema), operations modules (agents.ts, commands.ts, hooks.ts, settings.ts), package exports, CLI subcommand groups, group assignment verbs (add-agent/remove-agent/add-command/remove-command/add-hook/remove-hook), and desktop sidebar sections. Introduce **non-destructive settings.json merge** as a core invariant: every write preserves every key Ensemble does not manage. Introduce **safe apply with rollback snapshots** via new snapshots.ts module — every sync captures a pre-write snapshot to `~/.config/ensemble/snapshots/<timestamp>/`, any sync can be undone with `ensemble rollback --latest`, retention default 30 days. Add **TUI-grade discovery experience**: new `ensemble browse` command with fuzzy search across installed + discoverable resources in a single bar, `@marketplace-name` filter syntax, Card/Slim view modes, one-key install. Add **dynamic marketplace registry** with auto-update notification via `discoverMarketplaces()`. Formalize **claude-plugins.dev cloud catalog** (~58K skills) as the default skill search backend. Expand desktop app sidebar with collapsible **Resources** group containing all 7 resource types plus workflow sections; add Snapshots section. Expand detected clients from 17 to **21**: add **Antigravity, CodeBuddy, Qoder, Trae**. Add design principles: non-destructive settings.json merge (#9), safe apply with rollback snapshots (#10). Tech stack adds Ink (TUI) and fuzzysort. **References:** incorporate 6 new references — TARS v2 (rollback snapshots, multi-resource scope), ay-claude-templates (seven-resource data model, second independent source for scope expansion), plum (discovery UX, non-destructive merge), AgentSkillsManager (client roster expansion, cloud catalog as default), skillbox (presentation-agnostic framing confirmation), claude-forge (multi-marketplace aggregation confirmation). **Framing:** v2.0 reframes Ensemble from "MCP/skills/plugins manager" to "Claude Code extension platform manager" — managing every declarative artifact in `.claude/` across every AI client that adopts the pattern. v2.0 brings Ensemble into direct competition with TARS, AY Platform, and claude-forge; differentiators remain library-first architecture (consumable by Chorus and other apps), pure-function operations, Zod-validated schemas for external consumers, and setlist capability integration. Meta-loop: fctry (itself a plugin shipping commands/agents/hooks/skills) is now a thing Ensemble can install and manage.
+- **1.3.1** — Review pass: fix architecture tree to match actual desktop main/ structure (3 files, not 1), correct electron.vite.config.ts filename, fix Registry API example function names (searchRegistries, resolveInstallParams), scope daemon/file-watching non-goal to library/CLI (desktop app legitimately watches config), mark interactive dependency graph as stretch, move desktop-prefs.json to stretch (not yet implemented).
+- **1.3.0** — Add Electron desktop app as third presentation layer (alongside CLI and library API). Desktop app provides full CLI parity via macOS-style sidebar + detail panel layout with React + Tailwind. Visual extras: drag-and-drop group assignment, visual drift diffing with side-by-side diff, interactive dependency graphs, registry cards with one-click install. IPC architecture: main process imports Ensemble library, preload script exposes typed API via contextBridge, renderer calls operations through React hooks. Shared config (same config.json as CLI) with fs.watch for live reload. Autonomous UI testing via Playwright with Electron support. Monorepo structure with npm workspaces: library/CLI at root, desktop app at packages/desktop/. Update Non-Goals: replace "no GUI" with "no standalone GUI framework" (Chorus remains a separate consumer). Update Architecture with monorepo layout and desktop modules. Add Electron, React, Tailwind CSS, Playwright to tech stack. Distribution model TBD (npm/DMG/both).
+- **1.2.0** — Document 5 code-ahead features. Add configuration profiles section (save/activate/list/show/delete named snapshots of client assignments, rules, and settings). Add secret scanning section (regex detection of 8 credential patterns in server env values and skill content, op:// exempt). Expand local capability search with query alias expansion (~30 abbreviation mappings), multi-signal quality scoring (BM25 60% + quality 40%), and usage-based self-learning search (opt-in via settings.usage_tracking, cold-start threshold of 5 invocations, success rate + recency blended scoring). Add group split suggestions subsection to sync (keyword-categorized server grouping proposals when tool count is high). Add profiles CLI commands, search --no-usage/--reset-usage flags. Update config schema example with settings and profiles fields.
 - **1.1.0** — Add setlist capability integration as read-only interface via `@setlist/core` optional dependency. Capability-aware search extends `ensemble search` with portfolio capabilities from setlist. New doctor check category (capability coverage) warns when MCP-invoked capabilities lack enabled servers. `ensemble projects` shows per-project capability counts. Same optional-dependency pattern as project-registry (graceful fallback when `@setlist/core` not installed). Add future item: capability-driven recommendations.
 - **1.0.0** — TypeScript rewrite. Rename mcpoyle → Ensemble. Language: Python → TypeScript. Architecture: library-first with pure-function operations and Zod schema exports. Add Library API section (package exports, config loading pattern, operations as pure functions, Zod schema exports, client resolution API, registry API, integration guidance). CLI: click → Commander.js, binary is `ensemble` with `ens` alias. Build: hatch → tsup, pytest → Vitest, Biome for linting/formatting. Dependencies: httpx → native fetch, dataclasses → Zod, pathlib → node:fs, fcntl → proper-lockfile, tomllib → smol-toml, shutil → node:fs, SQLite via better-sqlite3. Config path: `~/.config/mcpoyle/` → `~/.config/ensemble/`. Marker: `__mcpoyle` → `__ensemble`. Add automatic migration from mcpoyle config, skills store, cache, and client markers. Remove TUI surface (Chorus is the GUI). Remove Textual dependency. Add non-goal: GUI/TUI (Chorus handles UI). Add non-goal: live MCP connections (config-only scope). Add design principle: library-first. Update all CLI examples, config paths, and references for Ensemble naming.
 - **0.15.0** — Add skills as third entity type (SKILL.md files with YAML frontmatter). Add canonical store + symlink fan-out sync strategy for skills. Add client skills directory mapping (Claude Code, Cursor, Codex, Windsurf). Add builtin mcpoyle-usage meta-skill. Add skills catalog integration (claude-plugins.dev, ~58K skills). Add unified source parser (`mcpoyle add <source>` infers type from format). Add trust-tier classification (official/community/local) to origin tracking. Add quality signals (stars, last-updated, has-readme) to registry search/show. Add collision detection across scopes for both servers and skills. Add pin/track provenance modes for servers and skills. Add dependency intelligence (skills declare server dependencies). Add pre-install security summary for registry installs. Add deterministic structured scoring to doctor (categories, points, fix suggestions). Add profile-as-plugin packaging (`groups export --as-plugin`). Add skills migration to init flow. Update Group model to include skills. Update sync engine for dual strategy (config-entry + symlink). Update local search to include skills. Research: 16 patterns from 8 external references (skillsmith, TARS, skillbox, ay-claude, caliber, skillsgate, AgentSkillsManager, dotagents).

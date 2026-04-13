@@ -1,7 +1,7 @@
 {
   "versions": {
     "external": {
-      "current": "0.5.26",
+      "current": "1.0.7",
       "propagationTargets": [
         {
           "file": "package.json",
@@ -16,7 +16,7 @@
       }
     },
     "spec": {
-      "current": "1.0.3",
+      "current": "2.0.1",
       "incrementRules": {
         "minor": "auto-on-evolve"
       }
@@ -28,7 +28,7 @@
       "action": "suggest external minor bump"
     }
   },
-  "formatVersion": "0.78.28",
+  "formatVersion": "0.80.20",
   "modelRouting": {
     "interviewer": "claude",
     "stateOwner": "codex",
@@ -41,5 +41,23 @@
     "scenarioJudge": "multi-model",
     "freshAudit": "codex",
     "localPrefilter": "oss"
+  },
+  "evaluation": {
+    "trials": 3,
+    "passThreshold": 2,
+    "models": {}
+  },
+  "foreman": {
+    "enabled": false,
+    "discoveryEnabled": true,
+    "budgetPerDay": 500000,
+    "cycleCapPerRun": 3,
+    "quietHours": {
+      "start": 23,
+      "end": 7
+    },
+    "eligibleTypes": [
+      "reference"
+    ]
   }
 }
