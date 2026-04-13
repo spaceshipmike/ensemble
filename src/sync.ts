@@ -17,6 +17,7 @@ import {
 	getManagedServersNested,
 	type ImportedServer,
 	importServersFromClient,
+	isInstalled,
 	projectServersKey,
 	readCCSettings,
 	readClientConfig,
@@ -994,6 +995,10 @@ export function syncAllClients(
 	const results: SyncResult[] = [];
 
 	for (const clientDef of Object.values(CLIENTS)) {
+		// Only sync clients that are actually installed. Without this check,
+		// sync writes phantom configs to every defined client, which in turn
+		// self-reinforces config-file-based detection.
+		if (!isInstalled(clientDef)) continue;
 		const { config: newConfig, result } = syncClient(currentConfig, clientDef.id, options);
 		currentConfig = newConfig;
 		results.push(result);

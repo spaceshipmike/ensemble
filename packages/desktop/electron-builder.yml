@@ -1,0 +1,13 @@
+appId: com.ensemble.desktop
+productName: Ensemble
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist/**/*
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - universal

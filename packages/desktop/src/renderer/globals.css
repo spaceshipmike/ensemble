@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Interface-Design tokens — "patch bay" direction.
+ * Flat, hairline, monospaced. TE-coded. Light bone surface, graphite ink,
+ * color only as signal. Scoped under .te-scope so the legacy app is
+ * untouched during migration.
+ */
+.te-scope {
+  --bone: #f5f4f0;
+  --bone-sunk: #ecebe6;
+  --graphite: #1a1a1a;
+  --ink-2: #4a4a48;
+  --ink-3: #8a8a86;
+  --hairline: rgba(26, 26, 26, 0.08);
+  --hairline-strong: rgba(26, 26, 26, 0.18);
+  --signal: #ff5a1f;   /* TE orange — drift, attention */
+  --sync: #2f8f4a;     /* muted green — healthy */
+  --key: #1f5aff;      /* cold blue — selection */
+  --tape: #d93025;     /* red — conflict / destructive */
+  --te-mono: "Commit Mono", "SF Mono", ui-monospace, "JetBrains Mono",
+    Menlo, Consolas, monospace;
+  font-feature-settings: "tnum", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+.te-scope .te-row {
+  transition: background 80ms linear;
+}
+.te-scope .te-row:hover {
+  background: var(--bone-sunk);
+}
+.te-scope .te-row:focus-visible {
+  background: var(--bone-sunk);
+  outline: 1px solid var(--key);
+  outline-offset: -1px;
+}
+.te-scope .te-row:hover .te-arrow {
+  color: var(--graphite) !important;
+}
+
+.te-scope .te-chip:hover {
+  background: var(--bone-sunk);
+}
+.te-scope .te-chip:focus-visible {
+  outline: 1px solid var(--key);
+  outline-offset: 1px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Commit Mono", "SF Mono", ui-monospace, "JetBrains Mono",
+    Menlo, Consolas, monospace;
+  background: #f5f4f0;
+  color: #1a1a1a;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-kerning: normal;
+  font-feature-settings: "tnum", "ss01";
+}
+
+/* Suppress legacy rounded corners and shadows across the app. TE is flat. */
+.te-app button,
+.te-app input,
+.te-app select,
+.te-app textarea,
+.te-app [class*="rounded"] {
+  border-radius: 2px !important;
+}
+.te-app [class*="shadow"] {
+  box-shadow: none !important;
+}
+
+/* Drag region only on sidebar and title bar area */
+[data-drag-region] {
+  -webkit-app-region: drag;
+}
+
+/* Allow interaction on non-drag areas */
+button,
+input,
+select,
+textarea,
+a,
+[data-no-drag] {
+  -webkit-app-region: no-drag;
+}
+
+/* Toast animation */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+.toast-enter { animation: toast-in 150ms ease-out forwards; }
+.toast-exit { animation: toast-out 150ms ease-in forwards; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.30 0.008 70);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.38 0.01 70);
+}

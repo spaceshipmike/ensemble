@@ -28,6 +28,13 @@ export interface ClientDef {
 	skillsDir?: string; // unexpanded path for skills directory
 	supportsPlugins?: boolean;
 	contextWindow?: number; // max context window in tokens
+	// Strict detection — when set, `isInstalled` ignores config files entirely
+	// and requires the real artifact (app bundle or binary on PATH).
+	// Config-file detection cannot be trusted because Ensemble itself writes
+	// these files during sync, creating self-reinforcing phantom installs.
+	requireApp?: string | string[]; // macOS .app bundle path; any-of semantics
+	requireBin?: string; // binary name to resolve on PATH
+	requireVscodeExtension?: string; // directory prefix in ~/.vscode/extensions
 }
 
 // --- Client registry ---
@@ -40,10 +47,7 @@ const clientDefs: ClientDef[] = [
 		name: "Claude Desktop",
 		configPath: "~/Library/Application Support/Claude/claude_desktop_config.json",
 		serversKey: "mcpServers",
-		detectPaths: [
-			"/Applications/Claude.app",
-			"~/Library/Application Support/Claude/claude_desktop_config.json",
-		],
+		requireApp: "/Applications/Claude.app",
 		configFormat: "json",
 		contextWindow: 200000,
 	},
@@ -52,7 +56,7 @@ const clientDefs: ClientDef[] = [
 		name: "Claude Code",
 		configPath: "~/.claude.json",
 		serversKey: "mcpServers",
-		detectPaths: ["~/.claude.json"],
+		requireBin: "claude",
 		configFormat: "json",
 		skillsDir: "~/.claude/skills",
 		supportsPlugins: true,
@@ -63,7 +67,7 @@ const clientDefs: ClientDef[] = [
 		name: "Cursor",
 		configPath: "~/.cursor/mcp.json",
 		serversKey: "mcpServers",
-		detectPaths: ["/Applications/Cursor.app", "~/.cursor/mcp.json"],
+		requireApp: "/Applications/Cursor.app",
 		configFormat: "json",
 		skillsDir: "~/.cursor/skills",
 		contextWindow: 128000,
@@ -73,10 +77,7 @@ const clientDefs: ClientDef[] = [
 		name: "VS Code (Copilot)",
 		configPath: "~/Library/Application Support/Code/User/settings.json",
 		serversKey: "mcp.servers",
-		detectPaths: [
-			"/Applications/Visual Studio Code.app",
-			"~/Library/Application Support/Code/User/settings.json",
-		],
+		requireApp: "/Applications/Visual Studio Code.app",
 		configFormat: "json",
 	},
 	{
@@ -84,7 +85,7 @@ const clientDefs: ClientDef[] = [
 		name: "Windsurf",
 		configPath: "~/.windsurf/mcp.json",
 		serversKey: "mcpServers",
-		detectPaths: ["/Applications/Windsurf.app", "~/.windsurf/mcp.json"],
+		requireApp: "/Applications/Windsurf.app",
 		configFormat: "json",
 		skillsDir: "~/.windsurf/skills",
 	},
@@ -93,7 +94,7 @@ const clientDefs: ClientDef[] = [
 		name: "Zed",
 		configPath: "~/.config/zed/settings.json",
 		serversKey: "context_servers",
-		detectPaths: ["/Applications/Zed.app", "~/.config/zed/settings.json"],
+		requireApp: "/Applications/Zed.app",
 		configFormat: "json",
 	},
 	{
@@ -109,16 +110,20 @@ const clientDefs: ClientDef[] = [
 		name: "Gemini CLI",
 		configPath: "~/.gemini/settings.json",
 		serversKey: "mcpServers",
-		detectPaths: ["~/.gemini/settings.json"],
+		requireBin: "gemini",
 		configFormat: "json",
 		skillsDir: "~/.gemini/skills",
 	},
 	{
+		// CLI and desktop app share ~/.codex/config.toml — one config, two
+		// surfaces. Installed if either the `codex` binary or the Codex.app
+		// bundle is present.
 		id: "codex-cli",
-		name: "Codex CLI",
+		name: "Codex",
 		configPath: "~/.codex/config.toml",
 		serversKey: "mcp_servers",
-		detectPaths: ["~/.codex/config.toml"],
+		requireBin: "codex",
+		requireApp: "/Applications/Codex.app",
 		configFormat: "toml",
 		skillsDir: "~/.codex/skills",
 	},
@@ -127,7 +132,7 @@ const clientDefs: ClientDef[] = [
 		name: "mcpx",
 		configPath: "~/.config/mcpx/config.toml",
 		serversKey: "servers",
-		detectPaths: ["~/.config/mcpx/config.toml"],
+		requireBin: "mcpx",
 		configFormat: "toml",
 	},
 	{
@@ -135,7 +140,9 @@ const clientDefs: ClientDef[] = [
 		name: "Copilot CLI",
 		configPath: "~/.copilot/mcp-config.json",
 		serversKey: "mcpServers",
-		detectPaths: ["~/.copilot/mcp-config.json"],
+		// `gh` alone isn't sufficient — require the gh-copilot extension directory
+		// to be present so users with plain `gh` aren't falsely flagged.
+		requireBin: "gh-copilot",
 		configFormat: "json",
 	},
 	{
@@ -143,7 +150,21 @@ const clientDefs: ClientDef[] = [
 		name: "Copilot JetBrains",
 		configPath: "~/.config/github-copilot/mcp.json",
 		serversKey: "mcpServers",
-		detectPaths: ["~/.config/github-copilot/mcp.json"],
+		requireApp: [
+			"/Applications/IntelliJ IDEA.app",
+			"/Applications/IntelliJ IDEA Community Edition.app",
+			"/Applications/PyCharm.app",
+			"/Applications/PyCharm Community Edition.app",
+			"/Applications/WebStorm.app",
+			"/Applications/RubyMine.app",
+			"/Applications/GoLand.app",
+			"/Applications/PhpStorm.app",
+			"/Applications/CLion.app",
+			"/Applications/DataGrip.app",
+			"/Applications/Rider.app",
+			"/Applications/AppCode.app",
+			"/Applications/Android Studio.app",
+		],
 		configFormat: "json",
 	},
 	{
@@ -151,7 +172,7 @@ const clientDefs: ClientDef[] = [
 		name: "Amazon Q",
 		configPath: "~/.aws/amazonq/mcp.json",
 		serversKey: "mcpServers",
-		detectPaths: ["~/.aws/amazonq/mcp.json"],
+		requireApp: "/Applications/Amazon Q.app",
 		configFormat: "json",
 	},
 	{
@@ -160,9 +181,7 @@ const clientDefs: ClientDef[] = [
 		configPath:
 			"~/.vscode/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
 		serversKey: "mcpServers",
-		detectPaths: [
-			"~/.vscode/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
-		],
+		requireVscodeExtension: "saoudrizwan.claude-dev",
 		configFormat: "json",
 	},
 	{
@@ -171,9 +190,7 @@ const clientDefs: ClientDef[] = [
 		configPath:
 			"~/.vscode/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
 		serversKey: "mcpServers",
-		detectPaths: [
-			"~/.vscode/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
-		],
+		requireVscodeExtension: "rooveterinaryinc.roo-cline",
 		configFormat: "json",
 	},
 	{
@@ -181,7 +198,7 @@ const clientDefs: ClientDef[] = [
 		name: "OpenCode",
 		configPath: "~/.opencode/config.json",
 		serversKey: "mcpServers",
-		detectPaths: ["~/.opencode/config.json"],
+		requireBin: "opencode",
 		configFormat: "json",
 		skillsDir: "~/.opencode/skills",
 	},
@@ -190,7 +207,7 @@ const clientDefs: ClientDef[] = [
 		name: "Amp",
 		configPath: "~/.ampcode/mcp.json",
 		serversKey: "mcpServers",
-		detectPaths: ["~/.ampcode/mcp.json"],
+		requireBin: "amp",
 		configFormat: "json",
 		skillsDir: "~/.ampcode/skills",
 	},
@@ -206,7 +223,60 @@ export function expandPath(p: string): string {
 	return p.replace(/^~/, homedir());
 }
 
+function isBinOnPath(name: string): boolean {
+	const pathEnv = process.env.PATH;
+	if (!pathEnv) return false;
+	for (const dir of pathEnv.split(":")) {
+		if (!dir) continue;
+		if (existsSync(join(dir, name))) return true;
+	}
+	return false;
+}
+
+function hasVscodeExtension(prefix: string): boolean {
+	// VS Code must actually be installed for an extension to be usable.
+	if (!existsSync("/Applications/Visual Studio Code.app")) return false;
+	const extDir = expandPath("~/.vscode/extensions");
+	if (!existsSync(extDir)) return false;
+	try {
+		const { readdirSync } = require("node:fs") as typeof import("node:fs");
+		const entries = readdirSync(extDir);
+		return entries.some((e: string) => e.startsWith(`${prefix}-`) || e === prefix);
+	} catch {
+		return false;
+	}
+}
+
 export function isInstalled(client: ClientDef): boolean {
+	// Strict mode: any declared real-artifact requirement matching is sufficient.
+	// OR semantics — used when a client has multiple surfaces (e.g. Codex has
+	// both a CLI binary and a desktop app sharing one config).
+	const hasStrict =
+		client.requireApp !== undefined ||
+		client.requireBin !== undefined ||
+		client.requireVscodeExtension !== undefined;
+
+	if (hasStrict) {
+		if (client.requireApp !== undefined) {
+			const apps = Array.isArray(client.requireApp)
+				? client.requireApp
+				: [client.requireApp];
+			if (apps.some((p) => existsSync(expandPath(p)))) return true;
+		}
+		if (client.requireBin !== undefined && isBinOnPath(client.requireBin)) {
+			return true;
+		}
+		if (
+			client.requireVscodeExtension !== undefined &&
+			hasVscodeExtension(client.requireVscodeExtension)
+		) {
+			return true;
+		}
+		return false;
+	}
+
+	// Legacy fallback — config-file based, kept for clients that haven't been
+	// annotated with strict detection yet.
 	if (client.globPattern) {
 		return resolvedPaths(client).length > 0;
 	}
