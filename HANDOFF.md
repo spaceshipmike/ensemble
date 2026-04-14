@@ -1,146 +1,246 @@
-# Handoff — 2026-04-13
+# Handoff — 2026-04-14
 
-Session focused on establishing a new visual direction for the desktop app (Teenage Engineering / patch-bay aesthetic), shipping the first screen (the client picker), and fixing a nasty detection/sync self-reinforcing bug uncovered in the process.
+Two big threads this session: (1) a major direction shift in the Ensemble desktop app toward a "Claude Code studio" split-screen patch bay, implemented as stage 1 + stage 2; (2) an in-flight migration to rename `fctry-marketplace` → `ml-marketplace` and fold `md-convert` into it. **The marketplace rename is paused at Phase 0 complete — Phase 1 onward has not been executed.**
 
-## What shipped
+## Big-picture direction shift
 
-### Design direction — "Patch bay, not dashboard"
+The desktop app was redesigned around a new mental model. Old model (picker → channel → fan-out) is **dead code** — explicitly deleted in migration, not preserved.
 
-Established in `.interface-design/system.md`. TE-coded: flat, hairline, monospaced, color only as signal. See the system doc for tokens, typography, component patterns, motion rules, and migration order.
+**New model (locked in `.interface-design/system.md`):**
 
-Canonical token set (under `.te-scope` in `packages/desktop/src/renderer/globals.css`):
-`--bone --bone-sunk --graphite --ink-2 --ink-3 --hairline --hairline-strong --signal --sync --key --tape --te-mono`
+- **One relation: `(tool, scope) → enabled`.** Everything is a navigation or edit of this bipartite graph.
+- **Primary surface: resizable split-screen.** Left = library (tools). Right = projects. Four list/detail combinations, symmetrical wire-toggle from either side. Hairline divider, min 320px per panel.
+- **Matrix lens as a secondary view** — read-only grid for "know what's where" auditing, toggled from top chrome. Deferred to a later build.
+- **Doctor as a cross-cutting view** invoked from chrome, not a sidebar page. Deferred.
+- **Deleted concepts (gone, not preserved):** picker, channel mode, fan-out mode, sidebar, client chip, groups, profiles, path rules, client assignments.
+- **Claude Code studio framing** (not cross-client fleet management): target user is a Claude Code power user who also runs other MCP clients. Claude Code is first-class; other clients are latent MCP receivers for future work. Non-Claude-Code projects are filtered out of the projects panel.
+- **Seven tool types in v1:** MCP servers, skills, subagents, slash commands, output styles, plugins, hooks (hooks are list-only in v1 — read-only, no wire actions).
+- **Dark mode is a first-class requirement** in the spec, not a retrofit. Drafted tokens exist; not implemented.
 
-Rule: color means something or it isn't there. Five colors total, each with exactly one job.
+**User-approved decisions (via AskUserQuestion):**
 
-### Scope model
+1. Library source = **managed + discovered.** Auto-scan ~/.claude/ locations and show existing tools alongside anything Ensemble added. Origin badge on each row.
+2. Wire semantics = **hybrid copy + manifest.** Wiring copies the file into `<project>/.claude/` with an `ensemble: managed` frontmatter marker (or `__ensemble: true` JSON flag), AND records the edge in Ensemble's state. Unwire only deletes files that carry the marker — user-authored content is never touched.
+3. Projects = **Claude Code only.** Scanner still finds Cursor/Windsurf/VS Code projects but the app filters them out for v1. Non-CC support is a latent capability to turn on later.
 
-1. **Picker** (entry point) — numbered list of detected clients
-2. **Channel mode** — one client, full attention (not yet migrated; still uses legacy sidebar app chrome)
-3. **Fan-out mode** — reserved for sync operations, not yet built
+Full details in `.interface-design/system.md`.
 
-The client chip (top-left) is the permanent instrument; clicking it returns to the picker.
+## What shipped this session
 
-### Picker screen (new)
+### Library (Claude Code-specific discovery + writes)
 
-Files:
-- `packages/desktop/src/renderer/pages/PickerPage.tsx` — the picker
-- `packages/desktop/src/renderer/components/ClientChip.tsx` — the permanent chip
-- `packages/desktop/src/renderer/App.tsx` — picker now the entry point; channel view shows after pick
+New modules under `src/discovery/`:
 
-Behavior:
-- Reads detected clients via `window.ensemble.clients.detect()` (IPC → `detectClients()`)
-- Numbered rows (`01`, `02`…), state glyph (signal/sync/ink-3 square), state label, trailing arrow
-- Hover darkens row, focus shows key-blue outline
-- Picking a client → sets `activeClient` → existing sidebar app renders with a thin TE chrome bar carrying the chip
+- **`src/discovery/projects.ts`** (existed pre-session but refined): scans Claude Code, Cursor, Windsurf, VS Code for project paths. Aggregates by canonical filesystem path. Handles Claude Code's lossy dash-encoded directory names via greedy collapse with existence check. Skips non-directories (fixes the `.DS_Store` phantom row). Returns `DiscoveredProject[]` with `seenIn`, `lastSeenAt`, `exists`, `isGitRepo`.
 
-### Library: stricter client detection
+- **`src/discovery/library.ts`**: scans `~/.claude/` and optionally `<project>/.claude/` for all seven tool types.
+  - MCP servers from `~/.claude.json` → `mcpServers` (global) and `<project>/.mcp.json` (project).
+  - Skills from `~/.claude/skills/<name>/SKILL.md` (nested directories with SKILL.md).
+  - Subagents / slash commands / output styles from flat `<name>.md` files in `~/.claude/agents/`, `commands/`, `output-styles/`.
+  - **Plugins**: authoritative inventory from `~/.claude/plugins/installed_plugins.json`. Not `settings.json.enabledPlugins` — that was a bug I fixed. Each plugin entry has a new `pluginEnabled: boolean` field tracking whether it's enabled at its discovered scope. For project-scope scans, plugins are emitted only when `enabledPlugins[key] === true`.
+  - Hooks from `settings.json → hooks.<event>[]` — listed read-only for v1.
+  - Each discovered tool has `origin: "discovered" | "managed"` determined by the frontmatter tag or `__ensemble: true` JSON flag.
 
-`src/clients.ts` — `ClientDef` gained three optional fields:
-- `requireApp?: string | string[]` — macOS `.app` bundle path(s); any-of semantics
-- `requireBin?: string` — binary name, resolved against `PATH`
-- `requireVscodeExtension?: string` — directory prefix under `~/.vscode/extensions`; `hasVscodeExtension()` also verifies VS Code.app exists
+- **`src/discovery/wire.ts`**: write operations for wiring/unwiring tools to/from scopes.
+  - **Markdown tools** (skill/agent/command/style): copies source to target with `ensemble: managed` frontmatter injected. Unwire only deletes files that carry the marker.
+  - **MCP servers**: patches `~/.claude.json` → `mcpServers` or `<project>/.mcp.json` with `__ensemble: true` flag.
+  - **Plugins**: flips `enabledPlugins["id@marketplace"]` in the target scope's settings.json. Tracks which keys Ensemble set in a `__ensemble_plugins` array so unwire won't clobber user-enabled plugins.
+  - **Hooks**: refuses — returns "read-only in v1".
 
-`isInstalled()` now runs **OR semantics** across these in strict mode: a client is installed if *any* declared real-artifact check passes. Legacy config-file detection is kept as a fallback for un-annotated clients.
+Exported from `src/index.ts`: `scanClientsForProjects`, `scanLibraryGlobal`, `scanLibraryProject`, `wireTool`, `unwireTool`, and all the types. The library needs `npm run build` after any edit to these files so the desktop's type-check sees them.
 
-All 17 clients annotated. Strict mode means config files alone no longer imply installation, which breaks the self-reinforcing loop where sync wrote configs that then caused detection to return true forever.
+### Desktop app — new split-screen shell
 
-Notable: **Codex CLI and desktop app share `~/.codex/config.toml`** (verified via OpenAI docs). One ClientDef with id `codex-cli`, display name `Codex`, both `requireBin: "codex"` and `requireApp: "/Applications/Codex.app"`.
+The old App.tsx (picker + sidebar + ClientChip + 10 legacy pages) is completely replaced. Current entry flow:
 
-### Library: sync filter
+- **`App.tsx`** owns the full state: `projects`, `libraryTools`, `wireMap` (per-project tool sets), error states, and a dispatcher `AppWireApi` (`isWired`, `wire`, `unwire`) passed to both panels. `isWired` has special-case for plugins at global scope (checks `pluginEnabled`, not mere presence).
+- **`components/Split.tsx`** — resizable 50/50 two-panel primitive. Drag to resize, double-click reset, persists ratio to `localStorage`, min 320px per side.
+- **`components/Panel.tsx`** — shared panel primitives: `PanelShell`, `PanelHeader`, `PanelScroll`, `PanelEmpty`, `FilterTabs`, `ListRow`.
+- **`components/WireRow.tsx`** — square-glyph toggle row (filled `--sync` = wired, outlined `--ink-3` = not wired). Supports `readOnly` and `disabled` for in-flight states. Glyph IS the control — no checkbox, no switch.
+- **`panels/LibraryPanel.tsx`** — list mode has filter tabs (ALL/SERVERS/SKILLS/AGENTS/COMMANDS/STYLES/PLUGINS/HOOKS with counts). Click a row → detail view with metadata + "WIRE TO" ledger enumerating every project scope including GLOBAL. Each row is a live wire-toggle. Hooks render read-only.
+- **`panels/ProjectsPanel.tsx`** — list mode has filter tabs (GIT REPOS / RECENT / ALL / MISSING). Click a row → detail view with project metadata + two sub-tabs: **WIRED** (tools currently at this scope) and **AVAILABLE** (the whole library, toggleable). `GLOBAL` is a synthetic top row representing `~/.claude/` user scope, always visible in every filter. Non-Claude-Code projects are filtered out before display.
 
-`src/sync.ts` — `syncAllClients` now skips any `clientDef` where `!isInstalled(clientDef)`. This is the root-cause fix for phantom config creation. `syncClient` (single-client) is unchanged — callers that know what they're doing can still target a specific client explicitly.
+Each panel tracks its own `list | detail` state independently — they don't coordinate. Back arrow returns each panel to its own list.
 
-### Filesystem cleanup (one-shot, not scripted)
+### IPC + preload
 
-Deleted 11 phantom client config files that previous syncs had written to non-installed clients:
+New handlers in `packages/desktop/src/main/ipc-handlers.ts`:
+
+- `projects:scan` — returns the CC-filtered project list
+- `library:scanGlobal` — full user-scope library
+- `library:scanProject` — one project's `.claude/` contents
+- `library:scanAllProjects` — bulk scan of every CC project for the `wireMap` lookup
+- `library:wire` — calls `wireTool` with the typed request
+- `library:unwire` — calls `unwireTool`
+- `clients:liveStatus` — (from earlier in session) returns per-client total/managed server counts
+
+All exposed via `window.ensemble.{projects,library,clients}` in `packages/desktop/src/preload/index.ts`.
+
+### Legacy pages (dead code)
+
+`ServersPage.tsx`, `SkillsPage.tsx`, `PluginsPage.tsx`, `GroupsPage.tsx`, `ClientsPage.tsx`, `SyncPage.tsx`, `RegistryPage.tsx`, `ProfilesPage.tsx`, `RulesPage.tsx`, `DoctorPage.tsx`, `PickerPage.tsx` all still exist on disk but are **not referenced** by the new `App.tsx`. They're dead code I intentionally didn't delete so you could revert if stage 2 went sideways. **Delete them once the new app has been in use for a few sessions without regressions.** Same for `components/Sidebar.tsx`, `components/ClientChip.tsx`, and any other old components.
+
+### `md-convert` packaged as a Claude Code plugin
+
+The user's local md-convert system (a PreToolUse hook on `Read` that converts binary documents and indexes large markdown files, plus two slash commands `/index` and `/noconvert`) was packaged into a proper plugin bundle at **`~/Code/resources/md-convert/`**:
 
 ```
-~/.cursor/mcp.json
-~/.windsurf/mcp.json
-~/.config/zed/settings.json
-~/.config/mcpx/config.toml
-~/.copilot/mcp-config.json
-~/.config/github-copilot/mcp.json
-~/.aws/amazonq/mcp.json
-~/.vscode/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
-~/.vscode/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json
-~/.opencode/config.json
-~/.ampcode/mcp.json
+~/Code/resources/md-convert/
+├── .claude-plugin/plugin.json          name, version, description
+├── commands/index.md                    /index <file> — manual index
+├── commands/noconvert.md                /noconvert — toggle conversion hook
+├── hooks/hooks.json                     registers script as PreToolUse on Read
+├── scripts/md-convert.sh                the hook script (executable, +x preserved)
+└── README.md                            what it does + install notes
 ```
 
-Safety check confirmed every file contained only `__ensemble`-marked entries and no user content before deletion. `*.ensemble-backup` files left in place.
+**The original files under `~/.claude/scripts/`, `~/.claude/commands/`, and the `PreToolUse.Read` entry in `~/.claude/settings.json` are still live.** Deliberately not removed until the plugin is proven working via the marketplace. Phase 8 of the marketplace-rename plan handles the cleanup.
 
-Also cleaned a corrupt entry from `~/.config/ensemble/config.json`: `clients` array contained a single `null`, which crashed Zod validation in `loadConfig()` (and was why the desktop app showed zero servers/skills/plugins after picking a client until it was stripped).
+**Hook references `${CLAUDE_PLUGIN_ROOT}/scripts/md-convert.sh`** — confirmed by the claude-code-guide agent. No other runtime dependencies beyond `bash`, system `python3` (the script auto-finds a non-venv one), and `markitdown` (auto-installed via pipx/pip if missing).
 
-## Known issues to clean up
+## In-flight work — marketplace rename (PAUSED at end of Phase 0)
 
-### 1. Picker row state is always `EMPTY`
+The user wants to rename `spaceshipmike/fctry-marketplace` to `spaceshipmike/ml-marketplace` and include **both** `fctry` and `md-convert` as plugins in it. Phase 0 (pre-flight) is complete; **Phase 1 and beyond have not been executed**.
 
-`PickerPage.tsx`'s data loader computes drift/server counts via `clientsMap[c.id]`, but Ensemble's config has `clients` as an **array of client objects**, not a `Record<id, entry>`. The lookup never resolves, so every row shows the EMPTY glyph regardless of actual state. Cosmetic — not blocking.
+Full plan and phase-by-phase steps are in the previous assistant turn in this conversation, but the key elements to carry forward:
 
-Fix: build the lookup via `(config.clients ?? []).reduce((acc, c) => { acc[c.name] = c; return acc; }, {})` or similar, using the real shape.
+### Phase 0 findings (done)
 
-### 2. `packages/desktop/package.json` dep rewrite is untested through `npm install`
+- ✅ Backups of the three critical JSON files written to `~/.claude/backups/pre-ml-marketplace-rename-20260414-110620/` — `settings.json`, `installed_plugins.json`, `known_marketplaces.json`.
+- ✅ Marketplace clone at `~/.claude/plugins/marketplaces/fctry-marketplace` is on `main`, clean except for `md-convert-tmp/` (leftover from a rejected tool call earlier — needs cleanup in Phase 2).
+- ⚠️ **Dev-link is currently active.** Sentinel `~/.claude/fctry-dev-link` contains `/Users/mike/code/fctry`. Phase 3 (dev-unlink) is mandatory before the rename, Phase 9 (re-link) is mandatory after.
+- ⚠️ **`hooks/dev-link-ensure.sh` hardcodes** `PLUGIN_KEY="fctry@fctry-marketplace"` and `MARKETPLACE_KEY="fctry-marketplace"` — adding to Phase 1 edit list.
+- ⚠️ **`fctry` repo has lots of untracked files** (caches, docs/, repomix outputs, etc.) but no modified tracked files. Phase 1 must only touch specific tracked files and use explicit `git add <file>` to avoid polluting the commit.
 
-Changed `"ensemble": "*"` → `"ensemble": "file:../.."` to prevent the dep from resolving to the unrelated public `yoshuawuyts/ensemble` npm package. The live fix was a manual symlink at `node_modules/ensemble → ../.`. Next `npm install` might re-resolve. If it does, re-symlink manually or investigate workspace protocol (`"ensemble": "workspace:*"` may be preferable but would require making the root itself a workspace).
+### Files that reference the old marketplace name
 
-Note: `packages/desktop/electron.vite.config.ts` aliases `ensemble` directly to `../../src/index.ts` for the main-process bundle, so electron-vite builds are unaffected by node_modules resolution. The symlink matters for `tsc --noEmit`, tests, and any tooling that resolves through node_modules.
+In `~/Code/fctry/`:
+- `.github/workflows/sync-marketplace.yml` — **critical**. Hardcodes `REPO="spaceshipmike/fctry-marketplace"` AND assumes `.plugins[0].version` is fctry (fragile if ordering changes). Must be updated to use name-keyed jq filter: `.plugins |= map(if .name == "fctry" then .version = $v else . end)`.
+- `scripts/dev-link.sh` — `PLUGIN_KEY` + `MARKETPLACE_KEY` constants.
+- `scripts/dev-unlink.sh` — same.
+- `hooks/dev-link-ensure.sh` — same.
+- `.claude/skills/fctry-release/SKILL.md` — doc.
+- `CLAUDE.md` — doc.
 
-### 3. Legacy dark UI inside the TE chrome bar
+In the marketplace clone:
+- `.claude-plugin/marketplace.json` — `"name": "fctry-marketplace"` string + the plugins array (needs to add `md-convert` inline with `"source": "./md-convert"`).
+- The `md-convert/` directory needs to be populated with a copy of `~/Code/resources/md-convert/`.
 
-After picking a client, the existing sidebar + page UI renders unchanged, inside a thin TE chrome bar. Visible seam between bone chrome and dark content. Intended — screen-by-screen migration comes next.
+In `~/.claude/` local state:
+- `~/.claude/plugins/known_marketplaces.json` — rename key, update `source.repo`, update `installLocation`.
+- `~/.claude/plugins/installed_plugins.json` — rename `fctry@fctry-marketplace` key to `fctry@ml-marketplace`, update `installPath`, add `md-convert@ml-marketplace` entry.
+- `~/.claude/settings.json` — rename `enabledPlugins.fctry@fctry-marketplace`, add `md-convert@ml-marketplace: true`, rename `extraKnownMarketplaces.fctry-marketplace` if present.
+- Rename directories: `~/.claude/plugins/marketplaces/fctry-marketplace` → `ml-marketplace`, `~/.claude/plugins/cache/fctry-marketplace` → `ml-marketplace`.
 
-Migration order (from `.interface-design/system.md`):
-1. Doctor view — smallest, mostly text, validates the dense-ledger pattern
-2. Servers page — highest-impact, most daily use
-3. Skills / Plugins — inherit from Servers
-4. Sync page → becomes **Fan-out mode** (the rack)
-5. Remove legacy sidebar; navigation becomes tabs inside the channel view
+### Phase plan (10 phases, gates after each)
 
-### 4. Detection coverage gaps
+- **Phase 0** — ✅ done
+- **Phase 1** — edit fctry repo on a `rename-marketplace` branch, commit locally. Don't merge to main yet.
+- **Phase 2** — edit marketplace clone: populate `md-convert/` dir, edit `marketplace.json`, commit locally.
+- **Phase 3** — `~/Code/fctry/scripts/dev-unlink.sh` to cleanly tear down dev-link before directory renames.
+- **Phase 4** — `gh repo rename spaceshipmike/fctry-marketplace ml-marketplace` + `git remote set-url`. **This is the single point of high irreversibility.**
+- **Phase 5** — push marketplace repo changes.
+- **Phase 6** — merge fctry `rename-marketplace` branch to main and push.
+- **Phase 7** — atomic local state migration: rename `~/.claude/plugins/marketplaces/...` and `...cache/...` dirs, edit the three JSON files.
+- **Phase 8** — remove stale `~/.claude/scripts/md-convert.sh`, `~/.claude/commands/index.md`, `~/.claude/commands/noconvert.md`, and the `PreToolUse.Read` hook entry from `settings.json` (now provided by the plugin).
+- **Phase 9** — re-run updated `dev-link.sh` to restore fctry dev mode.
+- **Phase 10** — restart Claude Code, verify `/plugin list` shows both `fctry@ml-marketplace` and `md-convert@ml-marketplace`, test `/index`, `/noconvert`, and fctry commands.
 
-- `jetbrains` still uses `globPattern` (unchanged). Strict mode not applied. May over-match.
-- `copilot-cli` requires `gh-copilot` as the binary name (the gh extension). If the user installs gh-copilot another way, detection won't fire.
-- `copilot-jetbrains` lists 13 JetBrains app bundles explicitly. If a new JetBrains product ships, it won't be detected until added.
-- No entry exists for a hypothetical standalone "Codex app" beyond the existing `codex-cli` entry (which now covers both surfaces).
+### Strategic question the user didn't answer
 
-### 5. Desktop app `tsc --noEmit` has pre-existing errors
-
-`packages/desktop/tsconfig.json` has several stale type errors in legacy pages (`GroupsPage`, `ServersPage`, `SkillsPage`, `useConfig`). None are from this session's changes; none block runtime. Would be worth a one-pass cleanup.
+Is `ml-marketplace` a general "Michael's Claude Code plugins" container (will grow), or a fixed fctry+md-convert pair? Affects the description string in `marketplace.json` but nothing else. Default to "will grow" and write a general description.
 
 ## Invariants to remember
 
-- **Detection must be strict.** Config files alone do not imply installation — Ensemble itself writes them. Use `requireApp` / `requireBin` / `requireVscodeExtension`, not `detectPaths`, for new clients.
-- **Sync must respect detection.** `syncAllClients` gates on `isInstalled()`. If you add another fan-out surface, do the same.
-- **One color per job.** Signal orange = drift. Sync green = healthy. Key blue = focus/selection. Tape red = destructive/conflict. Never dilute. New states need new tokens, not new colors.
-- **Picker is the entry point.** `activeClient === null` → picker. Don't bypass it.
-- **The chip is the only persistent nav element.** No fleet strip, no sidebar-as-primary-nav. Channel mode is single-client focus; fan-out mode is the only place multiple clients share screen.
-- **Scoped CSS tokens.** The TE token block lives under `.te-scope` in `globals.css` so it doesn't fight the legacy dark UI during migration. New TE screens must wrap their root in `className="te-scope"`.
+- **Library writes are additive-safe.** Unwire never deletes content that isn't ensemble-marked. Markdown tools use frontmatter `ensemble: managed`; JSON entries use `__ensemble: true` flag (`__ensemble_plugins` array for plugin keys in settings.json).
+- **Plugin discovery source is `installed_plugins.json`, NOT `enabledPlugins`.** Previous bug: scanning `enabledPlugins` showed disabled plugins as library items. The fix reads the real inventory and tracks enabled state separately via `pluginEnabled`.
+- **`isWired(pluginId, '__global__')` checks `pluginEnabled`, not presence.** Installed-but-disabled plugins should not render as wired to GLOBAL.
+- **Writes are immediate.** No staging, no apply button. Single user, single machine — config on disk is the truth and the app is a view over it.
+- **Independent panel state.** Library panel and projects panel each track their own list/detail mode. They never coordinate mode transitions.
+- **Claude Code–only filter is applied in `App.tsx`**, not the scanner. The scanner still returns all client hits; the filter is `p.seenIn.includes("claude-code")`. Unfiltering is a one-line change when non-CC support comes online.
+- **Rebuild the library dist after editing `src/` files** — desktop's `tsc --noEmit` reads types from `dist/index.d.ts`. Runtime uses the electron-vite alias to source, so it works without rebuild, but type-check won't pass without `npm run build`.
+- **Electron main/preload changes require a full quit+restart**, not just window reload. Renderer changes hot-reload.
 
-## Verification commands
+## Critical files touched this session
+
+Library:
+- `src/discovery/projects.ts` (modified — DS_Store fix)
+- `src/discovery/library.ts` (new — the whole file)
+- `src/discovery/wire.ts` (new — the whole file)
+- `src/index.ts` (exports added)
+
+Desktop:
+- `packages/desktop/src/renderer/App.tsx` (complete rewrite — owns state + dispatcher)
+- `packages/desktop/src/renderer/components/Split.tsx` (new)
+- `packages/desktop/src/renderer/components/Panel.tsx` (new)
+- `packages/desktop/src/renderer/components/WireRow.tsx` (new)
+- `packages/desktop/src/renderer/panels/LibraryPanel.tsx` (new)
+- `packages/desktop/src/renderer/panels/ProjectsPanel.tsx` (new)
+- `packages/desktop/src/main/ipc-handlers.ts` (new handlers for projects/library/wire)
+- `packages/desktop/src/preload/index.ts` (bridge for new IPC)
+
+Plugin bundle:
+- `~/Code/resources/md-convert/` (new directory, full plugin structure)
+
+Design system:
+- `.interface-design/system.md` (complete rewrite — new model, new tokens, migration order, dark mode parity)
+
+Handoff:
+- `HANDOFF.md` (this file — replaces the previous session's handoff)
+
+## Things to clean up eventually (not in current scope)
+
+- Delete legacy pages under `packages/desktop/src/renderer/pages/` and components like `Sidebar.tsx`, `ClientChip.tsx` after the split-screen has been in use and stabilized.
+- The marketplace rename completes (Phases 1–10 execute).
+- Remove the stale `~/.claude/scripts/md-convert.sh`, `~/.claude/commands/index.md`, `~/.claude/commands/noconvert.md`, and settings.json hook entry (Phase 8 of the rename).
+- Matrix lens view — deferred to a later build.
+- Doctor cross-cut view — deferred.
+- Dark mode — tokens drafted in `.interface-design/system.md`, implementation deferred.
+- Output styles "only one active per scope" radio semantic — current wire path writes files but doesn't set the `outputStyle` settings.json key. Works for file placement but Claude Code won't actually apply the style without that key.
+- Plugin wiring needs to also register the plugin's marketplace if it's not known at the target scope. Current code writes `enabledPlugins[key]` but if the marketplace isn't in `knownMarketplaces` at that scope, Claude Code won't load the plugin.
+- No refresh button in the new UI — stale scans require an app restart.
+- Pre-existing type errors in `ipc-handlers.ts` (SkillSyncResult shape, showRegistry args) flagged in an earlier handoff, still unaddressed.
+
+## How to resume the marketplace rename
+
+1. Re-read the backup to confirm state hasn't drifted: `ls ~/.claude/backups/pre-ml-marketplace-rename-*/`
+2. Re-verify Phase 0 findings still hold: dev-link active, working trees clean-ish, hooks still reference old names.
+3. If yes → **Phase 1**: create `rename-marketplace` branch in `~/Code/fctry/`, edit the six files (`.github/workflows/sync-marketplace.yml`, `scripts/dev-link.sh`, `scripts/dev-unlink.sh`, `hooks/dev-link-ensure.sh`, `.claude/skills/fctry-release/SKILL.md`, `CLAUDE.md`), commit with a clear message referencing the migration. **Don't merge to main — that happens in Phase 6.**
+4. Proceed through Phases 2–10 as listed above, pausing for approval at each phase boundary. Phase 4 (GitHub repo rename) is the one point to triple-check before executing.
+
+## Verification commands that should still work
 
 ```bash
-# Library tests (clients + sync)
-npx vitest run tests/clients.test.ts tests/sync.test.ts
+# Library scanner sanity check (expects 15 plugins, 7 servers, 1 skill, 2 commands, 3 hooks)
+cd ~/Code/ensemble && npx tsx -e "
+import { scanLibraryGlobal } from './src/discovery/library.ts';
+const tools = scanLibraryGlobal();
+const byType = {};
+for (const t of tools) byType[t.type] = (byType[t.type] ?? 0) + 1;
+console.log(byType);
+"
 
-# Detection reality check
-npx tsx -e "import { detectClients } from './src/clients.ts'; for (const c of detectClients()) console.log(c.id, '—', c.name);"
+# Project scanner sanity check (should not include .DS_Store)
+npx tsx -e "
+import { scanClientsForProjects } from './src/discovery/projects.ts';
+const p = scanClientsForProjects();
+console.log('count:', p.length, 'any ds_store?', p.some(x => x.name.toLowerCase().includes('ds_store')));
+"
 
-# Load the canonical config through Zod
-npx tsx -e "import { loadConfig } from './src/config.ts'; const c = loadConfig(); console.log('servers:', c.servers.length, 'skills:', c.skills.length, 'plugins:', c.plugins.length, 'clients:', c.clients.length);"
+# Desktop type check
+cd packages/desktop && npx tsc --noEmit 2>&1 | grep -v "SkillsPage\|GroupsPage\|ServersPage\|useConfig\|SkillSyncResult\|showRegistry\|adapters\|ipc-handlers.ts(215\|ipc-handlers.ts(244\|ipc-handlers.ts(268\|ipc-handlers.ts(282\|ipc-handlers.ts(379"
+# Expected: zero output (only pre-existing errors filtered above remain)
 
-# Run the desktop app
+# Run the desktop app (restart needed for main/preload changes)
 cd packages/desktop && npm run dev
 ```
 
-## Files touched this session
+## Files touched this session (git-level)
 
-- `src/clients.ts` — strict detection fields, `isBinOnPath`, `hasVscodeExtension`, refactored `isInstalled`, annotated all 17 client defs
-- `src/sync.ts` — `syncAllClients` gates on `isInstalled`; added `isInstalled` import
-- `packages/desktop/package.json` — `"ensemble": "file:../.."`
-- `packages/desktop/src/renderer/App.tsx` — picker-first entry flow, chip chrome bar
-- `packages/desktop/src/renderer/pages/PickerPage.tsx` — new
-- `packages/desktop/src/renderer/components/ClientChip.tsx` — new
-- `packages/desktop/src/renderer/globals.css` — `.te-scope` token block + hover/focus rules
-- `.interface-design/system.md` — new, captures design direction
+Run `git status -s` in `~/Code/ensemble` and in `~/Code/resources/md-convert` to see untracked files. The major uncommitted work:
+
+- `~/Code/ensemble` — new files in `src/discovery/` and `packages/desktop/src/renderer/panels/`, modified files in `src/`, `packages/desktop/src/main/`, `packages/desktop/src/preload/`, `packages/desktop/src/renderer/`, and an updated `.interface-design/system.md` and `HANDOFF.md`.
+- `~/Code/resources/md-convert/` — new directory, entirely untracked.
+- `~/.claude/plugins/marketplaces/fctry-marketplace/md-convert-tmp/` — empty leftover from a rejected tool call, safe to `rm -rf`.
+
+**Consider a commit before clearing context** to checkpoint the session's work.
