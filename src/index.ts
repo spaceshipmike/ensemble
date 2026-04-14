@@ -113,6 +113,18 @@ export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, Skill
 export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey, findOrphanedInClients, readClientConfig, getManagedServers, resolvedPaths } from "./clients.js";
 export type { ClientDef, ImportedServer } from "./clients.js";
 
+// Project discovery
+export { scanClientsForProjects } from "./discovery/projects.js";
+export type { DiscoveredProject } from "./discovery/projects.js";
+
+// Library discovery (Claude Code extension scan)
+export { scanLibraryGlobal, scanLibraryProject } from "./discovery/library.js";
+export type { DiscoveredTool, ToolType, ToolScope } from "./discovery/library.js";
+
+// Wire operations (copy/remove edges between tool and scope)
+export { wireTool, unwireTool } from "./discovery/wire.js";
+export type { WireRequest, UnwireRequest, WireResult, WireScope } from "./discovery/wire.js";
+
 // Sync
 export { syncClient, syncSkills, syncAllClients, computeContextCost, suggestGroupSplits, doImport } from "./sync.js";
 export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, GroupSplitSuggestion, ImportResult } from "./sync.js";
