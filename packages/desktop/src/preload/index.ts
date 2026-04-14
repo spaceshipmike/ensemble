@@ -49,6 +49,21 @@ const api = {
       ipcRenderer.invoke("groups:removePlugin", config, group, plugin),
   },
 
+  // Projects (discovery)
+  projects: {
+    scan: () => ipcRenderer.invoke("projects:scan"),
+  },
+
+  // Library (Claude Code extension discovery)
+  library: {
+    scanGlobal: () => ipcRenderer.invoke("library:scanGlobal"),
+    scanProject: (path: string) => ipcRenderer.invoke("library:scanProject", path),
+    scanAllProjects: (paths: string[]) =>
+      ipcRenderer.invoke("library:scanAllProjects", paths),
+    wire: (req: unknown) => ipcRenderer.invoke("library:wire", req),
+    unwire: (req: unknown) => ipcRenderer.invoke("library:unwire", req),
+  },
+
   // Clients
   clients: {
     detect: () => ipcRenderer.invoke("clients:detect"),

@@ -53,6 +53,11 @@ import {
   readClientConfig,
   getManagedServers,
   resolvedPaths,
+  scanClientsForProjects,
+  scanLibraryGlobal,
+  scanLibraryProject,
+  wireTool,
+  unwireTool,
 } from "ensemble";
 import type { EnsembleConfig } from "ensemble";
 
@@ -142,6 +147,66 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle("groups:removePlugin", async (_e, _config: unknown, group: string, plugin: string) => {
     return runOp((c) => removePluginFromGroup(c, group, plugin));
+  });
+
+  // --- Projects (discovery via client history scan) ---
+  ipcMain.handle("projects:scan", async () => {
+    try {
+      return { ok: true, data: scanClientsForProjects() };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Project scan failed" };
+    }
+  });
+
+  // --- Library (Claude Code extension scan) ---
+  ipcMain.handle("library:scanGlobal", async () => {
+    try {
+      return { ok: true, data: scanLibraryGlobal() };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Library scan failed" };
+    }
+  });
+
+  ipcMain.handle("library:scanProject", async (_e, projectPath: string) => {
+    try {
+      return { ok: true, data: scanLibraryProject(projectPath) };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Project library scan failed" };
+    }
+  });
+
+  ipcMain.handle("library:scanAllProjects", async (_e, projectPaths: string[]) => {
+    try {
+      const result: Record<string, unknown> = {};
+      for (const path of projectPaths) {
+        try {
+          result[path] = scanLibraryProject(path);
+        } catch {
+          result[path] = [];
+        }
+      }
+      return { ok: true, data: result };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Bulk project scan failed" };
+    }
+  });
+
+  ipcMain.handle("library:wire", async (_e, req: unknown) => {
+    try {
+      const result = wireTool(req as Parameters<typeof wireTool>[0]);
+      return { ok: result.ok, data: result };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Wire failed" };
+    }
+  });
+
+  ipcMain.handle("library:unwire", async (_e, req: unknown) => {
+    try {
+      const result = unwireTool(req as Parameters<typeof unwireTool>[0]);
+      return { ok: result.ok, data: result };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Unwire failed" };
+    }
   });
 
   // --- Clients ---
