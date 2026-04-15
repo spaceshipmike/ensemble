@@ -4,7 +4,7 @@
  * Features: query alias expansion, multi-signal quality scoring, usage-based learning.
  */
 
-import type { EnsembleConfig, Server, Skill } from "./schemas.js";
+import type { EnsembleConfig, Plugin, Server, Skill } from "./schemas.js";
 import { queryCapabilities as querySetlistCapabilities } from "./setlist.js";
 import { getUsageScore, type UsageData } from "./usage.js";
 
@@ -13,7 +13,7 @@ export interface SearchResult {
 	score: number;
 	matchedFields: string[];
 	matchedTools: string[];
-	resultType: "server" | "skill" | "capability";
+	resultType: "server" | "skill" | "plugin" | "capability";
 	/** For capabilities: the project that owns this capability. */
 	project?: string;
 	/** For capabilities: whether the referenced MCP server is enabled. */
@@ -184,6 +184,11 @@ export function searchServers(
 			tokens.push(...Array(2).fill(tokenize(tool.name)).flat()); // 2x tool name
 			if (tool.description) tokens.push(...tokenize(tool.description));
 		}
+		// Field-bucket split (v2.0.3 #local-capability-search):
+		// userNotes is the user's own freeform text → 2x weight (above description).
+		// description is source-owned upstream metadata → 1x baseline.
+		if (s.userNotes) tokens.push(...Array(2).fill(tokenize(s.userNotes)).flat());
+		if (s.description) tokens.push(...tokenize(s.description));
 		return { server: s, tokens, len: tokens.length };
 	});
 
@@ -216,6 +221,12 @@ export function searchServers(
 				}
 			}
 			if (matchedTools.length > 0) matchedFields.push("tools");
+			if (server.userNotes && queryTerms.some((term) => tokenize(server.userNotes ?? "").some((t) => t.includes(term)))) {
+				matchedFields.push("notes");
+			}
+			if (server.description && queryTerms.some((term) => tokenize(server.description ?? "").some((t) => t.includes(term)))) {
+				matchedFields.push("description");
+			}
 
 			// Blend BM25 with quality score (and optionally usage score)
 			const staticQuality = computeServerQualityScore(server, config);
@@ -260,6 +271,9 @@ export function searchSkills(
 		for (const tag of s.tags) {
 			tokens.push(...Array(2).fill(tokenize(tag)).flat()); // 2x tag boost
 		}
+		// Field-bucket split (v2.0.3 #local-capability-search):
+		// userNotes is user-owned → 2x; description is source-owned → 1x.
+		if (s.userNotes) tokens.push(...Array(2).fill(tokenize(s.userNotes)).flat());
 		if (s.description) tokens.push(...tokenize(s.description));
 		return { skill: s, tokens, len: tokens.length };
 	});
@@ -287,6 +301,9 @@ export function searchSkills(
 			if (skill.tags.some((tag) => queryTerms.some((term) => tokenize(tag).some((t) => t.includes(term))))) {
 				matchedFields.push("tags");
 			}
+			if (skill.userNotes && queryTerms.some((term) => tokenize(skill.userNotes ?? "").some((t) => t.includes(term)))) {
+				matchedFields.push("notes");
+			}
 			if (skill.description && queryTerms.some((term) => tokenize(skill.description).some((t) => t.includes(term)))) {
 				matchedFields.push("description");
 			}
@@ -310,6 +327,63 @@ export function searchSkills(
 				matchedFields,
 				matchedTools: [],
 				resultType: "skill",
+			});
+		}
+	}
+
+	results.sort((a, b) => b.score - a.score);
+	return results.slice(0, limit);
+}
+
+export function searchPlugins(
+	config: EnsembleConfig,
+	query: string,
+	limit = 20,
+): SearchResult[] {
+	const expandedQuery = expandAliases(query);
+	const queryTerms = tokenize(expandedQuery);
+	if (queryTerms.length === 0 || config.plugins.length === 0) return [];
+
+	const docs = config.plugins.map((p: Plugin) => {
+		const tokens: string[] = [];
+		tokens.push(...Array(3).fill(tokenize(p.name)).flat());
+		if (p.marketplace) tokens.push(...tokenize(p.marketplace));
+		if (p.userNotes) tokens.push(...Array(2).fill(tokenize(p.userNotes)).flat());
+		if (p.description) tokens.push(...tokenize(p.description));
+		return { plugin: p, tokens, len: tokens.length };
+	});
+
+	const nDocs = docs.length;
+	const avgDocLen = docs.reduce((sum, d) => sum + d.len, 0) / Math.max(nDocs, 1);
+	const df: Record<string, number> = {};
+	for (const term of queryTerms) {
+		df[term] = docs.filter((d) => d.tokens.some((t) => t.includes(term))).length;
+	}
+
+	const results: SearchResult[] = [];
+	for (const { plugin, tokens, len: docLen } of docs) {
+		let bm25Total = 0;
+		for (const term of queryTerms) {
+			const tf = termFrequency(tokens, term);
+			if (tf > 0) bm25Total += bm25Score(tf, docLen, avgDocLen, df[term]!, nDocs);
+		}
+		if (bm25Total > 0) {
+			const matchedFields: string[] = [];
+			if (queryTerms.some((term) => tokenize(plugin.name).some((t) => t.includes(term)))) {
+				matchedFields.push("name");
+			}
+			if (plugin.userNotes && queryTerms.some((term) => tokenize(plugin.userNotes ?? "").some((t) => t.includes(term)))) {
+				matchedFields.push("notes");
+			}
+			if (plugin.description && queryTerms.some((term) => tokenize(plugin.description ?? "").some((t) => t.includes(term)))) {
+				matchedFields.push("description");
+			}
+			results.push({
+				name: plugin.marketplace ? `${plugin.name}@${plugin.marketplace}` : plugin.name,
+				score: bm25Total,
+				matchedFields,
+				matchedTools: [],
+				resultType: "plugin",
 			});
 		}
 	}
@@ -386,7 +460,11 @@ export function searchAll(
 	limit = 20,
 	options?: { usageData?: UsageData; includeCapabilities?: boolean },
 ): SearchResult[] {
-	const local = [...searchServers(config, query, limit, options), ...searchSkills(config, query, limit, options)];
+	const local = [
+		...searchServers(config, query, limit, options),
+		...searchSkills(config, query, limit, options),
+		...searchPlugins(config, query, limit),
+	];
 	local.sort((a, b) => b.score - a.score);
 
 	if (options?.includeCapabilities !== false) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createConfig } from "../src/config.js";
-import { addServer, installSkill } from "../src/operations.js";
+import { addServer, installSkill, setUserNotes } from "../src/operations.js";
 import {
 	searchAll,
 	searchServers,
@@ -178,6 +178,39 @@ describe("searchSkills", () => {
 		const results = searchSkills(testConfig(), "db");
 		expect(results.length).toBeGreaterThan(0);
 		expect(results[0]?.name).toBe("sql-patterns");
+	});
+});
+
+describe("user notes search (v2.0.3 #local-capability-search)", () => {
+	it("matches userNotes content and ranks above description-only match", () => {
+		let config = createConfig();
+		({ config } = addServer(config, { name: "alpha", command: "npx" }));
+		({ config } = addServer(config, { name: "bravo", command: "npx" }));
+		// Put a unique term in alpha's userNotes.
+		({ config } = setUserNotes(config, { ref: "server:alpha", text: "internal raffia tooling" }));
+		const results = searchServers(config, "raffia");
+		expect(results.length).toBe(1);
+		expect(results[0]?.name).toBe("alpha");
+		expect(results[0]?.matchedFields).toContain("notes");
+	});
+
+	it("notes weight (2x) outranks description (1x) for the same term", () => {
+		let config = createConfig();
+		({ config } = addServer(config, { name: "alpha", command: "npx" }));
+		({ config } = addServer(config, { name: "bravo", command: "npx" }));
+		// alpha gets the term in description (1x); bravo in userNotes (2x).
+		const aIdx = config.servers.findIndex((s) => s.name === "alpha");
+		const bIdx = config.servers.findIndex((s) => s.name === "bravo");
+		config = {
+			...config,
+			servers: config.servers.map((s, i) => {
+				if (i === aIdx) return { ...s, description: "raffia handler" };
+				if (i === bIdx) return { ...s, userNotes: "raffia handler" };
+				return s;
+			}),
+		};
+		const results = searchServers(config, "raffia");
+		expect(results[0]?.name).toBe("bravo");
 	});
 });
 
