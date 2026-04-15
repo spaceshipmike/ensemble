@@ -55,6 +55,8 @@ import {
 	listProfiles as listProfilesOp,
 	showProfile,
 	deleteProfile,
+	setUserNotes,
+	getUserNotes,
 } from "../operations.js";
 import { searchAll } from "../search.js";
 import { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams } from "../registry.js";
@@ -93,7 +95,8 @@ function handle<R extends OpResult>(fn: () => OpReturn<R>): void {
 program
 	.command("list")
 	.description("List all registered servers")
-	.action(() => {
+	.option("--verbose", "Show description and notes on separate lines")
+	.action((opts) => {
 		const config = loadConfig();
 		if (config.servers.length === 0) {
 			console.log("No servers registered.");
@@ -103,6 +106,14 @@ program
 			const status = s.enabled ? "●" : "○";
 			const tier = s.origin.trust_tier !== "local" ? ` [${s.origin.trust_tier}]` : "";
 			console.log(`${status} ${s.name}${tier}  ${s.command} ${s.args.join(" ")}`);
+			// userNotes (user-owned) takes precedence; description (source-owned) is fallback.
+			if (opts.verbose) {
+				if (s.userNotes) console.log(`    Notes: ${s.userNotes}`);
+				if (s.description) console.log(`    Description: ${s.description}`);
+			} else {
+				const blurb = s.userNotes || s.description;
+				if (blurb) console.log(`    ${blurb}`);
+			}
 		}
 	});
 
@@ -157,12 +168,20 @@ program.command("disable <name>").description("Disable a server").action((name) 
 program
 	.command("show <name>")
 	.description("Show server details")
-	.action((name) => {
+	.option("--verbose", "Show notes and description on labeled lines (default JSON dump)")
+	.action((name, opts) => {
 		const config = loadConfig();
 		const server = config.servers.find((s) => s.name === name);
 		if (!server) {
 			console.error(`Server '${name}' not found.`);
 			process.exit(1);
+		}
+		if (opts.verbose) {
+			console.log(`Server: ${server.name}`);
+			console.log(`Command: ${server.command} ${server.args.join(" ")}`.trim());
+			if (server.userNotes) console.log(`Notes: ${server.userNotes}`);
+			if (server.description) console.log(`Description: ${server.description}`);
+			return;
 		}
 		console.log(JSON.stringify(server, null, 2));
 	});
@@ -455,13 +474,19 @@ marketplaces.command("remove <name>").action((name) => {
 
 const skills = program.command("skills").description("Manage agent skills");
 
-skills.command("list").action(() => {
+skills.command("list").option("--verbose", "Show description and notes on separate lines").action((opts) => {
 	const config = loadConfig();
 	if (config.skills.length === 0) { console.log("No skills."); return; }
 	for (const s of config.skills) {
 		const status = s.enabled ? "●" : "○";
 		const tags = s.tags.length > 0 ? ` [${s.tags.join(", ")}]` : "";
-		console.log(`${status} ${s.name}${tags}  ${s.description}`);
+		// userNotes (user-owned) takes precedence over description (source-owned).
+		const primary = s.userNotes || s.description || "";
+		console.log(`${status} ${s.name}${tags}  ${primary}`);
+		if (opts.verbose) {
+			if (s.userNotes) console.log(`    Notes: ${s.userNotes}`);
+			if (s.description) console.log(`    Description: ${s.description}`);
+		}
 	}
 });
 
@@ -511,6 +536,61 @@ skills.command("sync [client]").option("--dry-run").action((clientId, opts) => {
 		}
 	}
 });
+
+// --- Notes (v2.0.3 #notes-and-descriptions) ---
+
+program
+	.command("note <ref> [text]")
+	.description("Get, set, or clear user notes on a server, skill, or plugin")
+	.option("--edit", "Open $VISUAL/$EDITOR to edit the note")
+	.action((ref: string, text: string | undefined, opts: { edit?: boolean }) => {
+		const config = loadConfig();
+
+		// --edit: open $VISUAL → $EDITOR → vi on a temp file seeded with current text.
+		if (opts.edit) {
+			const current = getUserNotes(config, ref);
+			if (!current) {
+				console.error(`Error: '${ref}' not found.`);
+				process.exit(1);
+			}
+			const editor = process.env.VISUAL || process.env.EDITOR || "vi";
+			const tmpDir = require("node:os").tmpdir() as string;
+			const { mkdtempSync, writeFileSync, readFileSync, rmSync } = require("node:fs") as typeof import("node:fs");
+			const { join } = require("node:path") as typeof import("node:path");
+			const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+			const dir = mkdtempSync(join(tmpDir, "ensemble-note-"));
+			const file = join(dir, `${current.type}-${current.name}.md`);
+			writeFileSync(file, current.userNotes ?? "");
+			const proc = spawnSync(editor, [file], { stdio: "inherit" });
+			if (proc.status !== 0) {
+				rmSync(dir, { recursive: true, force: true });
+				console.error(`Error: editor exited with status ${proc.status ?? "?"}.`);
+				process.exit(1);
+			}
+			const next = readFileSync(file, "utf-8").replace(/\n+$/, "");
+			rmSync(dir, { recursive: true, force: true });
+			handle(() => setUserNotes(config, { ref, text: next }));
+			return;
+		}
+
+		// No text and no --edit → print current note (or empty).
+		if (text === undefined) {
+			const current = getUserNotes(config, ref);
+			if (!current) {
+				console.error(`Error: '${ref}' not found.`);
+				process.exit(1);
+			}
+			if (current.userNotes) {
+				console.log(current.userNotes);
+			} else {
+				console.log(`(no notes on ${current.type} '${current.name}')`);
+			}
+			return;
+		}
+
+		// Text provided (possibly empty string → clears).
+		handle(() => setUserNotes(config, { ref, text }));
+	});
 
 // --- Profiles ---
 
