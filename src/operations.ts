@@ -895,6 +895,175 @@ export function disableSkill(config: EnsembleConfig, name: string): OpReturn<Ski
 	};
 }
 
+// --- Notes operations (v2.0.3 #notes-and-descriptions) ---
+
+export type NotedItemType = "server" | "skill" | "plugin";
+
+export interface ParsedNoteRef {
+	type: NotedItemType | null;
+	name: string;
+	marketplace?: string;
+}
+
+/** Parse a ref of the form "type:name", "plugin:name@marketplace", or bare "name". */
+export function parseNoteRef(ref: string): ParsedNoteRef {
+	const trimmed = (ref ?? "").trim();
+	if (!trimmed) return { type: null, name: "" };
+	const colonIdx = trimmed.indexOf(":");
+	if (colonIdx > 0) {
+		const head = trimmed.slice(0, colonIdx).toLowerCase();
+		const tail = trimmed.slice(colonIdx + 1);
+		if (head === "server" || head === "skill" || head === "plugin") {
+			if (head === "plugin") {
+				const atIdx = tail.lastIndexOf("@");
+				if (atIdx > 0) {
+					return { type: "plugin", name: tail.slice(0, atIdx), marketplace: tail.slice(atIdx + 1) };
+				}
+			}
+			return { type: head, name: tail };
+		}
+	}
+	// Bare name — type unknown, caller resolves via search.
+	if (trimmed.includes("@") && !trimmed.startsWith("@")) {
+		const atIdx = trimmed.lastIndexOf("@");
+		return { type: "plugin", name: trimmed.slice(0, atIdx), marketplace: trimmed.slice(atIdx + 1) };
+	}
+	return { type: null, name: trimmed };
+}
+
+export interface NoteResult extends OpResult {
+	type: NotedItemType | null;
+	name: string;
+	userNotes: string | null;
+}
+
+/**
+ * Locate a notable item. With `parsed.type` set, looks only in that bucket.
+ * With `parsed.type === null`, searches servers → skills → plugins and returns
+ * the first hit. Returns null if nothing matches or multiple ambiguous matches
+ * are found across types.
+ */
+export function findNotedItem(
+	config: EnsembleConfig,
+	parsed: ParsedNoteRef,
+): { type: NotedItemType; item: Server | Skill | Plugin } | null {
+	const { type, name, marketplace } = parsed;
+	if (type === "server") {
+		const s = getServer(config, name);
+		return s ? { type: "server", item: s } : null;
+	}
+	if (type === "skill") {
+		const s = getSkill(config, name);
+		return s ? { type: "skill", item: s } : null;
+	}
+	if (type === "plugin") {
+		const p = config.plugins.find((p) =>
+			p.name === name && (marketplace ? p.marketplace === marketplace : true),
+		);
+		return p ? { type: "plugin", item: p } : null;
+	}
+	// Bare name — search all three buckets.
+	const s = getServer(config, name);
+	if (s) return { type: "server", item: s };
+	const sk = getSkill(config, name);
+	if (sk) return { type: "skill", item: sk };
+	const pl = config.plugins.find((p) => p.name === name);
+	if (pl) return { type: "plugin", item: pl };
+	return null;
+}
+
+/**
+ * Set, update, or clear a userNotes value on a server, skill, or plugin.
+ *
+ * Empty string deletes the userNotes key entirely (the v2.0.3 spec choice —
+ * we don't store empty strings, the absence of the key is the canonical
+ * "no notes" state).
+ *
+ * Pure: returns a fresh config with one item replaced.
+ */
+export function setUserNotes(
+	config: EnsembleConfig,
+	params: { ref: string; text: string },
+): OpReturn<NoteResult> {
+	const parsed = parseNoteRef(params.ref);
+	if (!parsed.name) {
+		return {
+			config,
+			result: { ...fail("Ref must be a non-empty name."), type: null, name: "", userNotes: null },
+		};
+	}
+	const found = findNotedItem(config, parsed);
+	if (!found) {
+		const label = parsed.type ? `${parsed.type} '${parsed.name}'` : `item '${parsed.name}'`;
+		return {
+			config,
+			result: { ...fail(`${label} not found.`), type: parsed.type, name: parsed.name, userNotes: null },
+		};
+	}
+
+	const text = params.text ?? "";
+	const empty = text === "";
+
+	let nextConfig: EnsembleConfig = config;
+	if (found.type === "server") {
+		const cur = found.item as Server;
+		const { userNotes: _omit, ...rest } = cur;
+		void _omit;
+		const updated: Server = empty ? (rest as Server) : { ...cur, userNotes: text };
+		nextConfig = {
+			...config,
+			servers: config.servers.map((s) => (s.name === cur.name ? updated : s)),
+		};
+	} else if (found.type === "skill") {
+		const cur = found.item as Skill;
+		const { userNotes: _omit, ...rest } = cur;
+		void _omit;
+		const updated: Skill = empty ? (rest as Skill) : { ...cur, userNotes: text };
+		nextConfig = {
+			...config,
+			skills: config.skills.map((s) => (s.name === cur.name ? updated : s)),
+		};
+	} else {
+		const cur = found.item as Plugin;
+		const { userNotes: _omit, ...rest } = cur;
+		void _omit;
+		const updated: Plugin = empty ? (rest as Plugin) : { ...cur, userNotes: text };
+		nextConfig = {
+			...config,
+			plugins: config.plugins.map((p) =>
+				p.name === cur.name && p.marketplace === cur.marketplace ? updated : p,
+			),
+		};
+	}
+
+	const verb = empty ? "Cleared notes on" : "Updated notes on";
+	return {
+		config: nextConfig,
+		result: {
+			...ok([`${verb} ${found.type} '${parsed.name}'.`]),
+			type: found.type,
+			name: parsed.name,
+			userNotes: empty ? null : text,
+		},
+	};
+}
+
+/** Return the current userNotes for a ref, or null if the item has none. */
+export function getUserNotes(
+	config: EnsembleConfig,
+	ref: string,
+): { type: NotedItemType; name: string; userNotes: string | null } | null {
+	const parsed = parseNoteRef(ref);
+	const found = findNotedItem(config, parsed);
+	if (!found) return null;
+	const item = found.item as { userNotes?: string };
+	return {
+		type: found.type,
+		name: (found.item as { name: string }).name,
+		userNotes: typeof item.userNotes === "string" && item.userNotes !== "" ? item.userNotes : null,
+	};
+}
+
 // --- Rules operations ---
 
 export function addRule(config: EnsembleConfig, path: string, group: string): OpReturn {

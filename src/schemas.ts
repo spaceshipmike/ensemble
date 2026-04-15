@@ -37,6 +37,14 @@ export const ServerSchema = z.object({
 	origin: ServerOriginSchema.default({}),
 	// Tool metadata
 	tools: z.array(ToolInfoSchema).default([]),
+	// Notes & description (v2.0.3 #server-model-fields)
+	// `description` is source-owned (auto-populated from upstream registry metadata,
+	// refreshed on re-import). `userNotes` is user-owned freeform text that
+	// re-import never touches. `lastDescriptionHash` lets doctor surface
+	// "descriptions refreshed" findings on re-import.
+	description: z.string().optional(),
+	userNotes: z.string().optional(),
+	lastDescriptionHash: z.string().optional(),
 });
 
 export const PluginSchema = z.object({
@@ -44,6 +52,10 @@ export const PluginSchema = z.object({
 	marketplace: z.string().default(""),
 	enabled: z.boolean().default(true),
 	managed: z.boolean().default(true),
+	// Notes & description (v2.0.3 #plugin-model-fields)
+	description: z.string().optional(),
+	userNotes: z.string().optional(),
+	lastDescriptionHash: z.string().optional(),
 });
 
 export const MarketplaceSourceSchema = z.object({
@@ -61,13 +73,23 @@ export const MarketplaceSchema = z.object({
 export const SkillSchema = z.object({
 	name: z.string(),
 	enabled: z.boolean().default(true),
+	// Source-owned (v2.0.3 #skill-model-fields): description comes from SKILL.md
+	// frontmatter and is overwritten on re-import.
 	description: z.string().default(""),
 	path: z.string().default(""),
 	origin: z.string().default(""),
 	dependencies: z.array(z.string()).default([]),
 	tags: z.array(z.string()).default([]),
 	mode: z.enum(["pin", "track"]).default("pin"),
+	// Notes & description hash (v2.0.3)
+	userNotes: z.string().optional(),
+	lastDescriptionHash: z.string().optional(),
 });
+
+// TODO(v2.0.3): When agents.ts / commands.ts / hooks.ts modules land, their
+// schemas should include both `description` (source-owned, refreshed on
+// re-import) and `userNotes` (user-owned, preserved across re-imports) from
+// day one — same shape as ServerSchema / PluginSchema / SkillSchema above.
 
 export const GroupSchema = z.object({
 	name: z.string(),

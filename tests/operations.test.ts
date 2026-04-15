@@ -32,6 +32,9 @@ import {
 	unassignClient,
 	uninstallPlugin,
 	uninstallSkill,
+	setUserNotes,
+	getUserNotes,
+	parseNoteRef,
 } from "../src/operations.js";
 import { RESERVED_MARKETPLACE_NAMES } from "../src/schemas.js";
 
@@ -400,5 +403,62 @@ describe("operations purity", () => {
 		expect(typeof result.error).toBe("string");
 		expect(Array.isArray(result.messages)).toBe(true);
 		expect(result.server).toBeDefined();
+	});
+
+	describe("setUserNotes / getUserNotes (v2.0.3 #notes-and-descriptions)", () => {
+		it("parseNoteRef parses type:name and bare names", () => {
+			expect(parseNoteRef("server:ctx")).toEqual({ type: "server", name: "ctx" });
+			expect(parseNoteRef("skill:writer")).toEqual({ type: "skill", name: "writer" });
+			expect(parseNoteRef("plugin:fctry@official")).toEqual({
+				type: "plugin",
+				name: "fctry",
+				marketplace: "official",
+			});
+			expect(parseNoteRef("ctx")).toEqual({ type: null, name: "ctx" });
+			expect(parseNoteRef("  ")).toEqual({ type: null, name: "" });
+		});
+
+		it("sets notes on a server and reads them back", () => {
+			const config = configWithServer("ctx");
+			const { config: next, result } = setUserNotes(config, {
+				ref: "server:ctx",
+				text: "trusted source",
+			});
+			expect(result.ok).toBe(true);
+			expect(result.userNotes).toBe("trusted source");
+			const got = getUserNotes(next, "server:ctx");
+			expect(got?.userNotes).toBe("trusted source");
+		});
+
+		it("empty string deletes the userNotes key entirely", () => {
+			const config = configWithServer("ctx");
+			const { config: withNote } = setUserNotes(config, { ref: "server:ctx", text: "hello" });
+			const { config: cleared, result } = setUserNotes(withNote, { ref: "server:ctx", text: "" });
+			expect(result.ok).toBe(true);
+			expect(result.userNotes).toBe(null);
+			const server = cleared.servers.find((s) => s.name === "ctx");
+			expect(server).toBeDefined();
+			expect("userNotes" in (server as object)).toBe(false);
+		});
+
+		it("bare name resolves across servers, skills, plugins", () => {
+			const config = configWithServer("alpha");
+			const { config: withSkill } = installSkill(config, { name: "beta" });
+			const { result: aRes } = setUserNotes(withSkill, { ref: "alpha", text: "x" });
+			expect(aRes.type).toBe("server");
+			const { result: bRes } = setUserNotes(withSkill, { ref: "beta", text: "y" });
+			expect(bRes.type).toBe("skill");
+		});
+
+		it("returns failure when the item does not exist", () => {
+			const { result } = setUserNotes(createConfig(), { ref: "server:nope", text: "x" });
+			expect(result.ok).toBe(false);
+			expect(result.error).toMatch(/not found/);
+		});
+
+		it("getUserNotes returns null when item has no notes", () => {
+			const config = configWithServer("ctx");
+			expect(getUserNotes(config, "server:ctx")?.userNotes).toBe(null);
+		});
 	});
 });
