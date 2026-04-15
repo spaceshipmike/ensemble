@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConfig } from "../src/config.js";
-import { addServer, createGroup, addServerToGroup, installSkill, addSkillToGroup } from "../src/operations.js";
+import { addServer, createGroup, addServerToGroup, installSkill, addSkillToGroup, setUserNotes } from "../src/operations.js";
 import { writeSkillMd } from "../src/skills.js";
 import { exportGroupAsPlugin } from "../src/export.js";
 
@@ -76,6 +76,34 @@ describe("exportGroupAsPlugin", () => {
 		const result = exportGroupAsPlugin(createConfig(), "nope");
 		expect(result.ok).toBe(false);
 		expect(result.error).toContain("not found");
+	});
+
+	it("includes userNotes by default and strips them with stripNotes", () => {
+		let config = createConfig();
+		({ config } = addServer(config, { name: "ctx", command: "npx" }));
+		({ config } = installSkill(config, { name: "writer", description: "Frontmatter writer" }));
+		({ config } = createGroup(config, "dev"));
+		({ config } = addServerToGroup(config, "dev", "ctx"));
+		({ config } = addSkillToGroup(config, "dev", "writer"));
+		({ config } = setUserNotes(config, { ref: "server:ctx", text: "trusted local" }));
+		({ config } = setUserNotes(config, { ref: "skill:writer", text: "preferred for ADRs" }));
+		writeSkillMd(config.skills[0]!, "# Writer");
+
+		const includedDir = join(tmpDir, "dev-plugin-with-notes");
+		exportGroupAsPlugin(config, "dev", includedDir);
+		const withNotes = JSON.parse(readFileSync(join(includedDir, "plugin.json"), "utf-8"));
+		expect(withNotes.servers.ctx.userNotes).toBe("trusted local");
+		expect(withNotes.skillNotes.writer).toBe("preferred for ADRs");
+
+		const strippedDir = join(tmpDir, "dev-plugin-stripped");
+		exportGroupAsPlugin(config, "dev", strippedDir, { stripNotes: true });
+		const stripped = JSON.parse(readFileSync(join(strippedDir, "plugin.json"), "utf-8"));
+		expect(stripped.servers.ctx.userNotes).toBeUndefined();
+		expect(stripped.skillNotes).toBeUndefined();
+		// Byte-clean check: the literal key must not appear in the file.
+		const raw = readFileSync(join(strippedDir, "plugin.json"), "utf-8");
+		expect(raw).not.toContain("userNotes");
+		expect(raw).not.toContain("skillNotes");
 	});
 
 	it("generates valid plugin.json manifest", () => {

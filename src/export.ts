@@ -8,9 +8,14 @@
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getGroup, getServer, CONFIG_DIR } from "./config.js";
+import { getGroup, getServer, getSkill, CONFIG_DIR } from "./config.js";
 import { skillDir } from "./skills.js";
 import type { EnsembleConfig } from "./schemas.js";
+
+export interface ExportOptions {
+	/** When true, omit userNotes from the generated plugin.json. Default false. */
+	stripNotes?: boolean;
+}
 
 export interface ExportResult {
 	ok: boolean;
@@ -34,16 +39,20 @@ export function exportGroupAsPlugin(
 	config: EnsembleConfig,
 	groupName: string,
 	outputDir?: string,
+	options: ExportOptions = {},
 ): ExportResult {
 	const group = getGroup(config, groupName);
 	if (!group) {
 		return { ok: false, error: `Group '${groupName}' not found.`, outputDir: "", serverCount: 0, skillCount: 0, messages: [] };
 	}
 
+	const stripNotes = options.stripNotes === true;
 	const outDir = outputDir ?? join(CONFIG_DIR, "plugins", groupName);
 	mkdirSync(outDir, { recursive: true });
 
-	// Build plugin manifest
+	// Build plugin manifest. v2.0.3 (#profile-as-plugin): user notes travel
+	// with the export by default. --strip-notes omits the userNotes key
+	// byte-cleanly so a published plugin doesn't leak private context.
 	const servers: Record<string, Record<string, unknown>> = {};
 	for (const serverName of group.servers) {
 		const server = getServer(config, serverName);
@@ -53,15 +62,29 @@ export function exportGroupAsPlugin(
 		if (server.args.length > 0) entry["args"] = server.args;
 		if (Object.keys(server.env).length > 0) entry["env"] = server.env;
 		if (server.transport && server.transport !== "stdio") entry["transport"] = server.transport;
+		if (server.description) entry["description"] = server.description;
+		if (!stripNotes && server.userNotes) entry["userNotes"] = server.userNotes;
 		servers[serverName] = entry;
 	}
 
-	const manifest = {
+	// Skill notes — exported as a side map keyed by skill name. Skill
+	// description lives in the SKILL.md frontmatter inside the copied
+	// directory, so we only need to carry the user-owned notes here.
+	const skillNotes: Record<string, string> = {};
+	if (!stripNotes) {
+		for (const skillName of group.skills) {
+			const skill = getSkill(config, skillName);
+			if (skill?.userNotes) skillNotes[skillName] = skill.userNotes;
+		}
+	}
+
+	const manifest: Record<string, unknown> = {
 		name: groupName,
 		description: group.description || `Plugin profile generated from group '${groupName}'`,
 		servers,
 		skills: group.skills,
 	};
+	if (Object.keys(skillNotes).length > 0) manifest["skillNotes"] = skillNotes;
 
 	writeFileSync(join(outDir, "plugin.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
 

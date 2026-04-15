@@ -236,12 +236,16 @@ groups.command("remove-skill <group> <skill>").action((g, s) => {
 	handle(() => removeSkillFromGroup(loadConfig(), g, s));
 });
 
-groups.command("export <name>").description("Export group as CC plugin").option("--output <dir>", "Output directory").action((name, opts) => {
-	const { exportGroupAsPlugin } = require("../export.js") as typeof import("../export.js");
-	const result = exportGroupAsPlugin(loadConfig(), name, opts.output);
-	if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
-	for (const msg of result.messages) console.log(msg);
-});
+groups.command("export <name>")
+	.description("Export group as CC plugin")
+	.option("--output <dir>", "Output directory")
+	.option("--strip-notes", "Omit userNotes from the exported plugin.json")
+	.action((name, opts) => {
+		const { exportGroupAsPlugin } = require("../export.js") as typeof import("../export.js");
+		const result = exportGroupAsPlugin(loadConfig(), name, opts.output, { stripNotes: opts.stripNotes === true });
+		if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
+		for (const msg of result.messages) console.log(msg);
+	});
 
 // --- Clients ---
 
