@@ -683,6 +683,76 @@ function checkSkillsSummary(config: EnsembleConfig): DoctorCheck[] {
 	}];
 }
 
+// --- Descriptions refreshed (v2.0.3 #notes-and-descriptions, #doctor) ---
+
+import { descriptionHash } from "./operations.js";
+
+/**
+ * Find items where the stored lastDescriptionHash is missing or no longer
+ * matches the current description text. This surfaces the "descriptions
+ * refreshed" signal: either an upstream re-import bumped the text without
+ * recording the new hash, or no hash has ever been recorded yet.
+ *
+ * Pure: does no I/O. Powers both the doctor finding and the
+ * `--show descriptions-refreshed` CLI section.
+ */
+export function findStaleDescriptionHashes(config: EnsembleConfig): Array<{
+	type: "server" | "skill" | "plugin";
+	name: string;
+	description: string;
+	storedHash: string;
+	currentHash: string;
+}> {
+	const out: Array<{
+		type: "server" | "skill" | "plugin";
+		name: string;
+		description: string;
+		storedHash: string;
+		currentHash: string;
+	}> = [];
+	const consider = (
+		type: "server" | "skill" | "plugin",
+		name: string,
+		description: string | undefined,
+		storedHash: string | undefined,
+	): void => {
+		const desc = description ?? "";
+		if (!desc) return;
+		const cur = descriptionHash(desc);
+		const stored = storedHash ?? "";
+		if (stored !== cur) out.push({ type, name, description: desc, storedHash: stored, currentHash: cur });
+	};
+	for (const s of config.servers) consider("server", s.name, s.description, s.lastDescriptionHash);
+	for (const s of config.skills) consider("skill", s.name, s.description, s.lastDescriptionHash);
+	for (const p of config.plugins) consider("plugin", p.name, p.description, p.lastDescriptionHash);
+	return out;
+}
+
+function checkDescriptionsRefreshed(config: EnsembleConfig): DoctorCheck[] {
+	const stale = findStaleDescriptionHashes(config);
+	if (stale.length === 0) {
+		return [
+			{
+				id: "descriptions-refreshed",
+				category: "freshness",
+				maxPoints: 5,
+				earnedPoints: 5,
+				severity: "info",
+				message: "All description hashes are up to date.",
+			},
+		];
+	}
+	return stale.map((entry) => ({
+		id: "descriptions-refreshed",
+		category: "freshness",
+		maxPoints: 5,
+		earnedPoints: 4,
+		severity: "info" as const,
+		message: `${entry.type} '${entry.name}' description hash is stale (run a refresh to acknowledge).`,
+		fix: { command: `ensemble doctor --show descriptions-refreshed`, description: "Show full refreshed-descriptions list" },
+	}));
+}
+
 // --- Main doctor function ---
 
 export function runDoctor(config: EnsembleConfig): DoctorResult {
@@ -706,6 +776,7 @@ export function runDoctor(config: EnsembleConfig): DoctorResult {
 		...checkSecretInEnv(config),
 		...checkCapabilityGaps(config),
 		...checkSkillsSummary(config),
+		...checkDescriptionsRefreshed(config),
 	];
 
 	// Calculate scores using additive model (matching Python)

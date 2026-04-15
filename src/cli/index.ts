@@ -781,20 +781,45 @@ registry.command("cache-clear").action(() => {
 
 // --- Doctor ---
 
-program.command("doctor").option("--json", "Output structured JSON").action((opts) => {
-	const result = runDoctor(loadConfig());
-	if (opts.json) {
-		console.log(JSON.stringify(result, null, 2));
-		return;
-	}
-	for (const c of result.checks) {
-		const icon = c.severity === "error" ? "✗" : c.severity === "warning" ? "⚠" : "ℹ";
-		console.log(`${icon} ${c.message}`);
-		if (c.fix) console.log(`  Fix: ${c.fix.command}`);
-	}
-	console.log(`\nHealth: ${result.earnedPoints}/${result.totalPoints} (${result.scorePercent}%)`);
-	console.log(`${result.errors} errors, ${result.warnings} warnings, ${result.infos} info`);
-});
+program.command("doctor")
+	.option("--json", "Output structured JSON")
+	.option("--show <section>", "Filter to a named section (e.g., descriptions-refreshed)")
+	.action((opts) => {
+		const config = loadConfig();
+		// Section view: descriptions-refreshed prints the full before/after table.
+		if (opts.show === "descriptions-refreshed") {
+			const { findStaleDescriptionHashes } = require("../doctor.js") as typeof import("../doctor.js");
+			const stale = findStaleDescriptionHashes(config);
+			if (stale.length === 0) {
+				console.log("All description hashes are up to date.");
+				return;
+			}
+			console.log(`Descriptions refreshed (${stale.length}):`);
+			for (const entry of stale) {
+				console.log(`  ${entry.type} '${entry.name}'`);
+				console.log(`    stored hash:  ${entry.storedHash || "(none)"}`);
+				console.log(`    current hash: ${entry.currentHash}`);
+				console.log(`    description:  ${entry.description.slice(0, 80)}${entry.description.length > 80 ? "…" : ""}`);
+			}
+			return;
+		}
+
+		const result = runDoctor(config);
+		const checks = opts.show ? result.checks.filter((c) => c.id === opts.show) : result.checks;
+		if (opts.json) {
+			console.log(JSON.stringify({ ...result, checks }, null, 2));
+			return;
+		}
+		for (const c of checks) {
+			const icon = c.severity === "error" ? "✗" : c.severity === "warning" ? "⚠" : "ℹ";
+			console.log(`${icon} ${c.message}`);
+			if (c.fix) console.log(`  Fix: ${c.fix.command}`);
+		}
+		if (!opts.show) {
+			console.log(`\nHealth: ${result.earnedPoints}/${result.totalPoints} (${result.scorePercent}%)`);
+			console.log(`${result.errors} errors, ${result.warnings} warnings, ${result.infos} info`);
+		}
+	});
 
 // --- Discover ---
 
