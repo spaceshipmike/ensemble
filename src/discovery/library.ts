@@ -43,6 +43,9 @@ export interface DiscoveredTool {
 	/** Plugin-only: whether the plugin is enabled at the scope where it was discovered.
 	 * For plugins, presence in the library does NOT imply wired — this flag does. */
 	pluginEnabled?: boolean;
+	/** Plugin-only: marketplace identifier (e.g. "fctry"). Empty when unknown.
+	 * Disambiguates the marketplace carrier from the user-facing description field. */
+	pluginMarketplace?: string;
 }
 
 export interface LibrarySnapshot {
@@ -155,11 +158,12 @@ function scanProjectEnabledPlugins(
 			id: `plugin:${key}`,
 			type: "plugin",
 			name: pluginName,
-			description: marketplace,
+			description: "",
 			scope,
 			origin: "discovered",
 			detail: marketplace || "no marketplace",
 			pluginEnabled: true,
+			pluginMarketplace: marketplace,
 		});
 	}
 	return out;
@@ -302,11 +306,12 @@ function scanInstalledPlugins(installedPath: string, userSettingsPath: string): 
 			id: `plugin:${key}`,
 			type: "plugin",
 			name: pluginName,
-			description: marketplace,
+			description: "",
 			scope: { kind: "global" },
 			origin: "discovered",
 			detail: detailBits.join(" · "),
 			pluginEnabled: globallyEnabled,
+			pluginMarketplace: marketplace,
 		});
 	}
 	return out;
