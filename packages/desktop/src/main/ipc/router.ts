@@ -56,6 +56,8 @@ import {
   enableServer,
   enableSkill,
   getManagedServers,
+  getUserNotes,
+  setUserNotes,
   installPlugin,
   installSkill,
   listBackends,
@@ -772,6 +774,22 @@ const doctorRouter = router({
   run: procedure.query(() => runDoctor(fresh())),
 });
 
+// --- Notes ------------------------------------------------------------------
+// Stub IPC surface for the v2.0.3 userNotes feature. The renderer rewrite will
+// consume these procedures once the detail-pane inline-edit UI lands.
+
+const noteRefSchema = z.object({ ref: z.string().min(1) });
+
+const notesRouter = router({
+  get: procedure
+    .input(noteRefSchema)
+    .query(({ input }) => getUserNotes(fresh(), input.ref)),
+
+  set: procedure
+    .input(z.object({ ref: z.string().min(1), text: z.string() }))
+    .mutation(({ input }) => runOp((c) => setUserNotes(c, { ref: input.ref, text: input.text }))),
+});
+
 // --- Root -------------------------------------------------------------------
 
 export const appRouter = router({
@@ -790,6 +808,7 @@ export const appRouter = router({
   collisions: collisionsRouter,
   search: searchRouter,
   doctor: doctorRouter,
+  notes: notesRouter,
 });
 
 export type AppRouter = typeof appRouter;
