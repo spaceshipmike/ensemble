@@ -895,6 +895,141 @@ export function disableSkill(config: EnsembleConfig, name: string): OpReturn<Ski
 	};
 }
 
+// --- Description refresh (v2.0.3 #notes-and-descriptions) ---
+
+/**
+ * SHA-256 of a description string, used by doctor to detect when a re-import
+ * actually changed the source-owned text. Empty / undefined → empty hash.
+ */
+export function descriptionHash(text: string | undefined | null): string {
+	if (!text) return "";
+	// Cheap deterministic hash — Node's createHash is sync and dependency-free.
+	const { createHash } = require("node:crypto") as typeof import("node:crypto");
+	return createHash("sha256").update(text).digest("hex");
+}
+
+export interface DescriptionRefreshInput {
+	type: NotedItemType;
+	name: string;
+	/** Optional plugin marketplace disambiguator. */
+	marketplace?: string;
+	/** New source-owned description text. Empty string is allowed (clears it). */
+	newDescription: string;
+}
+
+export interface DescriptionRefreshDelta {
+	type: NotedItemType;
+	name: string;
+	oldDescription: string;
+	newDescription: string;
+	oldHash: string;
+	newHash: string;
+	changed: boolean;
+}
+
+export interface DescriptionRefreshResult extends OpResult {
+	refreshed: DescriptionRefreshDelta[];
+}
+
+/**
+ * Refresh source-owned descriptions on servers / skills / plugins from upstream
+ * metadata. CRITICAL contract (v2.0.3 #notes-and-descriptions): userNotes is
+ * never read or written by this function — re-import only touches description
+ * and lastDescriptionHash. The returned manifest of deltas powers doctor's
+ * "descriptions refreshed" finding.
+ *
+ * Pure: returns a fresh config and the delta list.
+ */
+export function refreshDescriptions(
+	config: EnsembleConfig,
+	inputs: DescriptionRefreshInput[],
+): OpReturn<DescriptionRefreshResult> {
+	const deltas: DescriptionRefreshDelta[] = [];
+	let next: EnsembleConfig = config;
+
+	for (const input of inputs) {
+		const newHash = descriptionHash(input.newDescription);
+
+		if (input.type === "server") {
+			const idx = next.servers.findIndex((s) => s.name === input.name);
+			if (idx < 0) continue;
+			const cur = next.servers[idx]!;
+			const oldDescription = cur.description ?? "";
+			const oldHash = cur.lastDescriptionHash ?? descriptionHash(oldDescription);
+			const updated: Server = {
+				...cur,
+				description: input.newDescription,
+				lastDescriptionHash: newHash,
+				// userNotes intentionally untouched — re-import preservation contract.
+			};
+			next = { ...next, servers: next.servers.map((s, i) => (i === idx ? updated : s)) };
+			deltas.push({
+				type: "server",
+				name: input.name,
+				oldDescription,
+				newDescription: input.newDescription,
+				oldHash,
+				newHash,
+				changed: oldHash !== newHash,
+			});
+		} else if (input.type === "skill") {
+			const idx = next.skills.findIndex((s) => s.name === input.name);
+			if (idx < 0) continue;
+			const cur = next.skills[idx]!;
+			const oldDescription = cur.description ?? "";
+			const oldHash = cur.lastDescriptionHash ?? descriptionHash(oldDescription);
+			const updated: Skill = {
+				...cur,
+				description: input.newDescription,
+				lastDescriptionHash: newHash,
+			};
+			next = { ...next, skills: next.skills.map((s, i) => (i === idx ? updated : s)) };
+			deltas.push({
+				type: "skill",
+				name: input.name,
+				oldDescription,
+				newDescription: input.newDescription,
+				oldHash,
+				newHash,
+				changed: oldHash !== newHash,
+			});
+		} else {
+			const idx = next.plugins.findIndex((p) =>
+				p.name === input.name && (input.marketplace ? p.marketplace === input.marketplace : true),
+			);
+			if (idx < 0) continue;
+			const cur = next.plugins[idx]!;
+			const oldDescription = cur.description ?? "";
+			const oldHash = cur.lastDescriptionHash ?? descriptionHash(oldDescription);
+			const updated: Plugin = {
+				...cur,
+				description: input.newDescription,
+				lastDescriptionHash: newHash,
+			};
+			next = { ...next, plugins: next.plugins.map((p, i) => (i === idx ? updated : p)) };
+			deltas.push({
+				type: "plugin",
+				name: input.name,
+				oldDescription,
+				newDescription: input.newDescription,
+				oldHash,
+				newHash,
+				changed: oldHash !== newHash,
+			});
+		}
+	}
+
+	const changedCount = deltas.filter((d) => d.changed).length;
+	const msg =
+		changedCount === 0
+			? "No descriptions refreshed."
+			: `Refreshed ${changedCount} description${changedCount === 1 ? "" : "s"}.`;
+	return {
+		config: next,
+		result: { ...ok([msg]), refreshed: deltas },
+	};
+}
+
 // --- Notes operations (v2.0.3 #notes-and-descriptions) ---
 
 export type NotedItemType = "server" | "skill" | "plugin";
