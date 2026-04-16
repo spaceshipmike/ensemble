@@ -8,9 +8,11 @@ Ensemble — Library, CLI, TUI, and desktop app for centrally managing Claude Co
 
 - TypeScript, Node 20+, npm (workspaces monorepo)
 - CLI: Commander.js (`ensemble` / `ens`)
-- Desktop: Electron + React + Tailwind CSS (packages/desktop/)
+- Desktop: Electron + React + Tailwind CSS v4 (packages/desktop/), scaffold-compliant (sandboxed, tRPC bridge, minimal preload)
+- Desktop IPC: `electron-trpc` 0.7 + `@trpc/server`/`@trpc/client`/`@trpc/react-query` **pinned to ^10.45** and `@tanstack/react-query` pinned to ^4.36. Do not bump any of these independently — electron-trpc 0.7 is not compatible with tRPC v11, and tRPC v10 requires react-query v4. Bumping any one of the four breaks the stack until electron-trpc ships a v11 release.
+- Desktop wire format: superjson transformer on both router and client (rich types across IPC)
 - Validation: Zod (schemas exported for consumers)
-- Build: tsup (library), electron-vite (desktop)
+- Build: tsup (library), electron-vite (desktop, main + preload emit CJS so they can `require()` native deps under sandbox)
 - Test: Vitest (library/CLI), Playwright (desktop E2E)
 - Lint: Biome
 - Config: `~/.config/ensemble/config.json`
@@ -44,7 +46,7 @@ Library-first with four layers: schemas/config → operations → sync/I/O → p
 
 ### Target modules (v2.0.1, not yet built)
 
-These modules are described in `spec.md` as v2.0.1 targets. They do not exist on disk yet; future agents should not assume their presence.
+These modules are described in `.fctry/spec.md` as v2.0.1 targets. They do not exist on disk yet; future agents should not assume their presence.
 
 | Module | Role (spec target) |
 |--------|------|
@@ -69,12 +71,12 @@ import { syncClient } from 'ensemble/sync';
 2. **Run tests before committing.** All tests must pass: `npm test`
 3. **Additive sync only.** Never delete servers, plugins, or skills the user didn't create via Ensemble. The `__ensemble` marker identifies managed entries.
 4. **Secrets stay in 1Password.** Env values may contain `op://` references — store them as-is, never resolve.
-5. **Always update docs with functionality changes.** Update `COMMANDS.md` and `spec.md` changelog.
+5. **Always update docs with functionality changes.** Update `COMMANDS.md` and `.fctry/changelog.md`.
 6. **Type check.** `npx tsc --noEmit` must pass.
 
 ### Target rules (v2.0.1, not yet enforced)
 
-These invariants are described in `spec.md` as v2.0.1 targets. No code enforces them today; future agents should not treat them as active guardrails.
+These invariants are described in `.fctry/spec.md` as v2.0.1 targets. No code enforces them today; future agents should not treat them as active guardrails.
 
 - **Additive sync extends to agents, commands, and hooks.** v2.0.1 widens rule 3 to cover subagents, slash commands, and hooks alongside servers/plugins/skills.
 - **Non-destructive settings.json merge.** Every write to `settings.json` (hooks or managed settings) is a key-level merge that preserves every key Ensemble does not own. Unmanaged keys must be byte-identical before and after sync.
