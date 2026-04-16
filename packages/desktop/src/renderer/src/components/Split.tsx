@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface SplitProps {
   left: React.ReactNode;
@@ -23,7 +24,7 @@ export function Split({
   const [ratio, setRatio] = useState<number>(() => {
     try {
       const stored = localStorage.getItem(storageKey);
-      const parsed = stored ? parseFloat(stored) : NaN;
+      const parsed = stored ? Number.parseFloat(stored) : Number.NaN;
       return Number.isFinite(parsed) && parsed > 0.1 && parsed < 0.9 ? parsed : 0.5;
     } catch {
       return 0.5;
@@ -101,8 +102,13 @@ export function Split({
       <div
         onMouseDown={onMouseDown}
         onDoubleClick={resetRatio}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") resetRatio();
+        }}
+        // biome-ignore lint/a11y/useSemanticElements: vertical splitter, not a thematic break
         role="separator"
         aria-orientation="vertical"
+        tabIndex={0}
         style={{
           width: 1,
           background: "var(--hairline-strong)",

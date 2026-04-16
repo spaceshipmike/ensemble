@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 
 interface WireRowProps {
   label: string;
@@ -40,7 +40,6 @@ export function WireRow({
         width: "100%",
         textAlign: "left",
         padding: "12px 32px",
-        borderBottom: "1px solid var(--hairline)",
         background: "transparent",
         color: "var(--graphite)",
         fontFamily: "inherit",

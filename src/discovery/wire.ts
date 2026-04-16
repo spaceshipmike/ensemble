@@ -10,6 +10,7 @@
  */
 
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	readFileSync,
@@ -21,10 +22,18 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatFrontmatter, parseFrontmatter } from "../skills.js";
 import type { ToolType } from "./library.js";
+import { canonicalPath, readManifest, type FileToolType } from "./library-store.js";
 
 export type WireScope =
 	| { kind: "global" }
-	| { kind: "project"; path: string };
+	| { kind: "project"; path: string }
+	/**
+	 * v2.0.2: the canonical library store at `~/.config/ensemble/library/`.
+	 * Used only as a wire source — tools never "live" in the library scope
+	 * for runtime purposes (Claude Code never reads it), so targeting library
+	 * from wire is a no-op.
+	 */
+	| { kind: "library" };
 
 export interface WireRequest {
 	/** Tool type — determines the storage strategy. */
@@ -35,6 +44,22 @@ export interface WireRequest {
 	source: WireScope;
 	/** Where to install it. */
 	target: WireScope;
+	/**
+	 * v2.0.2 move-vs-copy semantics. Defaults to "move":
+	 *
+	 * - **move** (default): after the target write succeeds, attempt to unwire
+	 *   from the source scope. If the source is ensemble-managed the unwire
+	 *   removes it; if the source is user-authored (no managed marker), the
+	 *   unwire is skipped and the result's `sourceUnwired` flag is false —
+	 *   the wire still counts as successful, the source is just untouched.
+	 * - **copy**: additive — the source remains wired at both scopes. This is
+	 *   the old v2.0.1 behavior and is explicit under v2.0.2, reserved for
+	 *   fan-out gestures (e.g. shift-click in the matrix).
+	 *
+	 * Moving to the same scope the source already lives at is a no-op — the
+	 * wire short-circuits to `action: "skipped"` with reason `same-scope`.
+	 */
+	mode?: "move" | "copy";
 }
 
 export interface UnwireRequest {
@@ -47,6 +72,13 @@ export interface WireResult {
 	ok: boolean;
 	action: "wired" | "unwired" | "skipped" | "failed";
 	reason?: string;
+	/**
+	 * Move semantics only — whether the source-scope copy was successfully
+	 * removed after the target write. False when the source was not
+	 * ensemble-managed and the unwire was skipped for safety; also false
+	 * for `mode: "copy"` (no attempt made).
+	 */
+	sourceUnwired?: boolean;
 }
 
 // ------------------------------------------------------------------------
@@ -55,6 +87,11 @@ export interface WireResult {
 
 function scopeBase(scope: WireScope): string {
 	if (scope.kind === "global") return join(homedir(), ".claude");
+	if (scope.kind === "library") {
+		// Library scope has no Claude Code install dir — path helpers must not
+		// ask for one. Call sites that reach here are a bug.
+		throw new Error("scopeBase() not valid for library scope");
+	}
 	return join(scope.path, ".claude");
 }
 
@@ -76,6 +113,9 @@ function mdPathForTool(scope: WireScope, type: ToolType, name: string): string |
 
 function mcpFilePath(scope: WireScope): string {
 	if (scope.kind === "global") return join(homedir(), ".claude.json");
+	if (scope.kind === "library") {
+		throw new Error("mcpFilePath() not valid for library scope");
+	}
 	return join(scope.path, ".mcp.json");
 }
 
@@ -92,19 +132,69 @@ export function wireTool(req: WireRequest): WireResult {
 		if (req.type === "hook") {
 			return { ok: false, action: "skipped", reason: "hooks are read-only in v1" };
 		}
-		if (["skill", "agent", "command", "style"].includes(req.type)) {
-			return wireMdTool(req);
+
+		// Library cannot be a target — it's a source-only scope.
+		if (req.target.kind === "library") {
+			return { ok: false, action: "skipped", reason: "library is not a valid wire target" };
 		}
-		if (req.type === "server") {
-			return wireMcpServer(req);
+
+		// Move to the same scope the tool already lives at is a no-op.
+		if (scopesEqual(req.source, req.target)) {
+			return { ok: true, action: "skipped", reason: "same-scope" };
 		}
-		if (req.type === "plugin") {
-			return wirePlugin(req);
+
+		const wireResult = wireByType(req);
+		if (!wireResult.ok) return wireResult;
+
+		// Default mode is "move". Attempt to unwire the source after the
+		// target write succeeds. Failure to unwire is non-fatal — we return
+		// the successful wire result with sourceUnwired=false and a reason.
+		const mode = req.mode ?? "move";
+		if (mode === "copy") {
+			return { ...wireResult, sourceUnwired: false };
 		}
-		return { ok: false, action: "skipped", reason: `unknown type: ${req.type}` };
+
+		// When the source is the library itself, "move" semantics don't
+		// apply — the library is canonical and isn't consumed by wiring.
+		if (req.source.kind === "library") {
+			return { ...wireResult, sourceUnwired: false };
+		}
+
+		const unwire = unwireTool({
+			type: req.type,
+			name: req.name,
+			scope: req.source,
+		});
+		return {
+			...wireResult,
+			sourceUnwired: unwire.ok && unwire.action === "unwired",
+			reason: unwire.ok && unwire.action === "unwired"
+				? wireResult.reason
+				: `moved to target; source left in place (${unwire.reason ?? "not ensemble-managed"})`,
+		};
 	} catch (e) {
 		return { ok: false, action: "failed", reason: e instanceof Error ? e.message : String(e) };
 	}
+}
+
+/** Dispatch wire to the type-specific implementation without any move logic. */
+function wireByType(req: WireRequest): WireResult {
+	if (["skill", "agent", "command", "style"].includes(req.type)) {
+		return wireMdTool(req);
+	}
+	if (req.type === "server") {
+		return wireMcpServer(req);
+	}
+	if (req.type === "plugin") {
+		return wirePlugin(req);
+	}
+	return { ok: false, action: "skipped", reason: `unknown type: ${req.type}` };
+}
+
+function scopesEqual(a: WireScope, b: WireScope): boolean {
+	if (a.kind === "global" && b.kind === "global") return true;
+	if (a.kind === "project" && b.kind === "project") return a.path === b.path;
+	return false;
 }
 
 export function unwireTool(req: UnwireRequest): WireResult {
@@ -132,13 +222,36 @@ export function unwireTool(req: UnwireRequest): WireResult {
 // ------------------------------------------------------------------------
 
 function wireMdTool(req: WireRequest): WireResult {
-	const sourcePath = mdPathForTool(req.source, req.type, req.name);
 	const targetPath = mdPathForTool(req.target, req.type, req.name);
-	if (!sourcePath || !targetPath) {
-		return { ok: false, action: "failed", reason: "bad tool type" };
-	}
+	if (!targetPath) return { ok: false, action: "failed", reason: "bad tool type" };
+
+	const sourcePath =
+		req.source.kind === "library"
+			? canonicalPath(req.type as FileToolType, req.name)
+			: mdPathForTool(req.source, req.type, req.name);
+	if (!sourcePath) return { ok: false, action: "failed", reason: "bad tool type" };
 	if (!existsSync(sourcePath)) {
 		return { ok: false, action: "failed", reason: `source not found: ${sourcePath}` };
+	}
+
+	// Skills are directories. When the source is the library, copy the whole
+	// canonical skill directory so supporting assets travel too; otherwise
+	// fall back to the single-file flow (marker is injected into the
+	// frontmatter on write).
+	if (req.type === "skill" && req.source.kind === "library") {
+		const targetDir = dirname(targetPath);
+		mkdirSync(dirname(targetDir), { recursive: true });
+		cpSync(dirname(sourcePath), targetDir, { recursive: true });
+		// Inject the managed marker into the target SKILL.md.
+		try {
+			const text = readFileSync(targetPath, "utf-8");
+			const { meta, body } = parseFrontmatter(text);
+			meta["ensemble"] = "managed";
+			writeFileSync(targetPath, formatFrontmatter(meta, body), "utf-8");
+		} catch {
+			// Non-fatal — file exists, marker just didn't get injected.
+		}
+		return { ok: true, action: "wired" };
 	}
 
 	// Read source, inject ensemble: managed marker, write target.
@@ -184,7 +297,15 @@ function unwireMdTool(req: UnwireRequest): WireResult {
 // ------------------------------------------------------------------------
 
 function wireMcpServer(req: WireRequest): WireResult {
-	const sourceDef = readMcpServerDef(req.source, req.name);
+	let sourceDef: Record<string, unknown> | null;
+	if (req.source.kind === "library") {
+		// Pull the server def out of the canonical manifest.
+		const manifest = readManifest();
+		const entry = manifest?.entries[`${req.name}@discovered`];
+		sourceDef = (entry?.serverDef as Record<string, unknown> | undefined) ?? null;
+	} else {
+		sourceDef = readMcpServerDef(req.source, req.name);
+	}
 	if (!sourceDef) {
 		return { ok: false, action: "failed", reason: `source server not found: ${req.name}` };
 	}

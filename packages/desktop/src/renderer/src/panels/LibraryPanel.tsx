@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import type { AppWireApi, DiscoveredProject, DiscoveredTool } from "../App";
 import {
   FilterTabs,
   ListRow,
@@ -8,7 +9,6 @@ import {
   PanelShell,
 } from "../components/Panel";
 import { WireRow } from "../components/WireRow";
-import type { AppWireApi, DiscoveredProject, DiscoveredTool } from "../App";
 
 type Filter = "all" | "server" | "skill" | "agent" | "command" | "style" | "plugin" | "hook";
 
@@ -105,7 +105,9 @@ function LibraryList({
         {error && <PanelEmpty>SCAN FAILED · {error}</PanelEmpty>}
         {!error && tools === null && <PanelEmpty>SCANNING…</PanelEmpty>}
         {!error && tools !== null && filtered.length === 0 && (
-          <PanelEmpty>{tools.length === 0 ? "NO TOOLS FOUND" : `NO ${filter.toUpperCase()}S`}</PanelEmpty>
+          <PanelEmpty>
+            {tools.length === 0 ? "NO TOOLS FOUND" : `NO ${filter.toUpperCase()}S`}
+          </PanelEmpty>
         )}
         {!error &&
           filtered.map((tool, i) => (
@@ -141,6 +143,17 @@ function LibraryDetail({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const wireable = tool.type !== "hook";
+
+  // Mirror the matrix + project list defaults: global + active-registry
+  // projects only. Keeps the wire-to list focused on real targets instead
+  // of the full unfiltered scan.
+  const filteredProjects = useMemo(
+    () =>
+      (projects ?? []).filter(
+        (p) => p.path === "__global__" || p.registryStatus === "active",
+      ),
+    [projects],
+  );
 
   const handleToggle = async (projectPath: string) => {
     if (!wireable || busy) return;
@@ -198,26 +211,25 @@ function LibraryDetail({
           }}
         >
           {wireable ? "WIRE TO" : "READ-ONLY · HOOKS DEFERRED"} ·{" "}
-          {projects ? `${projects.length} SCOPES` : "LOADING"}
+          {projects ? `${filteredProjects.length} SCOPES` : "LOADING"}
         </div>
 
         {!projects && <PanelEmpty>LOADING PROJECTS…</PanelEmpty>}
-        {projects &&
-          projects.map((project) => {
-            const wired = wireApi.isWired(tool.id, project.path);
-            return (
-              <WireRow
-                key={project.path}
-                label={project.name}
-                sublabel={project.path === "__global__" ? "~/.claude" : shortPath(project.path)}
-                wired={wired}
-                readOnly={!wireable}
-                disabled={busy !== null && busy !== project.path}
-                onToggle={() => handleToggle(project.path)}
-                meta={busy === project.path ? "…" : project.path === "__global__" ? "USER SCOPE" : ""}
-              />
-            );
-          })}
+        {filteredProjects.map((project) => {
+          const wired = wireApi.isWired(tool.id, project.path);
+          return (
+            <WireRow
+              key={project.path}
+              label={project.name}
+              sublabel={project.path === "__global__" ? "~/.claude" : shortPath(project.path)}
+              wired={wired}
+              readOnly={!wireable}
+              disabled={busy !== null && busy !== project.path}
+              onToggle={() => handleToggle(project.path)}
+              meta={busy === project.path ? "…" : project.path === "__global__" ? "USER SCOPE" : ""}
+            />
+          );
+        })}
       </PanelScroll>
     </PanelShell>
   );

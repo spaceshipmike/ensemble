@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 
 const MONO = '"Commit Mono", "SF Mono", ui-monospace, Menlo, monospace';
 
@@ -180,7 +180,6 @@ export function ListRow({
         borderTop: "none",
         borderLeft: selected ? "2px solid var(--graphite)" : "2px solid transparent",
         borderRight: "none",
-        borderBottom: "1px solid var(--hairline)",
         cursor: "pointer",
         paddingLeft: 30,
       }}
@@ -263,7 +262,5 @@ export function PanelEmpty({ children }: { children: React.ReactNode }) {
 }
 
 export function PanelScroll({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>{children}</div>
-  );
+  return <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>{children}</div>;
 }

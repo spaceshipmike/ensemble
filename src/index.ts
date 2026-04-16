@@ -106,8 +106,14 @@ export {
 	listProfiles,
 	showProfile,
 	deleteProfile,
+	setUserNotes,
+	getUserNotes,
+	parseNoteRef,
+	findNotedItem,
+	refreshDescriptions,
+	descriptionHash,
 } from "./operations.js";
-export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo, ProfileResult } from "./operations.js";
+export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo, ProfileResult, NoteResult, NotedItemType, ParsedNoteRef, DescriptionRefreshInput, DescriptionRefreshDelta, DescriptionRefreshResult } from "./operations.js";
 
 // Clients
 export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey, findOrphanedInClients, readClientConfig, getManagedServers, resolvedPaths } from "./clients.js";
@@ -121,6 +127,41 @@ export type { DiscoveredProject } from "./discovery/projects.js";
 export { scanLibraryGlobal, scanLibraryProject } from "./discovery/library.js";
 export type { DiscoveredTool, ToolType, ToolScope } from "./discovery/library.js";
 
+// Canonical library store (v2.0.2)
+export {
+	libraryRoot,
+	manifestPath,
+	canonicalPath,
+	libraryStoreExists,
+	readManifest,
+	writeManifest,
+	hashFile,
+	bootstrapLibrary,
+	listEntries,
+	getEntry,
+	reconcile,
+	proposedId,
+	adoptOrphan,
+	promoteDrift,
+	ignoreEntry,
+	unignoreEntry,
+	removeEntry,
+	relinkEntrySource,
+} from "./discovery/library-store.js";
+export type {
+	LibraryManifest,
+	LibraryEntry,
+	FileToolType,
+	BootstrapSummary,
+	ReconcileResult,
+	ReconcileMatch,
+	ReconcileDrift,
+	ReconcileOrphan,
+	ReconcileIgnored,
+	DriftReason,
+	AdoptResult,
+} from "./discovery/library-store.js";
+
 // Wire operations (copy/remove edges between tool and scope)
 export { wireTool, unwireTool } from "./discovery/wire.js";
 export type { WireRequest, UnwireRequest, WireResult, WireScope } from "./discovery/wire.js";
@@ -130,7 +171,7 @@ export { syncClient, syncSkills, syncAllClients, computeContextCost, suggestGrou
 export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, GroupSplitSuggestion, ImportResult } from "./sync.js";
 
 // Search
-export { searchAll, searchServers, searchSkills, searchCapabilities, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
+export { searchAll, searchServers, searchSkills, searchPlugins, searchCapabilities, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
 export type { SearchResult } from "./search.js";
 
 // Registry
@@ -159,10 +200,6 @@ export type { SetlistCapability } from "./setlist.js";
 // Export
 export { exportGroupAsPlugin } from "./export.js";
 export type { ExportResult } from "./export.js";
-
-// Migration
-export { migrate, needsMigration } from "./migration.js";
-export type { MigrationResult, MigrationAction } from "./migration.js";
 
 // Secrets
 export { scanSecrets, scanSkillContent } from "./secrets.js";

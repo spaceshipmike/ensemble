@@ -1,5 +1,5 @@
-import { watch, type FSWatcher } from "node:fs";
-import { BrowserWindow } from "electron";
+import { EventEmitter } from "node:events";
+import { type FSWatcher, watch } from "node:fs";
 import { CONFIG_PATH } from "ensemble";
 
 let watcher: FSWatcher | null = null;
@@ -7,29 +7,31 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const DEBOUNCE_MS = 250;
 
-/** Start watching the Ensemble config file for external changes */
+/**
+ * Fires "change" whenever the Ensemble config file is written to from outside
+ * the desktop app (e.g. by the CLI). Debounced to collapse atomic
+ * write-then-rename sequences into a single event.
+ */
+export const configEvents = new EventEmitter();
+
+/** Start watching the Ensemble config file for external changes. */
 export function startConfigWatcher(): void {
   if (watcher) return;
 
   try {
     watcher = watch(CONFIG_PATH, (eventType) => {
       if (eventType !== "change") return;
-
-      // Debounce rapid writes (e.g., atomic write creates temp then renames)
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        const windows = BrowserWindow.getAllWindows();
-        for (const win of windows) {
-          win.webContents.send("config:external-change");
-        }
+        configEvents.emit("change");
       }, DEBOUNCE_MS);
     });
   } catch {
-    // Config file may not exist yet — that's fine
+    // Config file may not exist yet — that's fine.
   }
 }
 
-/** Stop watching */
+/** Stop watching. */
 export function stopConfigWatcher(): void {
   if (debounceTimer) {
     clearTimeout(debounceTimer);

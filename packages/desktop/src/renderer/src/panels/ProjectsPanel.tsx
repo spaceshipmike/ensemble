@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import type { AppWireApi, DiscoveredProject, DiscoveredTool, WireMap } from "../App";
 import {
   FilterTabs,
   ListRow,
@@ -8,9 +9,8 @@ import {
   PanelShell,
 } from "../components/Panel";
 import { WireRow } from "../components/WireRow";
-import type { AppWireApi, DiscoveredProject, DiscoveredTool, WireMap } from "../App";
 
-type Filter = "all" | "recent" | "git" | "missing";
+type Filter = "active" | "archived" | "unregistered" | "all";
 type View = { mode: "list" } | { mode: "detail"; projectPath: string };
 
 interface ProjectsPanelProps {
@@ -23,7 +23,7 @@ interface ProjectsPanelProps {
 
 export function ProjectsPanel({ projects, error, tools, wireMap, wireApi }: ProjectsPanelProps) {
   const [view, setView] = useState<View>({ mode: "list" });
-  const [filter, setFilter] = useState<Filter>("git");
+  const [filter, setFilter] = useState<Filter>("active");
 
   if (view.mode === "detail") {
     const project = projects?.find((p) => p.path === view.projectPath);
@@ -75,33 +75,28 @@ function ProjectList({
   onSelect: (path: string) => void;
 }) {
   const counts = useMemo(() => {
-    if (!projects) return { all: 0, recent: 0, git: 0, missing: 0 };
-    const now = Date.now();
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-    // GLOBAL always included in every filter
+    if (!projects) return { all: 0, active: 0, archived: 0, unregistered: 0 };
     const real = projects.filter((p) => p.path !== "__global__");
     return {
       all: projects.length,
-      recent: 1 + real.filter((p) => now - p.lastSeenAt < sevenDays).length,
-      git: 1 + real.filter((p) => p.isGitRepo).length,
-      missing: real.filter((p) => !p.exists).length,
+      active: 1 + real.filter((p) => p.registryStatus === "active").length,
+      archived: real.filter((p) => p.registryStatus === "archived").length,
+      unregistered: real.filter((p) => p.registryStatus === "unregistered").length,
     };
   }, [projects]);
 
   const filtered = useMemo(() => {
     if (!projects) return [];
-    const now = Date.now();
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
     const isGlobal = (p: DiscoveredProject) => p.path === "__global__";
     switch (filter) {
       case "all":
         return projects;
-      case "recent":
-        return projects.filter((p) => isGlobal(p) || now - p.lastSeenAt < sevenDays);
-      case "git":
-        return projects.filter((p) => isGlobal(p) || p.isGitRepo);
-      case "missing":
-        return projects.filter((p) => !isGlobal(p) && !p.exists);
+      case "active":
+        return projects.filter((p) => isGlobal(p) || p.registryStatus === "active");
+      case "archived":
+        return projects.filter((p) => !isGlobal(p) && p.registryStatus === "archived");
+      case "unregistered":
+        return projects.filter((p) => !isGlobal(p) && p.registryStatus === "unregistered");
     }
   }, [projects, filter]);
 
@@ -110,10 +105,10 @@ function ProjectList({
       <PanelHeader label="PROJECTS" sublabel="CLAUDE CODE" />
       <FilterTabs<Filter>
         tabs={[
-          { id: "git", label: "GIT REPOS", count: counts.git },
-          { id: "recent", label: "RECENT", count: counts.recent },
+          { id: "active", label: "ACTIVE", count: counts.active },
+          { id: "archived", label: "ARCHIVED", count: counts.archived },
+          { id: "unregistered", label: "UNREG", count: counts.unregistered },
           { id: "all", label: "ALL", count: counts.all },
-          { id: "missing", label: "MISSING", count: counts.missing },
         ]}
         active={filter}
         onChange={onFilterChange}
@@ -174,9 +169,7 @@ function ProjectDetail({
   // and show each with its wired state against this project scope.
   const [filter, setFilter] = useState<ProjectDetailFilter>("wired");
 
-  const toolsHere = isGlobal
-    ? allTools ?? []
-    : wireMap[project.path] ?? [];
+  const toolsHere = isGlobal ? (allTools ?? []) : (wireMap[project.path] ?? []);
 
   const filteredTools = useMemo(() => {
     if (filter === "wired") return toolsHere;
@@ -217,19 +210,14 @@ function ProjectDetail({
             {project.name}
           </div>
           <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
-            <MetaItem
-              label="PATH"
-              value={isGlobal ? "~/.claude" : shortPath(project.path)}
-            />
+            <MetaItem label="PATH" value={isGlobal ? "~/.claude" : shortPath(project.path)} />
             {!isGlobal && (
               <MetaItem
                 label="LAST SEEN"
                 value={project.lastSeenAt ? formatRelative(project.lastSeenAt) : "—"}
               />
             )}
-            {!isGlobal && (
-              <MetaItem label="GIT" value={project.isGitRepo ? "YES" : "NO"} />
-            )}
+            {!isGlobal && <MetaItem label="GIT" value={project.isGitRepo ? "YES" : "NO"} />}
             <MetaItem label="TOOLS" value={String(toolsHere.length)} />
           </div>
         </div>
@@ -268,13 +256,7 @@ function ProjectDetail({
               readOnly={readOnly}
               disabled={busy !== null && busy !== tool.id}
               onToggle={() => handleToggle(tool)}
-              meta={
-                busy === tool.id
-                  ? "…"
-                  : tool.origin === "managed"
-                    ? "MANAGED"
-                    : "DISCOVERED"
-              }
+              meta={busy === tool.id ? "…" : tool.origin === "managed" ? "MANAGED" : "DISCOVERED"}
             />
           );
         })}

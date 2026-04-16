@@ -4,10 +4,22 @@ directories:
   buildResources: build
   output: release
 files:
-  - dist/**/*
+  - out/**/*
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!e2e/*'
+  - '!electron.vite.config.*'
+  - '!{.env,.env.*,.npmrc,tsconfig*.json,biome.json}'
 mac:
   category: public.app-category.developer-tools
   target:
     - target: dmg
       arch:
-        - universal
+        - arm64
+        - x64
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+publish:
+  provider: github
+  owner: mlebowitz
+  repo: ensemble
