@@ -20,7 +20,6 @@ import {
 	readClientConfig,
 } from "./clients.js";
 import { getServer, loadConfig } from "./config.js";
-import { needsMigration, migrate } from "./migration.js";
 import { addServer, installSkill } from "./operations.js";
 import { frontmatterToSkill } from "./skills.js";
 import { syncClient, syncSkills } from "./sync.js";
@@ -134,11 +133,6 @@ export function scanSkillLandscape(clients: DetectedClient[]): SkillLandscape[] 
 // --- Auto init ---
 
 export function initAuto(): InitResult {
-	// Check for migration first
-	if (needsMigration()) {
-		migrate();
-	}
-
 	let config = loadConfig();
 	const messages: string[] = [];
 
