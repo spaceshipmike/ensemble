@@ -62,21 +62,24 @@
       {
         "id": 7,
         "name": "snapshots inspector (desktop)",
-        "status": "planned",
+        "status": "completed",
         "scope": "Desktop SnapshotsView + snapshots sub-router + Playwright; reverse-chronological list, per-file expand, restore with confirm",
         "specRefs": ["#desktop-app L878", "#sync L241"],
         "scenarios": ["L1775"],
         "deps": [1],
         "size": "S",
         "commitSeed": "chunk 7: snapshots inspector desktop (v2.0.1)",
-        "assumptions": ["restore dialog copy mirrors CLI rollback warning"]
+        "assumptions": ["restore dialog copy mirrors CLI rollback warning"],
+        "startedAt": "2026-04-18T12:00:00Z",
+        "completedAt": "2026-04-18T12:15:00Z",
+        "specVersionAtBuild": "2.3.0"
       }
     ],
     "chunkProgress": {
-      "completed": 3,
+      "completed": 4,
       "total": 4
     },
-    "lastCheckpoint": "2026-04-18T11:55:00Z",
+    "lastCheckpoint": "2026-04-18T12:15:00Z",
     "priorities": {
       "reliability": "high",
       "speed": "medium",

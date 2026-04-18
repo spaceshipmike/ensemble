@@ -133,6 +133,33 @@ vi.mock("ensemble", () => {
     scanLibraryProject: vi.fn(() => []),
     wireTool: vi.fn(() => ({ ok: true, action: "wired" })),
     unwireTool: vi.fn(() => ({ ok: true, action: "unwired" })),
+
+    listSnapshots: vi.fn(() => [
+      {
+        id: "2026-04-18T10-00-00.000Z-abcdef",
+        createdAt: "2026-04-18T10:00:00.000Z",
+        syncContext: "sync claude-code",
+        files: [
+          {
+            path: "/tmp/file.md",
+            state: "existing",
+            preContentPath: "files/abcdef__tmp__file.md",
+          },
+        ],
+      },
+    ]),
+    getSnapshot: vi.fn((id: string) => ({
+      id,
+      createdAt: "2026-04-18T10:00:00.000Z",
+      syncContext: "sync claude-code",
+      files: [{ path: "/tmp/file.md", state: "existing" }],
+    })),
+    restoreSnapshot: vi.fn((id: string) => ({
+      snapshotId: id,
+      restored: ["/tmp/file.md"],
+      deleted: [],
+      missing: [],
+    })),
   };
 });
 
@@ -318,5 +345,26 @@ describe("doctorRouter", () => {
   it("run returns a doctor result", async () => {
     const r = await caller.doctor.run();
     expect(r.scorePercent).toBe(100);
+  });
+});
+
+describe("snapshotsRouter", () => {
+  it("list returns all snapshots newest-first", async () => {
+    const snaps = await caller.snapshots.list();
+    expect(snaps).toHaveLength(1);
+    expect(snaps[0].id).toBe("2026-04-18T10-00-00.000Z-abcdef");
+    expect(snaps[0].files[0].path).toBe("/tmp/file.md");
+  });
+
+  it("show returns a single snapshot by id", async () => {
+    const snap = await caller.snapshots.show({ id: "abc" });
+    expect(snap.id).toBe("abc");
+    expect(snap.files).toBeDefined();
+  });
+
+  it("restore returns a restore result", async () => {
+    const result = await caller.snapshots.restore({ id: "abc" });
+    expect(result.snapshotId).toBe("abc");
+    expect(result.restored).toContain("/tmp/file.md");
   });
 });

@@ -38,6 +38,9 @@ import {
   addPluginToGroup,
   addRule,
   addServer,
+  listSnapshots,
+  getSnapshot,
+  restoreSnapshot,
   addServerToGroup,
   addSkillToGroup,
   assignClient,
@@ -790,6 +793,29 @@ const notesRouter = router({
     .mutation(({ input }) => runOp((c) => setUserNotes(c, { ref: input.ref, text: input.text }))),
 });
 
+// --- Snapshots --------------------------------------------------------------
+// v2.0.1 safe-apply surface: the renderer uses these procedures to drive the
+// desktop snapshots inspector (reverse-chronological list, per-file expand,
+// restore with confirmation copy mirroring `ensemble rollback`).
+
+const snapshotsRouter = router({
+  /** All snapshots on disk, newest first. */
+  list: procedure.query(() => listSnapshots()),
+
+  /** Load a single snapshot by id (includes the full file manifest). */
+  show: procedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => getSnapshot(input.id)),
+
+  /**
+   * Restore a snapshot. The renderer must have already confirmed with the
+   * user — this mutation does the file I/O unconditionally.
+   */
+  restore: procedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => restoreSnapshot(input.id)),
+});
+
 // --- Root -------------------------------------------------------------------
 
 export const appRouter = router({
@@ -809,6 +835,7 @@ export const appRouter = router({
   search: searchRouter,
   doctor: doctorRouter,
   notes: notesRouter,
+  snapshots: snapshotsRouter,
 });
 
 export type AppRouter = typeof appRouter;
