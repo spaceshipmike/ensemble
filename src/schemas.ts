@@ -131,6 +131,22 @@ export const SettingsSchema = z.object({
 	snapshot_retention_days: z.number().int().min(0).default(30),
 });
 
+// --- Managed settings schema (v2.0.1 non-destructive settings.json merge) ---
+
+/**
+ * A single declarative managed setting — one key path inside a client's
+ * settings.json, a value, and an optional user-authored note.
+ *
+ * The `userNotes` field is user-owned (never round-tripped into settings.json
+ * itself) — it lives on the library entry for operator context. The `keyPath`
+ * is a dot-separated path (e.g., "permissions.allow", "hooks.PreToolUse").
+ */
+export const SettingSchema = z.object({
+	keyPath: z.string().min(1),
+	value: z.unknown(),
+	userNotes: z.string().optional(),
+});
+
 // --- Snapshot schemas (v2.0.1 safe-apply and rollback) ---
 
 export const SnapshotFileEntrySchema = z.object({
@@ -195,6 +211,7 @@ export type Profile = z.infer<typeof ProfileSchema>;
 export type EnsembleConfig = z.infer<typeof EnsembleConfigSchema>;
 export type SnapshotFileEntry = z.infer<typeof SnapshotFileEntrySchema>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;
+export type ManagedSetting = z.infer<typeof SettingSchema>;
 
 // --- Constants ---
 

@@ -177,6 +177,12 @@ export type { CaptureOptions as SnapshotCaptureOptions, RestoreResult as Snapsho
 export { SnapshotSchema, SnapshotFileEntrySchema } from "./schemas.js";
 export type { Snapshot, SnapshotFileEntry } from "./schemas.js";
 
+// Settings (v2.0.1 declarative non-destructive settings.json merge)
+export { mergeSettings, readOwnedKeys, buildManagedFromList, MANAGED_KEYS_FIELD } from "./settings.js";
+export type { MergeResult, MergeOptions } from "./settings.js";
+export { SettingSchema } from "./schemas.js";
+export type { ManagedSetting } from "./schemas.js";
+
 // Search
 export { searchAll, searchServers, searchSkills, searchPlugins, searchCapabilities, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
 export type { SearchResult } from "./search.js";

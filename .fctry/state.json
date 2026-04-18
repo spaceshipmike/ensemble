@@ -17,7 +17,7 @@
       "approvedAt": "2026-04-18T00:00:00Z"
     },
     "chunkProgress": {
-      "completed": 1,
+      "completed": 2,
       "total": 3
     },
     "lastCheckpoint": null,
@@ -44,7 +44,7 @@
       {
         "id": 2,
         "name": "Declarative settings management",
-        "status": "planned",
+        "status": "completed",
         "scope": [
           "src/settings.ts — non-destructive key-level merge primitive",
           "managed-key tracking with __ensemble markers",
@@ -59,8 +59,8 @@
         "effort": "M",
         "exit": "arbitrary user keys in settings.json are byte-identical before/after a sync that modifies Ensemble-owned keys; merge is associative and idempotent",
         "isGoalGate": false,
-        "specVersionAtBuild": null,
-        "completedAt": null
+        "specVersionAtBuild": "2.2.0",
+        "completedAt": "2026-04-18T09:56:30Z"
       },
       {
         "id": 3,

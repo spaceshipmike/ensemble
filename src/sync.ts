@@ -34,6 +34,7 @@ import type { EnsembleConfig, Server } from "./schemas.js";
 import { scanSecrets } from "./secrets.js";
 import { skillDir as getSkillDir } from "./skills.js";
 import * as snapshots from "./snapshots.js";
+import { mergeSettings } from "./settings.js";
 
 // --- Types ---
 
@@ -558,17 +559,6 @@ function syncCCPlugins(
 		}
 	}
 
-	if (pluginChanges && !dryRun) {
-		const managedNames = new Set(config.plugins.filter((p) => p.managed).map((p) => qualifiedPluginName(p)));
-		for (const qname of Object.keys(currentEnabled)) {
-			if (managedNames.has(qname) && !(qname in newEnabled)) {
-				delete currentEnabled[qname];
-			}
-		}
-		Object.assign(currentEnabled, newEnabled);
-		settings["enabledPlugins"] = currentEnabled;
-	}
-
 	// Sync marketplaces
 	const currentMkts = getExtraMarketplaces(settings);
 	const newMkts: Record<string, unknown> = {};
@@ -582,13 +572,30 @@ function syncCCPlugins(
 	}
 
 	const mktChanges = JSON.stringify(newMkts) !== JSON.stringify(currentMkts);
-	if (mktChanges && !dryRun) {
-		settings["extraKnownMarketplaces"] = newMkts;
-	}
 
 	if ((pluginChanges || mktChanges) && !dryRun) {
+		// Route the CC settings.json write through mergeSettings so the
+		// top-level keys we own (`enabledPlugins`, `extraKnownMarketplaces`)
+		// are applied non-destructively alongside any hook/setting entries
+		// other sync paths will add — and the merge is idempotent.
+		const managedNames = new Set(config.plugins.filter((p) => p.managed).map((p) => qualifiedPluginName(p)));
+		const nextEnabled: Record<string, boolean> = { ...currentEnabled };
+		for (const qname of Object.keys(nextEnabled)) {
+			if (managedNames.has(qname) && !(qname in newEnabled)) {
+				delete nextEnabled[qname];
+			}
+		}
+		Object.assign(nextEnabled, newEnabled);
+
+		const { merged } = mergeSettings(
+			settings,
+			{ enabledPlugins: nextEnabled, extraKnownMarketplaces: newMkts },
+			["enabledPlugins", "extraKnownMarketplaces"],
+			{ releasePreviouslyOwned: false },
+		);
+
 		prewriteCapture?.();
-		writeCCSettings(settings);
+		writeCCSettings(merged);
 	}
 
 	if (pluginChanges) {
