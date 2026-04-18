@@ -1,10 +1,11 @@
 {
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "executor-plan"],
+  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
   "digestWritten": true,
   "buildRun": {
-    "status": "running",
+    "status": "completed",
     "startedAt": "2026-04-18T11:00:00Z",
+    "completedAt": "2026-04-18T12:30:00Z",
     "plan": {
       "specVersion": "2.3.0",
       "approvedAt": "2026-04-18T11:00:00Z",
