@@ -275,3 +275,43 @@ export type { UsageEntry, UsageData } from "./usage.js";
 // Init
 export { initAuto, detectClientLandscape, scanServerLandscape, scanSkillLandscape, importSelectedServers } from "./init.js";
 export type { InitResult, DetectedClient, ServerLandscape, SkillLandscape } from "./init.js";
+
+// Browse engine (v2.0.1 library primitive; powers CLI + desktop Registry)
+export { browseSearch, parseMarketplaceFilter, fuzzyScore } from "./browse.js";
+export type { BrowseOptions, BrowseResult, DiscoverableEntry, InstallState } from "./browse.js";
+
+// Lifecycle dispatcher (v2.0.1 noun-first verbs; CLI + desktop share this)
+export {
+	pull,
+	remove as lifecycleRemove,
+	libraryList,
+	libraryShow,
+	classifySource,
+	inferLibraryType,
+} from "./lifecycle.js";
+export type {
+	ResourceType,
+	LifecycleResult,
+	LibraryListEntry,
+	LibraryListParams,
+	LibraryShowDetail,
+	PullParams,
+	PullOutcome,
+	RemoveParams,
+	RemoveOutcome,
+	SourceKind,
+} from "./lifecycle.js";
+
+// Managed settings store (v2.0.1 — backs `ensemble settings` verbs)
+export {
+	loadManagedSettings,
+	saveManagedSettings,
+	setManagedSetting,
+	unsetManagedSetting,
+	listManagedSettings,
+	getManagedSetting,
+	parseSettingValue,
+	toManagedSetting,
+	managedSettingsPath,
+} from "./managed-settings.js";
+export type { StoredManagedSetting } from "./managed-settings.js";

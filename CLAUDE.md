@@ -47,6 +47,7 @@ Library-first with four layers: schemas/config → operations → sync/I/O → p
 | `discover.ts` | Filesystem scan for existing installed skills and plugins; feeds `addToLibrary` during `ensemble init` |
 | `lifecycle.ts` | Noun-first verb dispatcher — routes `pull`/`install`/`uninstall`/`remove`/`library` across the existing operations layer |
 | `managed-settings.ts` | Canonical managed-settings store at `~/.config/ensemble/managed-settings.json`, backing the `ensemble settings` verbs |
+| `browse.ts` | Library-side browse engine — pure-function fuzzy search over library + discoverable resources with `@marketplace/` filter parsing. Powers `ensemble browse` and the desktop Registry view. |
 | `cli/index.ts` | Thin Commander.js wrapper over operations and lifecycle |
 | `index.ts` | Public API barrel export |
 | `packages/desktop/` | Electron desktop app — React + Tailwind over library via IPC |

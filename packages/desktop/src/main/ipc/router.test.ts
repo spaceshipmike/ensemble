@@ -154,6 +154,29 @@ vi.mock("ensemble", () => {
       syncContext: "sync claude-code",
       files: [{ path: "/tmp/file.md", state: "existing" }],
     })),
+    browseSearch: vi.fn((_config: unknown, options: { query?: string; type?: string } = {}) => {
+      const stub = [
+        {
+          name: "alpha",
+          type: "server",
+          source: "manual",
+          installState: "installed" as const,
+        },
+        {
+          name: "beta",
+          type: "skill",
+          source: "manual",
+          installState: "library" as const,
+        },
+      ];
+      let results = stub;
+      if (options.type) results = results.filter((r) => r.type === options.type);
+      if (options.query) {
+        const q = options.query.toLowerCase();
+        results = results.filter((r) => r.name.toLowerCase().includes(q));
+      }
+      return results;
+    }),
     restoreSnapshot: vi.fn((id: string) => ({
       snapshotId: id,
       restored: ["/tmp/file.md"],
@@ -366,5 +389,25 @@ describe("snapshotsRouter", () => {
     const result = await caller.snapshots.restore({ id: "abc" });
     expect(result.snapshotId).toBe("abc");
     expect(result.restored).toContain("/tmp/file.md");
+  });
+});
+
+describe("browseRouter", () => {
+  it("list returns the default result set with no filters", async () => {
+    const rows = await caller.browse.list({});
+    expect(rows).toHaveLength(2);
+    expect(rows[0].name).toBe("alpha");
+  });
+
+  it("list applies the type filter", async () => {
+    const rows = await caller.browse.list({ type: "skill" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe("skill");
+  });
+
+  it("list applies the fuzzy query", async () => {
+    const rows = await caller.browse.list({ query: "alp" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("alpha");
   });
 });

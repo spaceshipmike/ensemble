@@ -7,6 +7,7 @@ import { ProjectsPanel } from "./panels/ProjectsPanel";
 import { trpc } from "./trpc";
 import { DoctorView } from "./views/DoctorView";
 import { MatrixView } from "./views/MatrixView";
+import { RegistryView } from "./views/RegistryView";
 import { SnapshotsView } from "./views/SnapshotsView";
 
 export type {
@@ -17,7 +18,7 @@ export type {
   ToolType,
 } from "../../shared/index";
 
-type View = "patch" | "matrix" | "doctor" | "snapshots";
+type View = "patch" | "matrix" | "doctor" | "snapshots" | "registry";
 
 const MONO = '"Commit Mono", "SF Mono", ui-monospace, Menlo, monospace';
 
@@ -319,6 +320,7 @@ function AppInner() {
       )}
       {!loading && view === "doctor" && <DoctorView />}
       {!loading && view === "snapshots" && <SnapshotsView />}
+      {!loading && view === "registry" && <RegistryView />}
     </div>
   );
 }
@@ -349,6 +351,7 @@ function TopChrome({
     { id: "matrix", label: "MATRIX" },
     { id: "doctor", label: "DOCTOR" },
     { id: "snapshots", label: "SNAPSHOTS" },
+    { id: "registry", label: "REGISTRY" },
   ];
   const sublabel =
     view === "patch"
@@ -357,7 +360,9 @@ function TopChrome({
         ? "MATRIX"
         : view === "doctor"
           ? "DOCTOR"
-          : "SNAPSHOTS";
+          : view === "snapshots"
+            ? "SNAPSHOTS"
+            : "REGISTRY";
   return (
     <div
       data-drag-region

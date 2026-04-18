@@ -25,6 +25,7 @@ import {
   activateProfile,
   addMarketplace,
   adoptOrphan,
+  browseSearch,
   bootstrapLibrary,
   ignoreEntry,
   libraryStoreExists,
@@ -816,6 +817,35 @@ const snapshotsRouter = router({
     .mutation(({ input }) => restoreSnapshot(input.id)),
 });
 
+const browseRouter = router({
+  /**
+   * Fuzzy-search the library + discoverable catalog. Mirrors the `ensemble
+   * browse` CLI surface. The renderer supplies the query string, optional
+   * `type` / `marketplace` filters, and an optional `limit`. The engine
+   * reads config fresh on every call so renderer state stays stateless.
+   */
+  list: procedure
+    .input(
+      z
+        .object({
+          query: z.string().optional(),
+          type: z.string().optional(),
+          marketplace: z.string().optional(),
+          limit: z.number().int().positive().optional(),
+        })
+        .default({}),
+    )
+    .query(({ input }) => {
+      const config = fresh();
+      return browseSearch(config, {
+        ...(input.query !== undefined ? { query: input.query } : {}),
+        ...(input.type !== undefined ? { type: input.type } : {}),
+        ...(input.marketplace !== undefined ? { marketplace: input.marketplace } : {}),
+        ...(input.limit !== undefined ? { limit: input.limit } : {}),
+      });
+    }),
+});
+
 // --- Root -------------------------------------------------------------------
 
 export const appRouter = router({
@@ -836,6 +866,7 @@ export const appRouter = router({
   doctor: doctorRouter,
   notes: notesRouter,
   snapshots: snapshotsRouter,
+  browse: browseRouter,
 });
 
 export type AppRouter = typeof appRouter;

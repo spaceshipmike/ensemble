@@ -353,4 +353,29 @@ describe("CLI", () => {
 		expect(written.permissions).toEqual({ allow: ["Read"] });
 		expect(written.__ensemble_managed).toEqual(["permissions.allow"]);
 	});
+
+	// --- Browse (v2.0.1 chunk 9) ---
+
+	it("browse on a fresh config reports no matches", () => {
+		const output = cli("browse");
+		expect(output).toContain("No matches");
+	});
+
+	it("browse with an added server surfaces it with an install-state badge", () => {
+		cli("add browse-server --command echo");
+		const output = cli("browse");
+		expect(output).toContain("browse-server");
+		expect(output).toMatch(/\[installed\]|\[library\]/);
+	});
+
+	it("browse --type filters down to one resource type", () => {
+		cli("add only-server --command echo");
+		const output = cli("browse --type plugin");
+		expect(output).toContain("No matches");
+	});
+
+	it("browse rejects a non-positive --limit", () => {
+		const output = cli("browse --limit 0");
+		expect(output).toMatch(/--limit must be a positive integer/i);
+	});
 });

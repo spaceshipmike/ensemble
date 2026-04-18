@@ -92,6 +92,7 @@ import {
 	remove as lifecycleRemove,
 } from "../lifecycle.js";
 import type { ResourceType } from "../lifecycle.js";
+import { browseSearch } from "../browse.js";
 import {
 	getManagedSetting,
 	listManagedSettings,
@@ -367,6 +368,39 @@ libraryCmd
 		for (const e of entries) {
 			const badge = e.installed ? "installed" : "library";
 			console.log(`${e.name}  ${e.source}  [${badge}]`);
+		}
+	});
+
+// --- Browse (v2.0.1 engine: plain-text CLI surface) ---
+
+program
+	.command("browse [query...]")
+	.description("Fuzzy search across installed and discoverable resources")
+	.option("--type <type>", "Filter by resource type")
+	.option("--marketplace <name>", "Restrict to one marketplace (or use @marketplace/ in the query)")
+	.option("--limit <n>", "Max rows (defaults to 50)")
+	.action((queryParts: string[], opts: { type?: string; marketplace?: string; limit?: string }) => {
+		const config = loadConfig();
+		const queryText = queryParts.join(" ");
+		const limit = opts.limit ? Number.parseInt(opts.limit, 10) : undefined;
+		if (limit !== undefined && (!Number.isFinite(limit) || limit <= 0)) {
+			console.error(`Error: --limit must be a positive integer, got '${opts.limit}'.`);
+			process.exit(1);
+		}
+		const results = browseSearch(config, {
+			...(queryText ? { query: queryText } : {}),
+			...(opts.type ? { type: opts.type } : {}),
+			...(opts.marketplace ? { marketplace: opts.marketplace } : {}),
+			...(limit !== undefined ? { limit } : {}),
+		});
+		if (results.length === 0) {
+			console.log("No matches.");
+			return;
+		}
+		for (const r of results) {
+			const badge = `[${r.installState}]`;
+			const install = r.installCommand ? `  ${r.installCommand}` : "";
+			console.log(`${r.name}  ${r.type}  ${r.source}  ${badge}${install}`);
 		}
 	});
 

@@ -1,3 +1,72 @@
+## 2026-04-18 — chunk 9: browse engine + CLI + desktop wiring (v1.2.2)
+
+Post-evolve browse shipping. The v2.0 browse engine lands as a pure-function
+library primitive, the `ensemble browse` CLI prints plain-text results, and
+the desktop app gets a Registry view backed by the same engine.
+
+### Added
+
+- `src/browse.ts` — pure-function primitive:
+  - `browseSearch(config, options) → BrowseResult[]` fuzzy-matches library
+    + discoverable entries and merges them into a ranked list (`installed`
+    before `library` before `discoverable`, ties broken by fuzzy score).
+  - `parseMarketplaceFilter(raw)` extracts `@marketplace/rest` filter chips
+    from the query string.
+  - `fuzzyScore(query, candidate)` — dependency-free subsequence match with
+    gap/length/start-position penalties. Returns `null` on no match.
+  - Default limit 50 rows; callers override via `{ limit }`.
+- `ensemble browse [query...] [--type <t>] [--marketplace <m>] [--limit N]`
+  — plain-text row output: `NAME  TYPE  SOURCE  [state]  (install cmd
+  when discoverable)`.
+- `browseRouter` in `packages/desktop/src/main/ipc/router.ts` — one
+  `list` query procedure with `{ query, type, marketplace, limit }` input.
+  Wired into `appRouter` under `browse`.
+- `packages/desktop/src/renderer/src/views/RegistryView.tsx` — minimal
+  Registry view with a search box, type filter, and results table. New
+  REGISTRY tab in App.tsx.
+
+### Tests
+
+- `tests/browse.test.ts` — +14 new tests covering filter parsing,
+  fuzzy scoring, ranking order across tiers, --type filter, --marketplace
+  filter, discoverable install commands, and --limit.
+- `tests/cli.test.ts` — +4 new tests for the `ensemble browse` CLI
+  (empty library, library entry surfaced, --type filter, --limit
+  validation).
+- `packages/desktop/src/main/ipc/router.test.ts` — +3 tests covering
+  the new `browse.list` contract (default results, type filter, fuzzy
+  query filter).
+
+All tests green: 430/430 across the library + CLI suite; 34/34 in the
+desktop router contract test.
+
+### Barrel exports
+
+`src/index.ts` now exports the browse primitive, the lifecycle dispatcher,
+and the managed-settings store so both the CLI and the desktop package
+consume them through the published `ensemble` surface.
+
+### Scenarios closed
+
+- Non-Interactive Text Listing of Installed and Discoverable Resources
+  (scenarios.md:1993)
+- Fuzzy Search Across Installed and Discoverable Resources
+  (scenarios.md:2008)
+- Marketplace Filter Syntax Narrows Results (scenarios.md:2023)
+
+### Files
+
+- `src/browse.ts` (new), `src/index.ts` (barrel additions), `src/cli/index.ts`
+  (new `browse` command), `CLAUDE.md` (browse module row).
+- `packages/desktop/src/main/ipc/router.ts` (browseSearch import + new
+  `browseRouter`), `packages/desktop/src/main/ipc/router.test.ts`
+  (browseSearch mock + 3 tests).
+- `packages/desktop/src/renderer/src/views/RegistryView.tsx` (new),
+  `packages/desktop/src/renderer/src/App.tsx` (Registry tab wiring).
+- `tests/browse.test.ts` (new), `tests/cli.test.ts` (browse CLI tests).
+
+---
+
 ## 2026-04-18 — chunk 8: CLI lifecycle rewrite + settings verbs (v1.2.0)
 
 Public-surface break — external version 1.1.2 → 1.2.0. The v2.0.1 noun-first CLI grammar lands alongside the long-deferred `ensemble settings` verb group.
