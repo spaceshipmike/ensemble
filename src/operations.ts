@@ -1352,6 +1352,45 @@ export function detectCollisions(
 	return collisions;
 }
 
+// --- Rollback planning (v2.0.1 safe-apply) ---
+
+export interface RollbackPlan extends OpResult {
+	snapshotId: string | null;
+}
+
+/**
+ * Plan a rollback to a previous snapshot. Pure — returns the chosen snapshot
+ * id, nothing else. The caller (CLI, desktop bridge) invokes
+ * `snapshots.restore(snapshotId)` to perform the I/O.
+ *
+ * `params.snapshotId` pins a specific snapshot; otherwise pass the output of
+ * `snapshots.latest()?.id` as `params.latestId` to signal "restore most
+ * recent". We keep this op pure by accepting the candidate id as input rather
+ * than reading disk.
+ */
+export function rollback(
+	config: EnsembleConfig,
+	params: { snapshotId?: string; latestId?: string | null },
+): OpReturn<RollbackPlan> {
+	const picked = params.snapshotId ?? params.latestId ?? null;
+	if (!picked) {
+		return {
+			config,
+			result: {
+				...fail("No snapshot available to restore."),
+				snapshotId: null,
+			},
+		};
+	}
+	return {
+		config,
+		result: {
+			...ok([`Restoring snapshot '${picked}'.`]),
+			snapshotId: picked,
+		},
+	};
+}
+
 // --- Dependency intelligence ---
 
 // --- Profile operations ---

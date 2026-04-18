@@ -955,6 +955,54 @@ discoverCmd
 		saveConfig(newConfig);
 	});
 
+// --- Rollback (v2.0.1 safe-apply stopgap; full CLI verb rewrite is chunk 8) ---
+
+program
+	.command("rollback")
+	.description("Restore files captured by a previous sync snapshot")
+	.option("--latest", "Restore the most recent snapshot")
+	.option("--id <id>", "Restore a specific snapshot by id")
+	.option("--list", "List available snapshots and exit")
+	.action((opts) => {
+		const snapshotsMod = require("../snapshots.js") as typeof import("../snapshots.js");
+		const { rollback } = require("../operations.js") as typeof import("../operations.js");
+
+		if (opts.list) {
+			const all = snapshotsMod.list();
+			if (all.length === 0) {
+				console.log("No snapshots found.");
+				return;
+			}
+			for (const s of all) {
+				const ctx = s.syncContext ? ` — ${s.syncContext}` : "";
+				console.log(`${s.id}  (${s.files.length} file${s.files.length === 1 ? "" : "s"})${ctx}`);
+			}
+			return;
+		}
+
+		if (!opts.latest && !opts.id) {
+			console.error("Error: specify --latest or --id <id>");
+			process.exit(1);
+		}
+
+		const config = loadConfig();
+		const latestId = snapshotsMod.latest()?.id ?? null;
+		const { result } = rollback(config, {
+			snapshotId: opts.id,
+			latestId: opts.latest ? latestId : undefined,
+		});
+		if (!result.ok || !result.snapshotId) {
+			console.error(`Error: ${result.error || "No snapshot to restore"}`);
+			process.exit(1);
+		}
+		const restoreResult = snapshotsMod.restore(result.snapshotId);
+		for (const msg of result.messages) console.log(msg);
+		console.log(`Restored ${restoreResult.restored.length} file(s), deleted ${restoreResult.deleted.length} new-file entr(ies).`);
+		if (restoreResult.missing.length > 0) {
+			console.log(`Warning: ${restoreResult.missing.length} file(s) had missing pre-write copies and were not restored.`);
+		}
+	});
+
 // --- Init ---
 
 program.command("init").description("Guided first-run setup").option("--auto", "Non-interactive mode").action((opts) => {

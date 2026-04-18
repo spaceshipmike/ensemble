@@ -112,8 +112,9 @@ export {
 	findNotedItem,
 	refreshDescriptions,
 	descriptionHash,
+	rollback,
 } from "./operations.js";
-export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo, ProfileResult, NoteResult, NotedItemType, ParsedNoteRef, DescriptionRefreshInput, DescriptionRefreshDelta, DescriptionRefreshResult } from "./operations.js";
+export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo, ProfileResult, NoteResult, NotedItemType, ParsedNoteRef, DescriptionRefreshInput, DescriptionRefreshDelta, DescriptionRefreshResult, RollbackPlan } from "./operations.js";
 
 // Clients
 export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey, findOrphanedInClients, readClientConfig, getManagedServers, resolvedPaths } from "./clients.js";
@@ -169,6 +170,12 @@ export type { WireRequest, UnwireRequest, WireResult, WireScope } from "./discov
 // Sync
 export { syncClient, syncSkills, syncAllClients, computeContextCost, suggestGroupSplits, doImport } from "./sync.js";
 export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, ContextCostSummary, GroupSplitSuggestion, ImportResult } from "./sync.js";
+
+// Snapshots (v2.0.1 safe-apply and rollback)
+export { capture as captureSnapshot, restore as restoreSnapshot, list as listSnapshots, latest as latestSnapshot, get as getSnapshot, prune as pruneSnapshots, snapshotsRoot } from "./snapshots.js";
+export type { CaptureOptions as SnapshotCaptureOptions, RestoreResult as SnapshotRestoreResult, PruneOptions as SnapshotPruneOptions } from "./snapshots.js";
+export { SnapshotSchema, SnapshotFileEntrySchema } from "./schemas.js";
+export type { Snapshot, SnapshotFileEntry } from "./schemas.js";
 
 // Search
 export { searchAll, searchServers, searchSkills, searchPlugins, searchCapabilities, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";

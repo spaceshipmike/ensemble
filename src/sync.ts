@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
+	CC_SETTINGS_PATH,
 	CLIENTS,
 	expandPath,
 	getEnabledPlugins,
@@ -32,6 +33,7 @@ import { RESERVED_MARKETPLACE_NAMES, qualifiedPluginName } from "./schemas.js";
 import type { EnsembleConfig, Server } from "./schemas.js";
 import { scanSecrets } from "./secrets.js";
 import { skillDir as getSkillDir } from "./skills.js";
+import * as snapshots from "./snapshots.js";
 
 // --- Types ---
 
@@ -55,6 +57,10 @@ export interface SyncResult {
 	hasChanges: boolean;
 	drifted: DriftInfo[];
 	newHashes: Record<string, string>;
+	/** v2.0.1 safe-apply: id of the pre-write snapshot, if one was captured. */
+	snapshotId?: string;
+	/** v2.0.1 safe-apply: files recorded in that snapshot. */
+	snapshotFiles?: string[];
 }
 
 export interface SkillSyncAction {
@@ -157,6 +163,32 @@ export function syncClient(
 	const allDrifted: DriftInfo[] = [];
 	const newHashes: Record<string, string> = {};
 
+	// v2.0.1 safe-apply: capture a pre-write snapshot covering every file this
+	// syncClient call might touch. Done lazily on first actual write so
+	// dry-runs and no-op syncs don't litter the snapshot dir.
+	let snapshotId: string | undefined;
+	let snapshotFiles: string[] | undefined;
+	const prewriteCapture = (): void => {
+		if (dryRun || snapshotId) return;
+		const toCapture = new Set<string>();
+		for (const p of paths) toCapture.add(p);
+		if (clientId === "claude-code") {
+			toCapture.add(CC_SETTINGS_PATH);
+			const ccAssignment = getClient(config, clientId);
+			if (ccAssignment) {
+				for (const projPath of Object.keys(ccAssignment.projects)) {
+					const absProj = resolve(expandPath(projPath));
+					toCapture.add(join(absProj, ".claude", "settings.json"));
+					toCapture.add(join(absProj, ".claude", "settings.local.json"));
+				}
+			}
+		}
+		const files = Array.from(toCapture);
+		const snap = snapshots.capture(files, { syncContext: `sync ${clientId}` });
+		snapshotId = snap.id;
+		snapshotFiles = files;
+	};
+
 	for (const path of paths) {
 		const existing = readClientConfig(path);
 		const managed = getManagedServers(existing, clientDef.serversKey);
@@ -223,6 +255,7 @@ export function syncClient(
 		}
 
 		if (!dryRun && (toAdd.length > 0 || toRemove.length > 0 || toUpdate.length > 0)) {
+			prewriteCapture();
 			writeClientConfig(path, clientDef.serversKey, newEntries);
 		}
 	}
@@ -282,21 +315,21 @@ export function syncClient(
 			// Sync explicitly assigned projects
 			for (const [projPath, projData] of Object.entries(ccAssignment.projects)) {
 				if (projData.group) {
-					const projActions = syncProject(config, projPath, projData.group, dryRun);
+					const projActions = syncProject(config, projPath, projData.group, dryRun, prewriteCapture);
 					allActions.push(...projActions.map((msg) => ({ type: "add" as const, name: msg, detail: "project" })));
 				}
 			}
 
 			// Apply path rules to discover new projects
 			if (config.rules.length > 0) {
-				const ruleResult = applyPathRules(config, clientId, dryRun);
+				const ruleResult = applyPathRules(config, clientId, dryRun, prewriteCapture);
 				config = ruleResult.config;
 				allActions.push(...ruleResult.actions.map((msg) => ({ type: "add" as const, name: msg, detail: "path-rule" })));
 			}
 		}
 
 		// Sync plugins and marketplaces to CC settings
-		const pluginActions = syncCCPlugins(config, clientId, dryRun);
+		const pluginActions = syncCCPlugins(config, clientId, dryRun, prewriteCapture);
 		allActions.push(...pluginActions.map((msg) => ({ type: "add" as const, name: msg, detail: "plugin" })));
 	}
 
@@ -314,6 +347,16 @@ export function syncClient(
 		}
 	}
 
+	// Retention pruning after a successful sync. Swallow errors — pruning is
+	// best-effort and should never block a sync.
+	if (!dryRun) {
+		try {
+			snapshots.prune({ retentionDays: config.settings.snapshot_retention_days });
+		} catch {
+			/* ignore */
+		}
+	}
+
 	return {
 		config: newConfig,
 		result: {
@@ -324,6 +367,7 @@ export function syncClient(
 			hasChanges,
 			drifted: allDrifted,
 			newHashes,
+			...(snapshotId ? { snapshotId, snapshotFiles } : {}),
 		},
 	};
 }
@@ -335,6 +379,7 @@ function syncProject(
 	projectPath: string,
 	groupName: string,
 	dryRun: boolean,
+	prewriteCapture?: () => void,
 ): string[] {
 	const servers = resolveServers(config, "claude-code", groupName);
 	const newEntries: Record<string, Record<string, unknown>> = {};
@@ -360,6 +405,7 @@ function syncProject(
 	if (dryRun) {
 		messages.push(`Claude Code project (${absPath}): would sync`);
 	} else {
+		prewriteCapture?.();
 		writeServersNested(paths[0]!, keyPath, newEntries);
 		messages.push(`Claude Code project (${absPath}): synced`);
 	}
@@ -367,7 +413,7 @@ function syncProject(
 	// Sync project-level plugins
 	const plugins = resolvePlugins(config, "claude-code", groupName);
 	if (plugins.length > 0) {
-		const pluginMessages = syncProjectPlugins(plugins, absPath, dryRun);
+		const pluginMessages = syncProjectPlugins(plugins, absPath, dryRun, prewriteCapture);
 		messages.push(...pluginMessages);
 	}
 
@@ -378,6 +424,7 @@ function syncProjectPlugins(
 	plugins: EnsembleConfig["plugins"],
 	projectPath: string,
 	dryRun: boolean,
+	prewriteCapture?: () => void,
 ): string[] {
 	const messages: string[] = [];
 	const newEnabled: Record<string, boolean> = {};
@@ -407,6 +454,7 @@ function syncProjectPlugins(
 	if (dryRun) {
 		messages.push(`  project plugins (${projectPath}): would sync to .claude/settings.local.json`);
 	} else {
+		prewriteCapture?.();
 		// Workaround for CC bug #27247: ensure enabledPlugins key exists in settings.json
 		const settingsPath = join(projectPath, ".claude", "settings.json");
 		if (existsSync(settingsPath)) {
@@ -434,6 +482,7 @@ function applyPathRules(
 	config: EnsembleConfig,
 	clientId: string,
 	dryRun: boolean,
+	prewriteCapture?: () => void,
 ): { config: EnsembleConfig; actions: string[] } {
 	const actions: string[] = [];
 	let newConfig = { ...config };
@@ -466,7 +515,7 @@ function applyPathRules(
 				),
 			};
 
-			const projActions = syncProject(newConfig, projPath, rule.group, dryRun);
+			const projActions = syncProject(newConfig, projPath, rule.group, dryRun, prewriteCapture);
 			if (projActions.length > 0) {
 				actions.push(`  (matched rule: ${rule.path} → ${rule.group})`);
 				actions.push(...projActions);
@@ -481,6 +530,7 @@ function syncCCPlugins(
 	config: EnsembleConfig,
 	clientId: string,
 	dryRun: boolean,
+	prewriteCapture?: () => void,
 ): string[] {
 	const actions: string[] = [];
 	const settings = readCCSettings();
@@ -537,6 +587,7 @@ function syncCCPlugins(
 	}
 
 	if ((pluginChanges || mktChanges) && !dryRun) {
+		prewriteCapture?.();
 		writeCCSettings(settings);
 	}
 

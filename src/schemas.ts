@@ -126,6 +126,34 @@ export const SettingsSchema = z.object({
 	registry_cache_ttl: z.number().default(3600),
 	sync_cost_warning_threshold: z.number().default(50),
 	usage_tracking: z.boolean().default(false),
+	// v2.0.1 safe-apply: how many days of snapshots to keep before pruning.
+	// 0 disables pruning.
+	snapshot_retention_days: z.number().int().min(0).default(30),
+});
+
+// --- Snapshot schemas (v2.0.1 safe-apply and rollback) ---
+
+export const SnapshotFileEntrySchema = z.object({
+	/** Absolute path that was captured. */
+	path: z.string(),
+	/** "existing" means the file had content pre-sync and preContentPath points to its snapshot copy.
+	 *  "new-file" means the file did not exist pre-sync and rollback must delete it. */
+	state: z.enum(["existing", "new-file"]),
+	/** Path (relative to the snapshot dir) to the verbatim pre-write copy of this file.
+	 *  Only set when state === "existing". */
+	preContentPath: z.string().optional(),
+});
+
+export const SnapshotSchema = z.object({
+	/** Stable snapshot id: "<iso-timestamp>-<hash6>". Used as the directory name. */
+	id: z.string(),
+	/** ISO-8601 timestamp when the snapshot was captured. */
+	createdAt: z.string(),
+	/** Optional free-form label describing why the snapshot was taken
+	 *  (e.g., "sync claude-code", "hook add lint"). */
+	syncContext: z.string().optional(),
+	/** One entry per captured file. */
+	files: z.array(SnapshotFileEntrySchema),
 });
 
 export const ProfileSchema = z.object({
@@ -165,6 +193,8 @@ export type ClientAssignment = z.infer<typeof ClientAssignmentSchema>;
 export type Settings = z.infer<typeof SettingsSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 export type EnsembleConfig = z.infer<typeof EnsembleConfigSchema>;
+export type SnapshotFileEntry = z.infer<typeof SnapshotFileEntrySchema>;
+export type Snapshot = z.infer<typeof SnapshotSchema>;
 
 // --- Constants ---
 

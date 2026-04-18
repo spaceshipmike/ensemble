@@ -1,6 +1,6 @@
 {
   "name": "ensemble",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Central manager for MCP servers, skills, and plugins across AI clients",
   "workspaces": [
     "packages/*"
@@ -48,6 +48,18 @@
     "./skills": {
       "types": "./dist/skills.d.ts",
       "import": "./dist/skills.js"
+    },
+    "./snapshots": {
+      "types": "./dist/snapshots.d.ts",
+      "import": "./dist/snapshots.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks.d.ts",
+      "import": "./dist/hooks.js"
     }
   },
   "files": [

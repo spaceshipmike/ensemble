@@ -1,64 +1,90 @@
 {
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
-  "workflowStep": null,
-  "upgradeApplied": {
-    "from": "0.78.17",
-    "to": "0.78.28"
-  },
-  "specVersion": "1.0.3",
-  "readinessSummary": {
-    "satisfied": 17,
-    "partial": 3,
-    "missing": 0,
-    "total": 20
-  },
-  "sectionReadiness": {
-    "library-api": "satisfied",
-    "schema-validation": "satisfied",
-    "config": "satisfied",
-    "server-operations": "satisfied",
-    "sync": "partial",
-    "plugins": "satisfied",
-    "marketplaces": "satisfied",
-    "groups": "satisfied",
-    "skills-management": "partial",
-    "registry": "satisfied",
-    "cli-surface": "partial",
-    "operations-layer": "satisfied",
-    "additive-sync": "satisfied",
-    "init": "satisfied",
-    "migration": "satisfied",
-    "profile-as-plugin": "satisfied",
-    "search-alias-expansion": "satisfied",
-    "search-quality-boost": "satisfied",
-    "search-self-learning": "satisfied",
-    "profiles": "satisfied",
-    "secret-scanning": "satisfied",
-    "context-cost-gating": "satisfied",
-    "skill-health-validation": "satisfied",
-    "skill-sync-conflict-detection": "satisfied"
+  "completedSteps": ["state-owner-scan", "executor-plan"],
+  "digestWritten": false,
+  "untrackedChanges": [],
+  "scanProgress": {
+    "total": 0,
+    "skipped": 0,
+    "scanned": 0
   },
   "buildRun": {
-    "status": "completed",
-    "startedAt": "2026-04-02T12:00:00.000Z",
-    "completedAt": "2026-04-03T00:04:00.000Z",
-    "lastCheckpoint": "2026-04-03T00:04:00.000Z",
-    "specVersionAtBuild": "1.0.3",
+    "status": "running",
+    "startedAt": "2026-04-18T00:00:00Z",
     "plan": {
-      "specVersion": "1.0.3",
-      "totalChunks": 7,
-      "chunks": [
-        { "id": 1, "name": "Secret Scanning + Client Fixes", "status": "completed", "sections": ["secret-scanning"], "completedAt": "2026-03-31T23:50:00Z" },
-        { "id": 2, "name": "Skill Health Validation", "status": "completed", "sections": ["skill-health-validation"], "completedAt": "2026-03-31T23:52:00Z" },
-        { "id": 3, "name": "Skill Sync Conflict Detection", "status": "completed", "sections": ["skill-sync-conflict-detection"], "completedAt": "2026-03-31T23:54:00Z" },
-        { "id": 4, "name": "Query Alias Expansion + Quality Boost", "status": "completed", "sections": ["search-alias-expansion", "search-quality-boost"], "completedAt": "2026-03-31T23:56:00Z" },
-        { "id": 5, "name": "Context Cost Gating", "status": "completed", "sections": ["context-cost-gating"], "completedAt": "2026-03-31T23:58:00Z" },
-        { "id": 6, "name": "Profiles", "status": "completed", "sections": ["profiles"], "gate": true, "completedAt": "2026-04-03T00:01:00Z" },
-        { "id": 7, "name": "Self-Learning Search", "status": "completed", "sections": ["search-self-learning"], "completedAt": "2026-04-03T00:04:00Z" }
-      ]
+      "specVersion": "2.2.0",
+      "scope": "slim-cut: Chunks 1-3 (snapshots + settings + hooks)",
+      "approvedAt": "2026-04-18T00:00:00Z"
     },
-    "chunkProgress": "7/7"
-  },
-  "digestWritten": true
+    "chunkProgress": {
+      "completed": 1,
+      "total": 3
+    },
+    "lastCheckpoint": null,
+    "chunks": [
+      {
+        "id": 1,
+        "name": "Snapshots + safe-apply wiring",
+        "status": "completed",
+        "scope": [
+          "src/snapshots.ts — capture, restore, list, retention, manifest",
+          "SnapshotSchema in schemas.ts",
+          "./snapshots subpath export in package.json",
+          "sync.ts: call snapshots.capture() before any client write; record new-files in manifest",
+          "retention pruning on sync exit"
+        ],
+        "scenariosSatisfied": ["Safe Apply and Rollback Snapshots (v2.0)"],
+        "blockedBy": [],
+        "effort": "L",
+        "exit": "ensemble sync writes a snapshot dir before touching client files; ensemble rollback --latest restores byte-identical state",
+        "isGoalGate": true,
+        "specVersionAtBuild": "2.2.0",
+        "completedAt": "2026-04-18T09:51:00Z"
+      },
+      {
+        "id": 2,
+        "name": "Declarative settings management",
+        "status": "planned",
+        "scope": [
+          "src/settings.ts — non-destructive key-level merge primitive",
+          "managed-key tracking with __ensemble markers",
+          "SettingSchema in schemas.ts",
+          "./settings subpath export in package.json"
+        ],
+        "scenariosSatisfied": [
+          "Non-Destructive settings.json Merge (v2.0)",
+          "Managed Agents, Commands, Hooks, Settings (v2.0) — settings subset"
+        ],
+        "blockedBy": [1],
+        "effort": "M",
+        "exit": "arbitrary user keys in settings.json are byte-identical before/after a sync that modifies Ensemble-owned keys; merge is associative and idempotent",
+        "isGoalGate": false,
+        "specVersionAtBuild": null,
+        "completedAt": null
+      },
+      {
+        "id": 3,
+        "name": "Hooks store",
+        "status": "planned",
+        "scope": [
+          "src/hooks.ts — 7 lifecycle events, matcher schema",
+          "auto-generated description from event+matcher",
+          "canonical store at ~/.config/ensemble/hooks/",
+          "sync fan-out writing under hooks key via Chunk 2's merge",
+          "HookSchema in schemas.ts",
+          "./hooks subpath export in package.json"
+        ],
+        "scenariosSatisfied": [
+          "Managed Agents, Commands, Hooks, Settings (v2.0) — hooks subset",
+          "Non-Destructive settings.json Merge — hooks-ownership path"
+        ],
+        "blockedBy": [1, 2],
+        "effort": "M",
+        "exit": "install/uninstall a hook for Claude Code; settings.json keeps unrelated keys byte-identical; 7 event names accepted + validated",
+        "isGoalGate": false,
+        "specVersionAtBuild": null,
+        "completedAt": null
+      }
+    ]
+  }
 }

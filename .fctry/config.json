@@ -1,7 +1,7 @@
 {
   "versions": {
     "external": {
-      "current": "1.0.7",
+      "current": "1.0.8",
       "propagationTargets": [
         {
           "file": "package.json",
@@ -16,7 +16,7 @@
       }
     },
     "spec": {
-      "current": "2.0.1",
+      "current": "2.2.0",
       "incrementRules": {
         "minor": "auto-on-evolve"
       }
@@ -28,7 +28,7 @@
       "action": "suggest external minor bump"
     }
   },
-  "formatVersion": "0.80.20",
+  "formatVersion": "0.82.0",
   "modelRouting": {
     "interviewer": "claude",
     "stateOwner": "codex",
