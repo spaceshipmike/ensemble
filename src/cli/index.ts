@@ -57,14 +57,33 @@ import {
 	deleteProfile,
 	setUserNotes,
 	getUserNotes,
+	installAgent,
+	uninstallAgent,
+	enableAgent,
+	disableAgent,
+	installCommand,
+	uninstallCommand,
+	enableCommand,
+	disableCommand,
 } from "../operations.js";
 import { searchAll } from "../search.js";
 import { searchRegistries, showRegistry, listBackends, clearCache, resolveInstallParams } from "../registry.js";
 import { syncClient, syncAllClients, syncSkills, computeContextCost } from "../sync.js";
 import { runDoctor } from "../doctor.js";
 import { discover, discoveredSkillToInstallParams } from "../discover.js";
-import { copyFileSync, existsSync as fsExistsSync, mkdirSync as fsMkdirSync } from "node:fs";
-import { join as pathJoin } from "node:path";
+import { copyFileSync, existsSync as fsExistsSync, mkdirSync as fsMkdirSync, readFileSync as fsReadFileSync } from "node:fs";
+import { basename as pathBasename, join as pathJoin } from "node:path";
+import {
+	deleteAgentMd,
+	frontmatterToAgent,
+	writeAgentMd,
+} from "../agents.js";
+import {
+	deleteCommandMd,
+	frontmatterToCommand,
+	writeCommandMd,
+} from "../commands.js";
+import { syncAgents, syncCommands } from "../sync.js";
 import { SKILLS_DIR as ENSEMBLE_SKILLS_DIR } from "../config.js";
 import { listProjects } from "../projects.js";
 import { qualifiedPluginName } from "../schemas.js";
@@ -953,6 +972,210 @@ discoverCmd
 
 		for (const msg of messages) console.log(msg);
 		saveConfig(newConfig);
+	});
+
+// --- Agents (v2.0.1 stopgap; full CLI verb rewrite is chunk 8) ---
+
+const agentsCmd = program.command("agents").description("Manage canonical agents and fan-out to Claude Code");
+
+agentsCmd.command("list").description("List agents in the canonical store").action(() => {
+	const config = loadConfig();
+	const agents = config.agents ?? [];
+	if (agents.length === 0) { console.log("No agents."); return; }
+	for (const a of agents) {
+		const status = a.enabled ? "●" : "○";
+		const tools = a.tools.length > 0 ? ` [${a.tools.join(", ")}]` : "";
+		const model = a.model ? ` (${a.model})` : "";
+		const primary = a.userNotes || a.description || "";
+		console.log(`${status} ${a.name}${model}${tools}  ${primary}`);
+	}
+});
+
+agentsCmd
+	.command("add <path>")
+	.description("Add an agent from a local .md file into the canonical store")
+	.action((mdPath: string) => {
+		if (!fsExistsSync(mdPath)) {
+			console.error(`Error: file '${mdPath}' not found.`);
+			process.exit(1);
+		}
+		const text = fsReadFileSync(mdPath, "utf-8");
+		const fileName = pathBasename(mdPath).replace(/\.md$/, "");
+		const { agent, body } = frontmatterToAgent(text, fileName);
+		if (!agent.name) {
+			console.error(`Error: could not derive agent name from '${mdPath}'.`);
+			process.exit(1);
+		}
+		// Write the canonical copy first so `path` in config reflects reality.
+		const canonicalPath = writeAgentMd(agent, body);
+		const { config: newConfig, result } = installAgent(loadConfig(), {
+			name: agent.name,
+			description: agent.description,
+			tools: agent.tools,
+			...(agent.model ? { model: agent.model } : {}),
+			path: canonicalPath,
+		});
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		for (const msg of result.messages) console.log(msg);
+		saveConfig(newConfig);
+	});
+
+agentsCmd.command("remove <name>").description("Remove an agent from the canonical store").action((name: string) => {
+	const config = loadConfig();
+	const { config: newConfig, result } = uninstallAgent(config, name);
+	if (!result.ok) {
+		console.error(`Error: ${result.error}`);
+		process.exit(1);
+	}
+	deleteAgentMd(name);
+	for (const msg of result.messages) console.log(msg);
+	saveConfig(newConfig);
+});
+
+agentsCmd
+	.command("install <name>")
+	.description("Install a canonical agent to Claude Code (global scope)")
+	.action((name: string) => {
+		const config = loadConfig();
+		if (!(config.agents ?? []).some((a) => a.name === name)) {
+			console.error(`Error: Agent '${name}' not found in canonical store. Run 'ensemble agents add <path>' first.`);
+			process.exit(1);
+		}
+		const { config: enabled, result } = enableAgent(config, name);
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		const syncResult = syncAgents(enabled, "claude-code");
+		for (const msg of result.messages) console.log(msg);
+		for (const msg of syncResult.messages) console.log(msg);
+		saveConfig(enabled);
+	});
+
+agentsCmd
+	.command("uninstall <name>")
+	.description("Uninstall an agent from Claude Code (keeps canonical copy)")
+	.action((name: string) => {
+		const config = loadConfig();
+		if (!(config.agents ?? []).some((a) => a.name === name)) {
+			console.error(`Error: Agent '${name}' not found in canonical store.`);
+			process.exit(1);
+		}
+		const { config: disabled, result } = disableAgent(config, name);
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		const syncResult = syncAgents(disabled, "claude-code");
+		for (const msg of result.messages) console.log(msg);
+		for (const msg of syncResult.messages) console.log(msg);
+		saveConfig(disabled);
+	});
+
+// --- Commands (v2.0.1 stopgap; full CLI verb rewrite is chunk 8) ---
+
+const commandsCmd = program.command("commands").description("Manage canonical slash commands and fan-out to Claude Code");
+
+commandsCmd.command("list").description("List commands in the canonical store").action(() => {
+	const config = loadConfig();
+	const cmds = config.commands ?? [];
+	if (cmds.length === 0) { console.log("No commands."); return; }
+	for (const c of cmds) {
+		const status = c.enabled ? "●" : "○";
+		const tools = c.allowedTools.length > 0 ? ` [${c.allowedTools.join(", ")}]` : "";
+		const hint = c.argumentHint ? ` ${c.argumentHint}` : "";
+		const primary = c.userNotes || c.description || "";
+		console.log(`${status} /${c.name}${hint}${tools}  ${primary}`);
+	}
+});
+
+commandsCmd
+	.command("add <path>")
+	.description("Add a slash command from a local .md file into the canonical store")
+	.action((mdPath: string) => {
+		if (!fsExistsSync(mdPath)) {
+			console.error(`Error: file '${mdPath}' not found.`);
+			process.exit(1);
+		}
+		const text = fsReadFileSync(mdPath, "utf-8");
+		const fileName = pathBasename(mdPath).replace(/\.md$/, "");
+		const { command, body } = frontmatterToCommand(text, fileName);
+		if (!command.name) {
+			console.error(`Error: could not derive command name from '${mdPath}'.`);
+			process.exit(1);
+		}
+		const canonicalPath = writeCommandMd(command, body);
+		const { config: newConfig, result } = installCommand(loadConfig(), {
+			name: command.name,
+			description: command.description,
+			allowedTools: command.allowedTools,
+			...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
+			path: canonicalPath,
+		});
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		for (const msg of result.messages) console.log(msg);
+		saveConfig(newConfig);
+	});
+
+commandsCmd
+	.command("remove <name>")
+	.description("Remove a slash command from the canonical store")
+	.action((name: string) => {
+		const config = loadConfig();
+		const { config: newConfig, result } = uninstallCommand(config, name);
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		deleteCommandMd(name);
+		for (const msg of result.messages) console.log(msg);
+		saveConfig(newConfig);
+	});
+
+commandsCmd
+	.command("install <name>")
+	.description("Install a canonical slash command to Claude Code (global scope)")
+	.action((name: string) => {
+		const config = loadConfig();
+		if (!(config.commands ?? []).some((c) => c.name === name)) {
+			console.error(`Error: Command '${name}' not found in canonical store. Run 'ensemble commands add <path>' first.`);
+			process.exit(1);
+		}
+		const { config: enabled, result } = enableCommand(config, name);
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		const syncResult = syncCommands(enabled, "claude-code");
+		for (const msg of result.messages) console.log(msg);
+		for (const msg of syncResult.messages) console.log(msg);
+		saveConfig(enabled);
+	});
+
+commandsCmd
+	.command("uninstall <name>")
+	.description("Uninstall a slash command from Claude Code (keeps canonical copy)")
+	.action((name: string) => {
+		const config = loadConfig();
+		if (!(config.commands ?? []).some((c) => c.name === name)) {
+			console.error(`Error: Command '${name}' not found in canonical store.`);
+			process.exit(1);
+		}
+		const { config: disabled, result } = disableCommand(config, name);
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		const syncResult = syncCommands(disabled, "claude-code");
+		for (const msg of result.messages) console.log(msg);
+		for (const msg of syncResult.messages) console.log(msg);
+		saveConfig(disabled);
 	});
 
 // --- Hook CRUD (v2.0.1 stopgap; full CLI verb rewrite is chunk 8) ---

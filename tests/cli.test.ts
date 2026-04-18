@@ -30,7 +30,9 @@ function cli(args: string, env?: Record<string, string>): string {
 		).trim();
 	} catch (e: unknown) {
 		const err = e as { stderr?: string; stdout?: string; status?: number };
-		return err.stdout?.trim() ?? err.stderr?.trim() ?? "";
+		const stdout = err.stdout?.trim() ?? "";
+		const stderr = err.stderr?.trim() ?? "";
+		return stdout || stderr;
 	}
 }
 
@@ -71,5 +73,73 @@ describe("CLI", () => {
 		const output = cli("registry backends");
 		expect(output).toContain("official");
 		expect(output).toContain("glama");
+	});
+
+	// --- Agents CLI (v2.0.1 chunk 7.5) ---
+
+	it("agents list shows no agents for fresh config", () => {
+		const agentsDir = join(tmpDir, "agents-canon");
+		const output = cli("agents list", { ENSEMBLE_AGENTS_DIR: agentsDir, HOME: tmpDir });
+		expect(output).toContain("No agents");
+	});
+
+	it("agents add imports an agent from a local .md file", () => {
+		const agentsDir = join(tmpDir, "agents-canon");
+		const mdPath = join(tmpDir, "reviewer.md");
+		writeFileSync(
+			mdPath,
+			"---\nname: reviewer\ndescription: Reviews code.\ntools:\n  - Read\n  - Grep\n---\n# Review body",
+		);
+		const addOutput = cli(`agents add ${mdPath}`, {
+			ENSEMBLE_AGENTS_DIR: agentsDir,
+			HOME: tmpDir,
+		});
+		expect(addOutput).toContain("Installed agent 'reviewer'");
+		const listOutput = cli("agents list", { ENSEMBLE_AGENTS_DIR: agentsDir, HOME: tmpDir });
+		expect(listOutput).toContain("reviewer");
+		expect(listOutput).toContain("Reviews code");
+	});
+
+	it("agents remove errors on a nonexistent agent", () => {
+		const agentsDir = join(tmpDir, "agents-canon");
+		const output = cli("agents remove does-not-exist", {
+			ENSEMBLE_AGENTS_DIR: agentsDir,
+			HOME: tmpDir,
+		});
+		expect(output).toMatch(/not found/i);
+	});
+
+	// --- Commands CLI (v2.0.1 chunk 7.5) ---
+
+	it("commands list shows no commands for fresh config", () => {
+		const cmdsDir = join(tmpDir, "commands-canon");
+		const output = cli("commands list", { ENSEMBLE_COMMANDS_DIR: cmdsDir, HOME: tmpDir });
+		expect(output).toContain("No commands");
+	});
+
+	it("commands add imports a slash command from a local .md file", () => {
+		const cmdsDir = join(tmpDir, "commands-canon");
+		const mdPath = join(tmpDir, "evolve.md");
+		writeFileSync(
+			mdPath,
+			"---\nname: evolve\ndescription: Evolve the spec.\nargument-hint: <section>\n---\nBody",
+		);
+		const addOutput = cli(`commands add ${mdPath}`, {
+			ENSEMBLE_COMMANDS_DIR: cmdsDir,
+			HOME: tmpDir,
+		});
+		expect(addOutput).toContain("Installed command 'evolve'");
+		const listOutput = cli("commands list", { ENSEMBLE_COMMANDS_DIR: cmdsDir, HOME: tmpDir });
+		expect(listOutput).toContain("/evolve");
+		expect(listOutput).toContain("Evolve the spec");
+	});
+
+	it("commands remove errors on a nonexistent command", () => {
+		const cmdsDir = join(tmpDir, "commands-canon");
+		const output = cli("commands remove does-not-exist", {
+			ENSEMBLE_COMMANDS_DIR: cmdsDir,
+			HOME: tmpDir,
+		});
+		expect(output).toMatch(/not found/i);
 	});
 });
