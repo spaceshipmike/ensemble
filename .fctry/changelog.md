@@ -1,3 +1,57 @@
+## 2026-04-18 — /fctry:evolve browse — TUI scope dropped
+
+Scope reduction evolve. Dropped the TUI presentation layer from browse. `browse.ts` stays as a pure-function library primitive (fuzzy search + `@marketplace` filter parsing); the electron Registry view and a plain-text `ensemble browse` CLI both consume the same engine. Ink dependency removed from §Tech Stack. Card/Slim render modes and one-key TUI install removed from §CLI Surface. Browse TUI scenario feature block reworked to Browse Engine (4 → 3 scenarios). Spec version 2.3.0 → 2.4.0.
+
+### Changes
+
+- §Architecture → Modules (v2.0.1 targets): `browse.ts` row now describes it as a library discovery engine (pure-function primitive) rather than a TUI-grade engine.
+- §CLI Surface: `ensemble browse` is plain-text output; `--view card|slim` flag removed; "interactive TUI browser" / "one-key install" language dropped.
+- §Library API: `browse` subpath-export mention drops "TUI-grade discovery surface".
+- §Desktop App: removed the "ensemble browse (the TUI) defaults to the Library pivot" sentence — pivots live in the electron Registry, not the CLI.
+- §Tech Stack: Ink line removed; fuzzysort retained as a pure-function library primitive.
+- §Architecture → Standalone GUI framework non-goal: removed the Ink-specific clause.
+- §Future: fuzzySearchAll entry updated to reference the `browse.ts` library primitive rather than "the TUI".
+- §Synopsis: regenerated medium / readme / tech-stack / patterns / goals to drop TUI / Ink / Card/Slim / one-key-install references.
+
+### Scenarios
+
+Scenario Crafter reworked `.fctry/scenarios.md` §Browse TUI → §Browse Engine. Scenario count 4 → 3 (dropped the Card/Slim view toggle scenario; revised the interactive-TUI scenario to describe plain-text CLI output; kept `@marketplace` filter + fuzzy-match scenarios).
+
+### Ready to Build
+
+`browse.ts` remains target-flagged; its scope is now smaller and simpler. Can ship as chunk 9 (or concurrent with chunk 8 lifecycle rewrite, since it has fewer unknowns now).
+
+---
+
+## 2026-04-18 — /fctry:review (v1.1.2) — 4 code-ahead drift fixes
+
+Post-v1.1.2 review. State Owner found four code-ahead drifts (spec text trailing shipped code) plus one scenario-unsatisfiability (`#settings` scenario promises CLI verbs that don't exist). User approved the four spec fixes and deferred the settings CLI verbs to chunk 8's lifecycle rewrite. Spec version unchanged (2.3.0) — review is spec maintenance, not evolution.
+
+### Changes
+
+- **§Desktop App → IPC Architecture (spec.md:884)** `[modified]` — added `snapshots` to the sub-router inventory sentence (landed via chunk 7 `snapshotsRouter` in `packages/desktop/src/main/ipc/router.ts:838`). Removed `snapshots` from the target-status banner at L880 — banner now covers only the still-unbuilt target routers (`agents`, `commands`, `hooks`, `settings`, `browse`).
+- **§Doctor → Checks table (spec.md:1816)** `[modified]` — appended four rows matching the additive checks shipped in chunk 6: orphan snapshots (capability, info), snapshot dir size (capability, warning — 500 MB default), agents/commands drift (freshness, warning — v2.0.4 artifact-hash strategy extended to two new resource types), retention-config visibility (capability, info).
+- **§Design Principles #2 and #8 (spec.md:2227, 2233)** `[modified]` — widened "servers" → "servers, skills, plugins, agents, commands, hooks, and managed settings keys" to match shipped code (syncAgents/syncCommands additive gates) and the CLAUDE.md parity. #8 also acknowledges the two marker forms: `__ensemble: true` for JSON, `ensemble: managed` frontmatter for markdown resources.
+- **§CLI Surface → Target-status banner (spec.md:518)** `[modified]` — rewrote the banner to reflect shipped reality. The v1.3-style per-type group grammar (`agents` / `commands` / `plugins` / `skills` / `hook` with `list`/`add`/`remove`/`install`/`uninstall` verbs) ships today. Top-level lifecycle verbs (`pull`/`install`/`uninstall`/`remove`, `library`, `browse`) remain target. Added explicit callout that `settings` group is not yet wired (pending for chunk 8 per the `#settings` scenario L1879). Aspirational verb prose at L676–691 intentionally preserved as forward-looking — it will match reality after chunk 8.
+
+### Deferred
+
+- **`#settings` scenario (scenarios.md:1879)** — promises `ensemble settings set/unset/list` CLI verbs that don't exist in `src/cli/index.ts`. User chose to defer to chunk 8's full CLI lifecycle rewrite rather than ship a one-off settings-only CLI chunk that chunk 8 would then reshape.
+
+### CLAUDE.md
+
+No drift this pass. The v1.1.0 release commit already widened the additive-sync rule and added agents/commands rows.
+
+### Synopsis
+
+Not regenerated. Review edits do not shift product stance or tech stack.
+
+### Health at close
+
+Clean. Remaining v2.0.1 targets: `browse.ts`, `import-legacy.ts`, CLI lifecycle verb rewrite (chunk 8), settings CLI verbs (folded into chunk 8).
+
+---
+
 ## 2026-04-18 — v1.1.0 release — v2.0.1 slim cut feature-complete
 
 Milestone 2 from the /fctry:execute chunks-4-7 build. External version bumped 1.0.14 → 1.1.0. Marks the feature-complete v2.0.1 slim cut: chunks 1–7 shipped snapshots + safe-apply, settings.json declarative merge, hooks store, agents store, commands store, doctor v2 additive checks, and the desktop snapshots inspector. Spec parity update folded in: §Architecture → Modules (built) now includes `agents.ts` + `commands.ts`; Modules (v2.0.1 targets) reduced to `browse.ts` + `import-legacy.ts`. CLAUDE.md built table gained the two rows; additive-sync rule widened to include agents, commands, hooks, and managed settings keys.

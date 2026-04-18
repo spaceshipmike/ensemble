@@ -38,7 +38,7 @@
 | System Quality | Safe Apply and Rollback Snapshots (v2.0) | 5 | Client Resolution and Sync |
 | Core | Managed Agents, Commands, Hooks, Settings (v2.0) | 6 | Library-First Resource Intake, Client Resolution and Sync |
 | System Quality | Non-Destructive settings.json Merge (v2.0) | 3 | Managed Agents, Commands, Hooks, Settings |
-| CLI | Browse TUI (v2.0) | 4 | Install State Matrix, Registry and Discovery |
+| CLI | Browse Engine (v2.0) | 3 | Install State Matrix, Registry and Discovery |
 | Core | Dynamic Marketplace Registry (v2.0) | 3 | Marketplace Management |
 | Core | Expanded Client Roster 17 to 21 (v2.0) | 3 | Client Resolution and Sync |
 | Core | Migration v1.3 to v2.0.1 | 3 | Migration (mcpoyle to Ensemble), Library-First Resource Intake |
@@ -1983,74 +1983,57 @@ Validates: `#sync` (Drift Detection, Hooks strategy)
 
 ---
 
-## Feature: Browse TUI (v2.0)
-> I launch a fuzzy-search TUI that searches installed and discoverable resources together, filter by marketplace, and install with one keystroke.
+## Feature: Browse Engine (v2.0)
+> I run `ensemble browse` and get a plain-text list of installed and discoverable resources, filterable by type, marketplace, and fuzzy query — the same engine powers the desktop Registry view.
 
 Category: CLI | Depends on: Install State Matrix, Registry and Discovery
 
 ### Critical
 
-#### Scenario: Fuzzy Search Across Installed and Discoverable Resources
+#### Scenario: Non-Interactive Text Listing of Installed and Discoverable Resources
 
-> **Given** the user runs `ensemble browse`
-> **When** the TUI opens and the user types a query
-> **Then** the results include matches from both the library (installed and uninstalled) and from known marketplaces, ranked with installed resources above library-only resources above discoverable-only resources, then by relevance.
+> **Given** the user runs `ensemble browse` (optionally with `--type`, `--marketplace`, or a fuzzy query string)
+> **When** Ensemble searches across installed + discoverable resources
+> **Then** it prints a structured text list of matches with one row per result showing name, type, source (origin or marketplace), install-state badge, and — for discoverable-only results — the install command to run next.
 
 **Satisfied when:**
-- The result list merges library and marketplace sources into a single ranked view
-- Each row shows an indicator for installed, library-only, or discoverable
+- Exit code 0 on a successful search, exit code 1 on invalid flags
+- Each result row fits on one terminal line (wide mode OK)
+- Filter flags (`--type`, `--marketplace`) compose with the fuzzy query
+- `--help` mentions the filter flags and query syntax
+
+Difficulty: easy
+Validates: `#cli-surface` (Browse), `#registry` (Local Capability Search)
+
+#### Scenario: Fuzzy Search Across Installed and Discoverable Resources
+
+> **Given** the user runs `ensemble browse` with a fuzzy query string
+> **When** the browse engine searches across the library (installed and uninstalled) and known marketplaces
+> **Then** the results include matches from both sources, ranked with installed resources above library-only resources above discoverable-only resources, then by fuzzy match relevance.
+
+**Satisfied when:**
+- The result set merges library and marketplace sources into a single ranked list
+- Each row carries an indicator for installed, library-only, or discoverable
 - Ranking order is: installed > library-only > discoverable; ties broken by fuzzy match relevance
-- Typing filters the list interactively without requiring a submit keystroke
+- The same engine powers both the CLI output and the desktop Registry view (identical ranking for the same query)
 
 Difficulty: medium
-Validates: `#cli-surface` (Browse), `#registry` (Local Capability Search)
+Validates: `#cli-surface` (Browse), `#registry` (Local Capability Search), `#desktop-app` (Registry)
 
 #### Scenario: Marketplace Filter Syntax Narrows Results
 
-> **Given** the user is in the TUI with a query already typed
-> **When** the user prefixes a token with `@marketplace-name/`
-> **Then** the results are filtered to only entries from that marketplace, and the filter chip is visible in the query bar.
+> **Given** the user has a fuzzy query in mind
+> **When** the user prefixes a token with `@marketplace-name/` in the query string
+> **Then** the results are filtered to only entries from that marketplace, and the active marketplace filter is reflected in the output header.
 
 **Satisfied when:**
-- `@<marketplace>/` syntax is recognized and parsed into a filter chip
+- `@<marketplace>/` syntax is recognized and parsed as a marketplace filter
 - Only resources whose origin is that marketplace appear in the filtered results
-- Removing the chip (backspacing) restores the unfiltered result set
-- An unknown marketplace name shows a "no such marketplace" hint rather than an empty list
+- Omitting the `@<marketplace>/` prefix restores the unfiltered result set
+- An unknown marketplace name produces a "no such marketplace" message rather than an empty list
 
 Difficulty: medium
-Validates: `#cli-surface` (Browse), `#desktop-app` (Visual Extras — fuzzy search)
-
-#### Scenario: One-Key Copy or Yank of Install Command
-
-> **Given** the user has selected a discoverable resource in the TUI
-> **When** the user presses `c` (copy) or `y` (yank)
-> **Then** the corresponding `ensemble install` or `ensemble pull --install` command for that resource is placed on the system clipboard, ready to paste — without the TUI executing the install itself.
-
-**Satisfied when:**
-- `c` and `y` both copy a ready-to-run command to the clipboard
-- The copied command is exact and correct for the selected resource (correct name, type, marketplace slug)
-- A brief confirmation message appears in the TUI after the copy
-- The TUI does not mutate any state as a side effect of copy/yank
-
-Difficulty: easy
-Validates: `#cli-surface` (Browse)
-
-### Edge Cases
-
-#### Scenario: Card and Slim View Modes Toggle On Demand
-
-> **Given** the TUI is open in the default view mode
-> **When** the user toggles between Card and Slim view modes via a keybind or `--view` flag on launch
-> **Then** Card mode shows rich details (trust tier, quality signals, tool count, one-click install) per row and Slim mode collapses each result to a one-line row for dense browsing — the underlying result set is identical in both modes.
-
-**Satisfied when:**
-- Both view modes render without layout corruption at 80-column width
-- Slim mode shows at least 3x more rows on-screen than Card mode for the same dataset
-- Toggling preserves the current selection where possible
-- `ensemble browse --view slim` on launch starts in Slim mode
-
-Difficulty: medium
-Validates: `#cli-surface` (Browse), `#desktop-app` (Visual Extras — Registry cards and slim rows)
+Validates: `#cli-surface` (Browse), `#registry` (Dynamic Marketplace Registry)
 
 ---
 
