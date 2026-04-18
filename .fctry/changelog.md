@@ -1,3 +1,52 @@
+## 2026-04-18 — /fctry:review drift resolution (spec v2.4.1)
+
+Full-spec `/fctry:review` pass. Promoted three built modules into §Modules
+(built); flagged the unfinished v1.3 → v2.0.1 migration as a queued build;
+parked v2.0.3–2.0.5 refinements as roadmap.
+
+### Added to §Modules (built)
+
+- `browse.ts` — Library discovery engine (pure-function fuzzy search +
+  `@marketplace` filter parsing). Built in chunk 9 (d691fde).
+- `lifecycle.ts` — Noun-first verb dispatcher between `cli/index.ts` and
+  `operations.ts`. Built in chunk 8 (c8b2236).
+- `managed-settings.ts` — Canonical managed-settings store at
+  `~/.config/ensemble/managed-settings.json`. Built in chunk 8 (c8b2236).
+  Boundary with `settings.ts` clarified: `managed-settings.ts` owns the
+  store; `settings.ts` projects it into each client's `settings.json`.
+
+### Updated in §Modules (v2.0.1 targets)
+
+- Removed `browse.ts` (now built).
+- Added a "Status (2026-04-18)" paragraph to the `import-legacy.ts` row
+  documenting the migration gap: the v2.0.1 slim cut shipped the new
+  resource types but §Migration step 2 (import-legacy) and step 4
+  (coordinated v1.3-verb rename sweep) never ran. `operations.ts` still
+  exports the eight v1.3 install-state verbs; the live
+  `~/.config/ensemble/config.json` remains v1.3-shape. Closing the gap
+  is queued for `/fctry:execute`.
+
+### Parked as roadmap (not verified this pass)
+
+v2.0.3–2.0.5 refinements still on the spec as forward commitments:
+`ensemble note <ref>` CLI verb, snapshot tag format
+(`ens-snap-YYYYMMDD-HHMMSS-<shortsha>`) + forward-restore, per-client
+sync-mode table, `src/io/atomic-write.ts`, `redactForExport`, typed
+variables (`ResourceVariableSchema` with `kind`), `launchPrompt` profile
+field, inherited installation state vocabulary, `upstreamHash(id)`
+adapter method. Build status of each is Unknown pending dedicated code
+trace; none marked as drift this pass, none removed from the spec.
+
+### Not applied (hook false-positive noted)
+
+The pre-prompt hook reports `config.json external (1.2.4) ≠ spec
+plugin-version (0.82.0)`. These fields are semantically unrelated —
+`plugin-version` tracks the fctry format version (matches
+`.fctry/config.json` `formatVersion: "0.82.0"`); `external` is the npm
+package version. No sync action taken.
+
+---
+
 ## 2026-04-18 — chunk 10: desktop tRPC sub-routers + retro fixes (v1.2.3)
 
 Completes desktop IPC coverage for every v2.0.1 resource type and folds in
