@@ -125,6 +125,40 @@ export const AgentSchema = z.object({
 	lastDescriptionHash: z.string().optional(),
 });
 
+/**
+ * A Claude Code slash command stored in the canonical library at
+ * `~/.config/ensemble/commands/<name>.md`.
+ *
+ * Frontmatter fields:
+ *   - `name` (string, required) — the slash command name; `/evolve` has
+ *     `name: evolve`.
+ *   - `description` (string, required; source-owned) — appears next to the
+ *     slash command in UIs. Re-imported copies overwrite this field.
+ *   - `allowed-tools` (string[] or string) — optional Claude Code tool
+ *     allowlist for this command; absent means "inherit session defaults".
+ *   - `argument-hint` (string, optional) — short hint rendered when the user
+ *     is completing the command (e.g., `"<section>"`).
+ *
+ * The library entry also carries `userNotes` (user-owned, never touched by
+ * re-import) and `lastDescriptionHash`. Fan-out to `~/.claude/commands/`
+ * copies only the source-owned frontmatter fields.
+ */
+export const CommandSchema = z.object({
+	name: z.string().min(1),
+	enabled: z.boolean().default(true),
+	description: z.string().default(""),
+	/** Optional Claude Code tool allowlist. Empty array = inherit. */
+	allowedTools: z.array(z.string()).default([]),
+	/** Optional short argument hint rendered at completion time. */
+	argumentHint: z.string().optional(),
+	/** Filesystem path of the canonical library copy. */
+	path: z.string().default(""),
+	/** Free-form operator-owned notes (never round-tripped to fan-out). */
+	userNotes: z.string().optional(),
+	/** SHA-256 of the last imported description — powers re-import drift checks. */
+	lastDescriptionHash: z.string().optional(),
+});
+
 export const GroupSchema = z.object({
 	name: z.string(),
 	description: z.string().default(""),
@@ -261,6 +295,8 @@ export const EnsembleConfigSchema = z.object({
 	skills: z.array(SkillSchema).default([]),
 	/** Subagents (v2.0.1 #core-concepts). */
 	agents: z.array(AgentSchema).default([]),
+	/** Slash commands (v2.0.1 #core-concepts). */
+	commands: z.array(CommandSchema).default([]),
 	settings: SettingsSchema.default({}),
 	profiles: z.record(ProfileSchema).default({}),
 	activeProfile: z.string().nullable().default(null),
@@ -276,6 +312,7 @@ export type MarketplaceSource = z.infer<typeof MarketplaceSourceSchema>;
 export type Marketplace = z.infer<typeof MarketplaceSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
 export type Agent = z.infer<typeof AgentSchema>;
+export type Command = z.infer<typeof CommandSchema>;
 export type Group = z.infer<typeof GroupSchema>;
 export type PathRule = z.infer<typeof PathRuleSchema>;
 export type ProjectAssignment = z.infer<typeof ProjectAssignmentSchema>;

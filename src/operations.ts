@@ -7,9 +7,9 @@
 
 import { resolve } from "node:path";
 import { CLIENTS } from "./clients.js";
-import { getAgent, getClient, getGroup, getMarketplace, getPlugin, getServer, getSkill } from "./config.js";
+import { getAgent, getClient, getCommand, getGroup, getMarketplace, getPlugin, getServer, getSkill } from "./config.js";
 import { expandPath } from "./clients.js";
-import type { Agent, EnsembleConfig, Group, Marketplace, MarketplaceSource, Plugin, Profile, Server, ServerOrigin, Skill, ToolInfo } from "./schemas.js";
+import type { Agent, Command, EnsembleConfig, Group, Marketplace, MarketplaceSource, Plugin, Profile, Server, ServerOrigin, Skill, ToolInfo } from "./schemas.js";
 import { RESERVED_MARKETPLACE_NAMES } from "./schemas.js";
 
 // --- Result types ---
@@ -42,6 +42,10 @@ export interface SkillResult extends OpResult {
 
 export interface AgentResult extends OpResult {
 	agent: Agent | null;
+}
+
+export interface CommandResult extends OpResult {
+	command: Command | null;
 }
 
 export interface AssignResult extends OpResult {
@@ -970,6 +974,79 @@ export function disableAgent(config: EnsembleConfig, name: string): OpReturn<Age
 	return {
 		config: { ...config, agents: agents.map((a) => (a.name === name ? updated : a)) },
 		result: { ...ok([`Disabled agent '${name}'.`]), agent: updated },
+	};
+}
+
+// --- Command operations (pure — no disk I/O for *.md files) ---
+
+export function installCommand(
+	config: EnsembleConfig,
+	params: {
+		name: string;
+		description?: string;
+		allowedTools?: string[];
+		argumentHint?: string;
+		path?: string;
+	},
+): OpReturn<CommandResult> {
+	if (getCommand(config, params.name)) {
+		return {
+			config,
+			result: { ...fail(`Command '${params.name}' already exists.`), command: null },
+		};
+	}
+
+	const command: Command = {
+		name: params.name,
+		enabled: true,
+		description: params.description ?? "",
+		allowedTools: params.allowedTools ?? [],
+		...(params.argumentHint ? { argumentHint: params.argumentHint } : {}),
+		path: params.path ?? "",
+	};
+
+	const commands = config.commands ?? [];
+	return {
+		config: { ...config, commands: [...commands, command] },
+		result: { ...ok([`Installed command '${params.name}'.`]), command },
+	};
+}
+
+export function uninstallCommand(config: EnsembleConfig, name: string): OpReturn<CommandResult> {
+	const command = getCommand(config, name);
+	if (!command) {
+		return { config, result: { ...fail(`Command '${name}' not found.`), command: null } };
+	}
+	const commands = config.commands ?? [];
+	return {
+		config: { ...config, commands: commands.filter((c) => c.name !== name) },
+		result: { ...ok([`Removed command '${name}'.`]), command },
+	};
+}
+
+export function enableCommand(config: EnsembleConfig, name: string): OpReturn<CommandResult> {
+	const command = getCommand(config, name);
+	if (!command) {
+		return { config, result: { ...fail(`Command '${name}' not found.`), command: null } };
+	}
+	const updated = { ...command, enabled: true };
+	const commands = config.commands ?? [];
+	return {
+		config: { ...config, commands: commands.map((c) => (c.name === name ? updated : c)) },
+		result: { ...ok([`Enabled command '${name}'.`]), command: updated },
+	};
+}
+
+export function disableCommand(config: EnsembleConfig, name: string): OpReturn<CommandResult> {
+	const command = getCommand(config, name);
+	if (!command) {
+		return { config, result: { ...fail(`Command '${name}' not found.`), command: null } };
+	}
+	const updated = { ...command, enabled: false };
+	const commands = config.commands ?? [];
+	return {
+		config: { ...config, commands: commands.map((c) => (c.name === name ? updated : c)) },
+		result: { ...ok([`Disabled command '${name}'.`]), command: updated },
 	};
 }
 

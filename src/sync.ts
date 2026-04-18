@@ -28,12 +28,13 @@ import {
 	writeCCSettings,
 	writeServersNested,
 } from "./clients.js";
-import { computeEntryHash, getClient, matchRule, resolveAgents, resolvePlugins, resolveServers, resolveSkills } from "./config.js";
+import { computeEntryHash, getClient, matchRule, resolveAgents, resolveCommands, resolvePlugins, resolveServers, resolveSkills } from "./config.js";
 import { RESERVED_MARKETPLACE_NAMES, qualifiedPluginName } from "./schemas.js";
-import type { Agent, EnsembleConfig, Server } from "./schemas.js";
+import type { Agent, Command, EnsembleConfig, Server } from "./schemas.js";
 import { scanSecrets } from "./secrets.js";
 import { skillDir as getSkillDir } from "./skills.js";
 import { toFanoutContent as agentFanoutContent, readAgentMd } from "./agents.js";
+import { toFanoutContent as commandFanoutContent, readCommandMd } from "./commands.js";
 import * as snapshots from "./snapshots.js";
 import { mergeSettings } from "./settings.js";
 import { buildHooksSettings, listHooks } from "./hooks.js";
@@ -192,6 +193,13 @@ export function syncClient(
 			const agentsOutDir = expandPath(clientDef.agentsDir);
 			for (const a of resolveAgents(config, clientId)) {
 				toCapture.add(join(agentsOutDir, `${a.name}.md`));
+			}
+		}
+		// v2.0.1 commands fan-out — same capture-set discipline as agents.
+		if (clientDef.commandsDir) {
+			const commandsOutDir = expandPath(clientDef.commandsDir);
+			for (const c of resolveCommands(config, clientId)) {
+				toCapture.add(join(commandsOutDir, `${c.name}.md`));
 			}
 		}
 		const files = Array.from(toCapture);
@@ -353,6 +361,18 @@ export function syncClient(
 				type: action.type === "remove" ? "remove" : "add",
 				name: action.agentName,
 				detail: `agent: ${action.type}`,
+			});
+		}
+	}
+
+	// v2.0.1 commands fan-out — mirrors the agents hookup.
+	if (clientDef.commandsDir) {
+		const commandResult = syncCommands(config, clientId, { dryRun, prewriteCapture });
+		for (const action of commandResult.actions) {
+			allActions.push({
+				type: action.type === "remove" ? "remove" : "add",
+				name: action.commandName,
+				detail: `command: ${action.type}`,
 			});
 		}
 	}
@@ -1084,6 +1104,144 @@ export function syncAgents(
 	}
 
 	return { clientId, actions, messages: [`${clientDef.name} agents: synced ${desiredNames.size} agent(s)`] };
+}
+
+// --- Commands sync (v2.0.1) ---
+
+export interface CommandSyncAction {
+	type: "write" | "remove" | "skip";
+	commandName: string;
+	targetPath: string;
+	detail?: string;
+}
+
+export interface CommandSyncResult {
+	clientId: string;
+	actions: CommandSyncAction[];
+	messages: string[];
+}
+
+/**
+ * Fan canonical commands out to a client's commands directory. Mirrors
+ * `syncAgents`: dual-field contract, `__ensemble: true` frontmatter marker
+ * for additive detection, user-authored files preserved byte-identical.
+ */
+export function syncCommands(
+	config: EnsembleConfig,
+	clientId: string,
+	options?: { dryRun?: boolean; prewriteCapture?: () => void },
+): CommandSyncResult {
+	const clientDef = CLIENTS[clientId];
+	if (!clientDef?.commandsDir) {
+		return { clientId, actions: [], messages: [`${clientId}: no commands directory configured`] };
+	}
+
+	const commandsDir = expandPath(clientDef.commandsDir);
+	const commands = resolveCommands(config, clientId);
+	const actions: CommandSyncAction[] = [];
+	const desiredNames = new Set(commands.map((c) => c.name));
+	const dryRun = options?.dryRun ?? false;
+
+	const existingManaged = new Set<string>();
+	if (existsSync(commandsDir)) {
+		for (const entry of readdirSync(commandsDir, { withFileTypes: true })) {
+			if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+			const full = join(commandsDir, entry.name);
+			try {
+				const text = readFileSync(full, "utf-8");
+				if (/^---[\s\S]*?__ensemble:\s*true[\s\S]*?---/m.test(text)) {
+					existingManaged.add(entry.name.slice(0, -3));
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
+	const toRemove = [...existingManaged].filter((n) => !desiredNames.has(n));
+
+	const toWrite: Command[] = [];
+	for (const c of commands) {
+		const target = join(commandsDir, `${c.name}.md`);
+		const canonical = readCommandMd(c.name);
+		const body = canonical?.body ?? "";
+		const expected = commandFanoutContent(c, body);
+		let current = "";
+		if (existsSync(target)) {
+			try {
+				current = readFileSync(target, "utf-8");
+			} catch {
+				current = "";
+			}
+			if (!/^---[\s\S]*?__ensemble:\s*true[\s\S]*?---/m.test(current) && current !== "") {
+				actions.push({
+					type: "skip",
+					commandName: c.name,
+					targetPath: target,
+					detail: "user-authored file, not overwritten",
+				});
+				continue;
+			}
+		}
+		if (current !== expected) {
+			toWrite.push(c);
+		}
+	}
+
+	for (const c of toWrite) {
+		actions.push({
+			type: "write",
+			commandName: c.name,
+			targetPath: join(commandsDir, `${c.name}.md`),
+		});
+	}
+	for (const name of toRemove) {
+		actions.push({
+			type: "remove",
+			commandName: name,
+			targetPath: join(commandsDir, `${name}.md`),
+		});
+	}
+
+	if (actions.length === 0) {
+		return { clientId, actions, messages: [`${clientDef.name} commands: already in sync`] };
+	}
+
+	if (dryRun) {
+		return {
+			clientId,
+			actions,
+			messages: [`${clientDef.name} commands: would sync ${desiredNames.size} command(s)`],
+		};
+	}
+
+	if (toWrite.length > 0 || toRemove.length > 0) {
+		options?.prewriteCapture?.();
+	}
+
+	mkdirSync(commandsDir, { recursive: true });
+
+	for (const name of toRemove) {
+		const target = join(commandsDir, `${name}.md`);
+		try {
+			rmSync(target, { force: true });
+		} catch {
+			/* already gone */
+		}
+	}
+
+	for (const c of toWrite) {
+		const target = join(commandsDir, `${c.name}.md`);
+		const canonical = readCommandMd(c.name);
+		const body = canonical?.body ?? "";
+		writeFileSync(target, commandFanoutContent(c, body), "utf-8");
+	}
+
+	return {
+		clientId,
+		actions,
+		messages: [`${clientDef.name} commands: synced ${desiredNames.size} command(s)`],
+	};
 }
 
 /** Hash the contents of a directory for drift comparison. */

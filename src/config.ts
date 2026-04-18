@@ -113,6 +113,10 @@ export function getAgent(config: EnsembleConfig, name: string) {
 	return (config.agents ?? []).find((a) => a.name === name);
 }
 
+export function getCommand(config: EnsembleConfig, name: string) {
+	return (config.commands ?? []).find((c) => c.name === name);
+}
+
 export function getMarketplace(config: EnsembleConfig, name: string) {
 	return config.marketplaces.find((m) => m.name === name);
 }
@@ -189,4 +193,16 @@ export function resolveAgents(
 	_clientId: string,
 ): EnsembleConfig["agents"] {
 	return (config.agents ?? []).filter((a) => a.enabled);
+}
+
+/**
+ * Get the slash commands a client should receive. Commands are global-scoped
+ * in v2.0.1 — every enabled command fans out to every installed client with
+ * a commandsDir. Mirrors resolveAgents.
+ */
+export function resolveCommands(
+	config: EnsembleConfig,
+	_clientId: string,
+): EnsembleConfig["commands"] {
+	return (config.commands ?? []).filter((c) => c.enabled);
 }

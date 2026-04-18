@@ -22,12 +22,14 @@ export {
 	getPlugin,
 	getSkill,
 	getAgent,
+	getCommand,
 	getMarketplace,
 	matchRule,
 	resolveServers,
 	resolvePlugins,
 	resolveSkills,
 	resolveAgents,
+	resolveCommands,
 } from "./config.js";
 
 // Schemas and types
@@ -39,6 +41,7 @@ export {
 	GroupSchema,
 	SkillSchema,
 	AgentSchema,
+	CommandSchema,
 	PathRuleSchema,
 	ClientAssignmentSchema,
 	SettingsSchema,
@@ -61,6 +64,7 @@ export type {
 	Group,
 	Skill,
 	Agent,
+	Command,
 	PathRule,
 	ClientAssignment,
 	ProjectAssignment,
@@ -80,6 +84,10 @@ export {
 	uninstallAgent,
 	enableAgent,
 	disableAgent,
+	installCommand,
+	uninstallCommand,
+	enableCommand,
+	disableCommand,
 	createGroup,
 	deleteGroup,
 	addServerToGroup,
@@ -122,7 +130,7 @@ export {
 	descriptionHash,
 	rollback,
 } from "./operations.js";
-export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, AgentResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo, ProfileResult, NoteResult, NotedItemType, ParsedNoteRef, DescriptionRefreshInput, DescriptionRefreshDelta, DescriptionRefreshResult, RollbackPlan } from "./operations.js";
+export type { OpResult, OpReturn, ServerResult, PluginResult, GroupResult, SkillResult, AgentResult, CommandResult, MarketplaceResult, AssignResult, ScopeResult, CollisionInfo, SkillDependencyInfo, ProfileResult, NoteResult, NotedItemType, ParsedNoteRef, DescriptionRefreshInput, DescriptionRefreshDelta, DescriptionRefreshResult, RollbackPlan } from "./operations.js";
 
 // Clients
 export { CLIENTS, detectClients, expandPath, isInstalled, serverToClientEntry, readProjectSettings, writeProjectSettings, ensureProjectEnabledPluginsKey, findOrphanedInClients, readClientConfig, getManagedServers, resolvedPaths } from "./clients.js";
@@ -176,8 +184,8 @@ export { wireTool, unwireTool } from "./discovery/wire.js";
 export type { WireRequest, UnwireRequest, WireResult, WireScope } from "./discovery/wire.js";
 
 // Sync
-export { syncClient, syncSkills, syncAgents, syncAllClients, computeContextCost, suggestGroupSplits, doImport } from "./sync.js";
-export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, AgentSyncResult, AgentSyncAction, ContextCostSummary, GroupSplitSuggestion, ImportResult } from "./sync.js";
+export { syncClient, syncSkills, syncAgents, syncCommands, syncAllClients, computeContextCost, suggestGroupSplits, doImport } from "./sync.js";
+export type { SyncResult, SyncAction, DriftInfo, SkillSyncResult, SkillSyncAction, SkillConflict, AgentSyncResult, AgentSyncAction, CommandSyncResult, CommandSyncAction, ContextCostSummary, GroupSplitSuggestion, ImportResult } from "./sync.js";
 
 // Snapshots (v2.0.1 safe-apply and rollback)
 export { capture as captureSnapshot, restore as restoreSnapshot, list as listSnapshots, latest as latestSnapshot, get as getSnapshot, prune as pruneSnapshots, snapshotsRoot } from "./snapshots.js";
@@ -229,6 +237,20 @@ export {
 	deleteAgentMd,
 	listAgentFiles,
 } from "./agents.js";
+
+// Commands store (v2.0.1)
+export {
+	commandsRoot,
+	commandPath,
+	commandToFrontmatter,
+	frontmatterToCommand,
+	toFanoutContent as commandToFanoutContent,
+	isEnsembleManagedCommandFile,
+	readCommandMd,
+	writeCommandMd,
+	deleteCommandMd,
+	listCommandFiles,
+} from "./commands.js";
 
 // Projects
 export { listProjects, getProject, resolveProjectPath, isAvailable as isProjectRegistryAvailable } from "./projects.js";
