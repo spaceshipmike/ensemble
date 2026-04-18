@@ -955,6 +955,62 @@ discoverCmd
 		saveConfig(newConfig);
 	});
 
+// --- Hook CRUD (v2.0.1 stopgap; full CLI verb rewrite is chunk 8) ---
+
+const hookCmd = program.command("hook").description("Manage Ensemble-owned hooks");
+
+hookCmd
+	.command("add <name>")
+	.description("Add a hook to the canonical store")
+	.requiredOption("--event <event>", "One of: PreToolUse, PostToolUse, SessionStart, UserPromptSubmit, PreCompact, Stop, Notification")
+	.requiredOption("--matcher <matcher>", "Tool name or regex to match")
+	.requiredOption("--command <command>", "Shell command to run")
+	.option("--notes <text>", "Optional user-authored notes (never written to settings.json)")
+	.action((name, opts) => {
+		const { addHook } = require("../hooks.js") as typeof import("../hooks.js");
+		const result = addHook({
+			name,
+			event: opts.event,
+			matcher: opts.matcher,
+			command: opts.command,
+			userNotes: opts.notes,
+		});
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		console.log(`Added hook '${name}' (${result.hook?.description}).`);
+	});
+
+hookCmd
+	.command("remove <name>")
+	.description("Remove a hook from the canonical store")
+	.action((name) => {
+		const { removeHook } = require("../hooks.js") as typeof import("../hooks.js");
+		const result = removeHook(name);
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		console.log(`Removed hook '${name}'.`);
+	});
+
+hookCmd
+	.command("list")
+	.description("List every hook in the canonical store")
+	.action(() => {
+		const { listHooks } = require("../hooks.js") as typeof import("../hooks.js");
+		const all = listHooks();
+		if (all.length === 0) {
+			console.log("No hooks registered.");
+			return;
+		}
+		for (const h of all) {
+			const notes = h.userNotes ? `  — ${h.userNotes}` : "";
+			console.log(`${h.name}  ${h.description}  ${h.command}${notes}`);
+		}
+	});
+
 // --- Rollback (v2.0.1 safe-apply stopgap; full CLI verb rewrite is chunk 8) ---
 
 program

@@ -131,6 +131,43 @@ export const SettingsSchema = z.object({
 	snapshot_retention_days: z.number().int().min(0).default(30),
 });
 
+// --- Hook schema (v2.0.1 canonical hooks store) ---
+
+/**
+ * The seven Claude Code lifecycle events a hook can bind to.
+ * See https://docs.claude.com/en/docs/claude-code/hooks.
+ */
+export const HookEventSchema = z.enum([
+	"PreToolUse",
+	"PostToolUse",
+	"SessionStart",
+	"UserPromptSubmit",
+	"PreCompact",
+	"Stop",
+	"Notification",
+]);
+
+/**
+ * A library hook entry. `name` is the stable id under
+ * `~/.config/ensemble/hooks/<name>.json`. `event` and `matcher` are required;
+ * `matcher` may be a literal tool name or a regex. `command` is the shell
+ * command the hook invokes.
+ *
+ * `description` is source-owned and auto-computed from `${event} → ${matcher}`
+ * (see src/hooks.ts). It is never round-tripped into settings.json — it lives
+ * on the library entry for operator context. `userNotes` is user-owned
+ * freeform text, also library-side only, honouring the dual-field contract.
+ */
+export const HookSchema = z.object({
+	name: z.string().min(1),
+	event: HookEventSchema,
+	matcher: z.string().min(1),
+	command: z.string().min(1),
+	// description is auto-computed on serialize (not stored in the library JSON)
+	description: z.string().optional(),
+	userNotes: z.string().optional(),
+});
+
 // --- Managed settings schema (v2.0.1 non-destructive settings.json merge) ---
 
 /**
@@ -212,6 +249,8 @@ export type EnsembleConfig = z.infer<typeof EnsembleConfigSchema>;
 export type SnapshotFileEntry = z.infer<typeof SnapshotFileEntrySchema>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type ManagedSetting = z.infer<typeof SettingSchema>;
+export type HookEvent = z.infer<typeof HookEventSchema>;
+export type Hook = z.infer<typeof HookSchema>;
 
 // --- Constants ---
 

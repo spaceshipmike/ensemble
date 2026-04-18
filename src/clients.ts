@@ -504,16 +504,24 @@ export function projectServersKey(projectPath: string): string[] {
 
 // --- Claude Code settings helpers ---
 
+// CC_SETTINGS_PATH is kept for import-compat with external consumers; do not
+// cache it because $HOME may be overridden by tests / sandboxes. Use
+// `ccSettingsPath()` internally so every read/write resolves lazily.
 export const CC_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 
+/** Current Claude Code settings.json path — resolves $HOME at call time. */
+export function ccSettingsPath(): string {
+	return join(homedir(), ".claude", "settings.json");
+}
+
 export function readCCSettings(path?: string): Record<string, unknown> {
-	const p = path ?? CC_SETTINGS_PATH;
+	const p = path ?? ccSettingsPath();
 	if (!existsSync(p)) return {};
 	return JSON.parse(readFileSync(p, "utf-8")) as Record<string, unknown>;
 }
 
 export function writeCCSettings(settings: Record<string, unknown>, path?: string): void {
-	const p = path ?? CC_SETTINGS_PATH;
+	const p = path ?? ccSettingsPath();
 	backupConfig(p);
 	mkdirSync(dirname(p), { recursive: true });
 	writeFileSync(p, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");

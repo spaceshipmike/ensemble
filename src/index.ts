@@ -183,6 +183,12 @@ export type { MergeResult, MergeOptions } from "./settings.js";
 export { SettingSchema } from "./schemas.js";
 export type { ManagedSetting } from "./schemas.js";
 
+// Hooks (v2.0.1 canonical hooks store + fanout)
+export { addHook, removeHook, getHook, listHooks, hooksRoot, describeHook, toSettingsEntry, buildHooksSettings } from "./hooks.js";
+export type { AddHookParams, AddHookResult, RemoveHookResult, SettingsHookEntry } from "./hooks.js";
+export { HookSchema, HookEventSchema } from "./schemas.js";
+export type { Hook, HookEvent } from "./schemas.js";
+
 // Search
 export { searchAll, searchServers, searchSkills, searchPlugins, searchCapabilities, expandAliases, computeServerQualityScore, computeSkillQualityScore, QUERY_ALIASES } from "./search.js";
 export type { SearchResult } from "./search.js";

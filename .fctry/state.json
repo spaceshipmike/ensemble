@@ -1,6 +1,6 @@
 {
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "executor-plan"],
+  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
   "digestWritten": false,
   "untrackedChanges": [],
   "scanProgress": {
@@ -9,7 +9,8 @@
     "scanned": 0
   },
   "buildRun": {
-    "status": "running",
+    "status": "completed",
+    "completedAt": "2026-04-18T10:02:30Z",
     "startedAt": "2026-04-18T00:00:00Z",
     "plan": {
       "specVersion": "2.2.0",
@@ -17,7 +18,7 @@
       "approvedAt": "2026-04-18T00:00:00Z"
     },
     "chunkProgress": {
-      "completed": 2,
+      "completed": 3,
       "total": 3
     },
     "lastCheckpoint": null,
@@ -65,7 +66,7 @@
       {
         "id": 3,
         "name": "Hooks store",
-        "status": "planned",
+        "status": "completed",
         "scope": [
           "src/hooks.ts — 7 lifecycle events, matcher schema",
           "auto-generated description from event+matcher",
@@ -82,8 +83,8 @@
         "effort": "M",
         "exit": "install/uninstall a hook for Claude Code; settings.json keeps unrelated keys byte-identical; 7 event names accepted + validated",
         "isGoalGate": false,
-        "specVersionAtBuild": null,
-        "completedAt": null
+        "specVersionAtBuild": "2.2.0",
+        "completedAt": "2026-04-18T10:02:30Z"
       }
     ]
   }

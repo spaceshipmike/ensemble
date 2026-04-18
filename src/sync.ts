@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
-	CC_SETTINGS_PATH,
+	ccSettingsPath,
 	CLIENTS,
 	expandPath,
 	getEnabledPlugins,
@@ -35,6 +35,7 @@ import { scanSecrets } from "./secrets.js";
 import { skillDir as getSkillDir } from "./skills.js";
 import * as snapshots from "./snapshots.js";
 import { mergeSettings } from "./settings.js";
+import { buildHooksSettings, listHooks } from "./hooks.js";
 
 // --- Types ---
 
@@ -174,7 +175,7 @@ export function syncClient(
 		const toCapture = new Set<string>();
 		for (const p of paths) toCapture.add(p);
 		if (clientId === "claude-code") {
-			toCapture.add(CC_SETTINGS_PATH);
+			toCapture.add(ccSettingsPath());
 			const ccAssignment = getClient(config, clientId);
 			if (ccAssignment) {
 				for (const projPath of Object.keys(ccAssignment.projects)) {
@@ -573,11 +574,21 @@ function syncCCPlugins(
 
 	const mktChanges = JSON.stringify(newMkts) !== JSON.stringify(currentMkts);
 
-	if ((pluginChanges || mktChanges) && !dryRun) {
+	// v2.0.1 hooks fanout — read the canonical hooks store and fold the
+	// managed entries into settings.json under the `hooks` key. User-authored
+	// entries (no __ensemble marker) are preserved byte-identical.
+	const libraryHooks = listHooks();
+	const existingHooks = (settings["hooks"] && typeof settings["hooks"] === "object"
+		? (settings["hooks"] as Record<string, unknown>)
+		: undefined);
+	const nextHooks = buildHooksSettings(libraryHooks, existingHooks);
+	const hookChanges =
+		JSON.stringify(nextHooks) !== JSON.stringify(existingHooks ?? {});
+
+	if ((pluginChanges || mktChanges || hookChanges) && !dryRun) {
 		// Route the CC settings.json write through mergeSettings so the
-		// top-level keys we own (`enabledPlugins`, `extraKnownMarketplaces`)
-		// are applied non-destructively alongside any hook/setting entries
-		// other sync paths will add — and the merge is idempotent.
+		// top-level keys we own (`enabledPlugins`, `extraKnownMarketplaces`,
+		// `hooks`) are applied non-destructively alongside any user keys.
 		const managedNames = new Set(config.plugins.filter((p) => p.managed).map((p) => qualifiedPluginName(p)));
 		const nextEnabled: Record<string, boolean> = { ...currentEnabled };
 		for (const qname of Object.keys(nextEnabled)) {
@@ -589,8 +600,12 @@ function syncCCPlugins(
 
 		const { merged } = mergeSettings(
 			settings,
-			{ enabledPlugins: nextEnabled, extraKnownMarketplaces: newMkts },
-			["enabledPlugins", "extraKnownMarketplaces"],
+			{
+				enabledPlugins: nextEnabled,
+				extraKnownMarketplaces: newMkts,
+				hooks: nextHooks,
+			},
+			["enabledPlugins", "extraKnownMarketplaces", "hooks"],
 			{ releasePreviouslyOwned: false },
 		);
 
@@ -603,6 +618,9 @@ function syncCCPlugins(
 	}
 	if (mktChanges) {
 		actions.push(dryRun ? "Claude Code marketplaces: would sync" : "Claude Code marketplaces: synced");
+	}
+	if (hookChanges) {
+		actions.push(dryRun ? "Claude Code hooks: would sync" : "Claude Code hooks: synced");
 	}
 
 	return actions;
