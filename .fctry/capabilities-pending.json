@@ -1,0 +1,24 @@
+{
+  "project": "ensemble",
+  "capabilities": [
+    {
+      "name": "ensemble",
+      "type": "cli-command",
+      "description": "CLI binary from package.json",
+      "inputs": "./dist/cli/index.js",
+      "invocation_model": "sync",
+      "audience": "developer"
+    },
+    {
+      "name": "ens",
+      "type": "cli-command",
+      "description": "CLI binary from package.json",
+      "inputs": "./dist/cli/index.js",
+      "invocation_model": "sync",
+      "audience": "developer"
+    }
+  ],
+  "producer": "fctry",
+  "timestamp": "2026-04-18T14:06:04.430Z",
+  "reason": "registry unavailable — pending registration"
+}

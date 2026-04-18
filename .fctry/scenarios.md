@@ -42,6 +42,7 @@
 | Core | Dynamic Marketplace Registry (v2.0) | 3 | Marketplace Management |
 | Core | Expanded Client Roster 17 to 21 (v2.0) | 3 | Client Resolution and Sync |
 | Core | Migration v1.3 to v2.0.1 | 3 | Migration (mcpoyle to Ensemble), Library-First Resource Intake |
+| Core | Notes and Descriptions (v2.0.1) | 7 | Library-First Resource Intake, Registry and Discovery |
 
 ---
 
@@ -2220,4 +2221,132 @@ Validates: `#core-concepts` (Resource Lifecycle Model), `#config` (Migration)
 
 Difficulty: medium
 Validates: `#config` (Migration from mcpoyle), `#configuration-profiles`
+
+---
+
+## Feature: Notes and Descriptions (v2.0.1)
+> I annotate library items with my own notes that survive upstream changes, and every item carries a source-owned description I can lean on when I haven't written one yet.
+
+Category: Core | Depends on: Library-First Resource Intake, Registry and Discovery
+
+Every library item — server, plugin, skill, agent, command, hook — carries two text fields: `description` (source-owned, auto-populated from upstream metadata, silently refreshed on re-import) and `userNotes` (user-authored, separate field, never touched by re-import). User notes lead in display; descriptions provide fallback context. Notes are weighted 2x over descriptions in BM25 search. Notes ride along in profile export unless `--strip-notes` is passed.
+
+### Critical
+
+#### Scenario: Add a Note to a Server via the CLI
+
+> **Given** the library contains a server `github` pulled from an upstream registry with a description like `"GitHub MCP server — official"`
+> **When** the user runs `ensemble note server:github "prefer this over GitLab MCP — works with org SSO"`
+> **Then** the note is saved to the library entry, the command confirms success, and running `ensemble show server:github` displays the note as the primary line under `Notes:` with the upstream description shown below under `Description:`.
+
+**Satisfied when:**
+- `ensemble note <ref> "<text>"` attaches the text to the item's `userNotes` field and persists it
+- The same command works for every item type (server, plugin, skill, agent, command, hook) using a uniform ref syntax
+- `ensemble note <ref> ""` clears the note; `ensemble note <ref> --edit` opens `$EDITOR` for longer notes
+- `ensemble show` displays `userNotes` first and `description` second, each clearly labeled
+- The upstream `description` field is unchanged by the note operation
+
+Difficulty: easy
+Validates: `#cli` (note command), `#core-concepts` (Resource Model)
+
+#### Scenario: Edit a Note Inline in the Desktop Detail Pane
+
+> **Given** the desktop app is open on a library item that has no user note yet — only a source description
+> **When** the user clicks the description region in the detail pane, the text becomes editable in place, the user types a note, and then blurs the field (or presses `Cmd+Enter`)
+> **Then** the note saves without a modal, a brief "saved" pulse confirms it, the note takes over the primary subtitle slot, and the original upstream description drops to secondary weight beneath it (or behind an "About" disclosure if the note is long).
+
+**Satisfied when:**
+- Clicking the subtitle/description region enters inline edit mode — no modal, no separate page
+- Blur saves automatically; `Cmd+Enter` also saves; `Esc` cancels without persisting
+- A subtle "saved" pulse or equivalent affordance confirms persistence
+- With an empty note, the source `description` serves as the subtitle directly and a faint "Add note" affordance appears on hover
+- Once a note is present, the note is primary and the source description is visually secondary
+- No "missing notes" indicator or empty-state warning appears when `userNotes` is absent — the fallback is seamless
+
+Difficulty: medium
+Validates: `#desktop-app` (Detail pane), `#core-concepts` (Resource Model)
+
+#### Scenario: Re-Import Refreshes Description, Preserves User Notes, Doctor Reports
+
+> **Given** three library items pulled from an upstream registry, two of which have user-authored `userNotes`, and the upstream publishes new descriptions for all three
+> **When** the user re-imports (pull / sync from registry)
+> **Then** all three items silently receive the new upstream descriptions, every `userNotes` value is byte-identical to what it was before, and the next `ensemble doctor` run surfaces an informational finding like "3 items had their descriptions updated from upstream since last sync" with a `--show` flag to list them.
+
+**Satisfied when:**
+- Re-import overwrites `description` with fresh upstream text for each affected item
+- No item's `userNotes` field is modified — the user's words are preserved exactly
+- No intrusive notification, toast, or badge fires during the silent update
+- `ensemble doctor` reports a low-severity informational finding counting the refreshed items
+- `ensemble doctor --show` (or equivalent) lists the items and, ideally, a compact before/after of the changed descriptions
+- A re-import in which no upstream descriptions changed produces no doctor finding
+
+Difficulty: medium
+Validates: `#registry` (Re-import), `#doctor` (Findings), `#core-concepts` (Source-owned vs user-owned fields)
+
+#### Scenario: Search Surfaces userNotes-Matched Items Above Description-Only Matches
+
+> **Given** the library contains two servers: `alpha` whose upstream description contains the phrase "org SSO" and `beta` whose description does not mention SSO but whose `userNotes` reads "prefer this for org SSO login"
+> **When** the user runs `ensemble search "org sso"` (or uses desktop search)
+> **Then** `beta` ranks above `alpha` in the results because `userNotes` matches are weighted at 2x the weight of `description` matches in BM25 scoring.
+
+**Satisfied when:**
+- `userNotes` content is indexed and searchable for every item type
+- A match in `userNotes` contributes roughly 2x the score of an equivalent match in `description`
+- When only description matches exist, results still return correctly (no items are hidden by the weighting)
+- Clearing a note removes its contribution from the index on the next search
+- The weighting applies in both the library search and the desktop search surface
+
+Difficulty: medium
+Validates: `#search` (BM25 weighting), `#core-concepts` (Resource Model)
+
+#### Scenario: Hook Auto-Generated Description Displays Alongside a User Note
+
+> **Given** the library contains a hook with event `PostToolUse` and matcher `Edit`, so its auto-generated `description` is `"PostToolUse → Edit"`, and the user has attached a note: `"runs prettier on TS files after Claude edits them"`
+> **When** the user views the hook in `ensemble show hook:<id>` and in the desktop detail pane
+> **Then** the note leads as the primary content explaining *why* the hook exists, and the auto-generated `"PostToolUse → Edit"` appears as the labeled `Description:` line explaining *what* it technically is — with no special "generated" tag or visual distinction from a source-owned description.
+
+**Satisfied when:**
+- The hook's `description` is generated automatically from event+matcher and is not user-editable
+- When event or matcher changes, the `description` regenerates automatically
+- The hook's `description` is labeled identically to every other item type's description — no "auto-generated" badge
+- The user's note sits above the description in both CLI and desktop views
+- With no user note, the auto-generated description fills the primary slot seamlessly, exactly like an empty-note server falls back to its upstream description
+
+Difficulty: easy
+Validates: `#hooks` (Description generation), `#core-concepts` (Resource Model)
+
+### Edge Cases
+
+#### Scenario: Profile Export Includes Notes by Default, --strip-notes Omits Them
+
+> **Given** a group `work` contains three servers, each carrying user-authored `userNotes` explaining the curation rationale
+> **When** the user runs `ensemble export work` and separately `ensemble export work --strip-notes`, then inspects the two resulting profile-as-plugin bundles
+> **Then** the default export carries every `userNotes` value verbatim, while the `--strip-notes` export contains none of them — upstream descriptions are present in both.
+
+**Satisfied when:**
+- Default `ensemble export` writes `userNotes` for every included item into the exported profile
+- `--strip-notes` produces a byte-level clean export: no `userNotes` field on any item, no residual text
+- Upstream `description` fields are retained in both exports (strip-notes only affects user-authored content)
+- The desktop export dialog exposes a checkbox "Include personal notes" checked by default whose unchecked state is equivalent to `--strip-notes`
+- Importing the default export on another machine restores the notes as `userNotes` on the new library entries
+- Importing the stripped export produces items with empty `userNotes` and populated `description`
+
+Difficulty: medium
+Validates: `#export` (Profile-as-plugin), `#cli` (export command)
+
+#### Scenario: CLI List View Falls Back Seamlessly When Only Some Items Have Notes
+
+> **Given** a mixed list of items — some with `userNotes`, some with only an upstream `description`, and a freshly-added item with both fields empty
+> **When** the user runs `ensemble list` (and `ensemble list --verbose`)
+> **Then** items with notes show the note as the primary line, items without notes show the description as the primary line with no "missing notes" marker, and the bare item shows an empty-description placeholder consistent with how v1.3 rendered undescribed items. `--verbose` shows both fields on every item.
+
+**Satisfied when:**
+- Items with `userNotes` show the note text as the primary line; description collapses to a dim secondary line (or hides unless `--verbose`)
+- Items with only `description` show the description as the primary line — no visual hint that a note is "missing"
+- The fallback is seamless: a viewer cannot tell from the primary line alone whether they are reading a note or a description without the label
+- `--verbose` always renders both fields labeled, even when one is empty
+- Column alignment and truncation rules are identical across the two display modes (note-primary vs description-primary)
+
+Difficulty: easy
+Validates: `#cli` (list command), `#core-concepts` (Resource Model)
 
