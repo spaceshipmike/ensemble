@@ -109,6 +109,10 @@ export function getSkill(config: EnsembleConfig, name: string) {
 	return config.skills.find((s) => s.name === name);
 }
 
+export function getAgent(config: EnsembleConfig, name: string) {
+	return (config.agents ?? []).find((a) => a.name === name);
+}
+
 export function getMarketplace(config: EnsembleConfig, name: string) {
 	return config.marketplaces.find((m) => m.name === name);
 }
@@ -172,4 +176,17 @@ export function resolveSkills(
 		return config.skills.filter((s) => s.enabled && group.skills.includes(s.name));
 	}
 	return config.skills.filter((s) => s.enabled);
+}
+
+/**
+ * Get the agents a client should receive. Agents are currently always
+ * global-scoped (no per-group narrowing in v2.0.1) — every enabled agent
+ * fans out to every installed client that has an agentsDir. This mirrors
+ * the plugins/skills default-install precedent.
+ */
+export function resolveAgents(
+	config: EnsembleConfig,
+	_clientId: string,
+): EnsembleConfig["agents"] {
+	return (config.agents ?? []).filter((a) => a.enabled);
 }

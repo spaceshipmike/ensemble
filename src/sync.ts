@@ -28,11 +28,12 @@ import {
 	writeCCSettings,
 	writeServersNested,
 } from "./clients.js";
-import { computeEntryHash, getClient, matchRule, resolvePlugins, resolveServers, resolveSkills } from "./config.js";
+import { computeEntryHash, getClient, matchRule, resolveAgents, resolvePlugins, resolveServers, resolveSkills } from "./config.js";
 import { RESERVED_MARKETPLACE_NAMES, qualifiedPluginName } from "./schemas.js";
-import type { EnsembleConfig, Server } from "./schemas.js";
+import type { Agent, EnsembleConfig, Server } from "./schemas.js";
 import { scanSecrets } from "./secrets.js";
 import { skillDir as getSkillDir } from "./skills.js";
+import { toFanoutContent as agentFanoutContent, readAgentMd } from "./agents.js";
 import * as snapshots from "./snapshots.js";
 import { mergeSettings } from "./settings.js";
 import { buildHooksSettings, listHooks } from "./hooks.js";
@@ -185,6 +186,14 @@ export function syncClient(
 				}
 			}
 		}
+		// v2.0.1 agents fan-out — capture every target agent file a sync of
+		// this client might touch so rollback restores them byte-identical.
+		if (clientDef.agentsDir) {
+			const agentsOutDir = expandPath(clientDef.agentsDir);
+			for (const a of resolveAgents(config, clientId)) {
+				toCapture.add(join(agentsOutDir, `${a.name}.md`));
+			}
+		}
 		const files = Array.from(toCapture);
 		const snap = snapshots.capture(files, { syncContext: `sync ${clientId}` });
 		snapshotId = snap.id;
@@ -333,6 +342,19 @@ export function syncClient(
 		// Sync plugins and marketplaces to CC settings
 		const pluginActions = syncCCPlugins(config, clientId, dryRun, prewriteCapture);
 		allActions.push(...pluginActions.map((msg) => ({ type: "add" as const, name: msg, detail: "plugin" })));
+	}
+
+	// v2.0.1 agents fan-out — include in the sync so one snapshot covers every
+	// file touched by this sync call.
+	if (clientDef.agentsDir) {
+		const agentResult = syncAgents(config, clientId, { dryRun, prewriteCapture });
+		for (const action of agentResult.actions) {
+			allActions.push({
+				type: action.type === "remove" ? "remove" : "add",
+				name: action.agentName,
+				detail: `agent: ${action.type}`,
+			});
+		}
 	}
 
 	// Update config with new hashes and timestamp
@@ -930,6 +952,138 @@ export function syncSkills(
 		messages: [`${clientDef.name} skills: synced ${desiredNames.size} skill(s)`],
 		conflicts,
 	};
+}
+
+// --- Agents sync (v2.0.1) ---
+
+export interface AgentSyncAction {
+	type: "write" | "remove" | "skip";
+	agentName: string;
+	targetPath: string;
+	detail?: string;
+}
+
+export interface AgentSyncResult {
+	clientId: string;
+	actions: AgentSyncAction[];
+	messages: string[];
+}
+
+/**
+ * Fan canonical agents out to a client's agents directory. Dual-field contract:
+ * the fan-out copy carries only `__ensemble`/`name`/`description`/`tools`/
+ * `model`; `userNotes` and `lastDescriptionHash` stay library-side.
+ *
+ * Additive: agent files without the `__ensemble: true` frontmatter marker are
+ * preserved byte-identical — only our own managed files are touched.
+ */
+export function syncAgents(
+	config: EnsembleConfig,
+	clientId: string,
+	options?: { dryRun?: boolean; prewriteCapture?: () => void },
+): AgentSyncResult {
+	const clientDef = CLIENTS[clientId];
+	if (!clientDef?.agentsDir) {
+		return { clientId, actions: [], messages: [`${clientId}: no agents directory configured`] };
+	}
+
+	const agentsDir = expandPath(clientDef.agentsDir);
+	const agents = resolveAgents(config, clientId);
+	const actions: AgentSyncAction[] = [];
+	const desiredNames = new Set(agents.map((a) => a.name));
+	const dryRun = options?.dryRun ?? false;
+
+	// Enumerate existing managed files (our fan-out marker is frontmatter
+	// `__ensemble: true`).
+	const existingManaged = new Set<string>();
+	if (existsSync(agentsDir)) {
+		for (const entry of readdirSync(agentsDir, { withFileTypes: true })) {
+			if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+			const full = join(agentsDir, entry.name);
+			try {
+				const text = readFileSync(full, "utf-8");
+				// Cheap frontmatter-marker sniff — avoid a full parse per file.
+				if (/^---[\s\S]*?__ensemble:\s*true[\s\S]*?---/m.test(text)) {
+					existingManaged.add(entry.name.slice(0, -3));
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
+	const toRemove = [...existingManaged].filter((n) => !desiredNames.has(n));
+
+	// For each desired agent, compute target content and compare with on-disk.
+	const toWrite: Agent[] = [];
+	for (const a of agents) {
+		const target = join(agentsDir, `${a.name}.md`);
+		// Load body from canonical store; empty body is fine.
+		const canonical = readAgentMd(a.name);
+		const body = canonical?.body ?? "";
+		const expected = agentFanoutContent(a, body);
+		let current = "";
+		if (existsSync(target)) {
+			try {
+				current = readFileSync(target, "utf-8");
+			} catch {
+				current = "";
+			}
+			// Non-managed files are left alone (additive sync).
+			if (!/^---[\s\S]*?__ensemble:\s*true[\s\S]*?---/m.test(current) && current !== "") {
+				actions.push({
+					type: "skip",
+					agentName: a.name,
+					targetPath: target,
+					detail: "user-authored file, not overwritten",
+				});
+				continue;
+			}
+		}
+		if (current !== expected) {
+			toWrite.push(a);
+		}
+	}
+
+	for (const a of toWrite) {
+		actions.push({ type: "write", agentName: a.name, targetPath: join(agentsDir, `${a.name}.md`) });
+	}
+	for (const name of toRemove) {
+		actions.push({ type: "remove", agentName: name, targetPath: join(agentsDir, `${name}.md`) });
+	}
+
+	if (actions.length === 0) {
+		return { clientId, actions, messages: [`${clientDef.name} agents: already in sync`] };
+	}
+
+	if (dryRun) {
+		return { clientId, actions, messages: [`${clientDef.name} agents: would sync ${desiredNames.size} agent(s)`] };
+	}
+
+	// Only fire prewriteCapture if we're actually going to write.
+	if (toWrite.length > 0 || toRemove.length > 0) {
+		options?.prewriteCapture?.();
+	}
+
+	mkdirSync(agentsDir, { recursive: true });
+
+	for (const name of toRemove) {
+		const target = join(agentsDir, `${name}.md`);
+		try {
+			rmSync(target, { force: true });
+		} catch {
+			/* already gone */
+		}
+	}
+
+	for (const a of toWrite) {
+		const target = join(agentsDir, `${a.name}.md`);
+		const canonical = readAgentMd(a.name);
+		const body = canonical?.body ?? "";
+		writeFileSync(target, agentFanoutContent(a, body), "utf-8");
+	}
+
+	return { clientId, actions, messages: [`${clientDef.name} agents: synced ${desiredNames.size} agent(s)`] };
 }
 
 /** Hash the contents of a directory for drift comparison. */

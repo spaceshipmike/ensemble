@@ -26,6 +26,8 @@ export interface ClientDef {
 	globPattern?: boolean;
 	configFormat: "json" | "toml";
 	skillsDir?: string; // unexpanded path for skills directory
+	agentsDir?: string; // unexpanded path for subagents directory (v2.0.1)
+	commandsDir?: string; // unexpanded path for slash commands directory (v2.0.1)
 	supportsPlugins?: boolean;
 	contextWindow?: number; // max context window in tokens
 	// Strict detection — when set, `isInstalled` ignores config files entirely
@@ -59,6 +61,8 @@ const clientDefs: ClientDef[] = [
 		requireBin: "claude",
 		configFormat: "json",
 		skillsDir: "~/.claude/skills",
+		agentsDir: "~/.claude/agents",
+		commandsDir: "~/.claude/commands",
 		supportsPlugins: true,
 		contextWindow: 200000,
 	},

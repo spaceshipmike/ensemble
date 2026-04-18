@@ -7,9 +7,9 @@
 
 import { resolve } from "node:path";
 import { CLIENTS } from "./clients.js";
-import { getClient, getGroup, getMarketplace, getPlugin, getServer, getSkill } from "./config.js";
+import { getAgent, getClient, getGroup, getMarketplace, getPlugin, getServer, getSkill } from "./config.js";
 import { expandPath } from "./clients.js";
-import type { EnsembleConfig, Group, Marketplace, MarketplaceSource, Plugin, Profile, Server, ServerOrigin, Skill, ToolInfo } from "./schemas.js";
+import type { Agent, EnsembleConfig, Group, Marketplace, MarketplaceSource, Plugin, Profile, Server, ServerOrigin, Skill, ToolInfo } from "./schemas.js";
 import { RESERVED_MARKETPLACE_NAMES } from "./schemas.js";
 
 // --- Result types ---
@@ -38,6 +38,10 @@ export interface GroupResult extends OpResult {
 
 export interface SkillResult extends OpResult {
 	skill: Skill | null;
+}
+
+export interface AgentResult extends OpResult {
+	agent: Agent | null;
 }
 
 export interface AssignResult extends OpResult {
@@ -892,6 +896,80 @@ export function disableSkill(config: EnsembleConfig, name: string): OpReturn<Ski
 	return {
 		config: { ...config, skills: config.skills.map((s) => (s.name === name ? updated : s)) },
 		result: { ...ok([`Disabled skill '${name}'.`]), skill: updated },
+	};
+}
+
+// --- Agent operations (pure — no disk I/O for *.md files) ---
+
+export function installAgent(
+	config: EnsembleConfig,
+	params: {
+		name: string;
+		description?: string;
+		tools?: string[];
+		model?: string;
+		path?: string;
+	},
+): OpReturn<AgentResult> {
+	if (getAgent(config, params.name)) {
+		return { config, result: { ...fail(`Agent '${params.name}' already exists.`), agent: null } };
+	}
+
+	const agent: Agent = {
+		name: params.name,
+		enabled: true,
+		description: params.description ?? "",
+		tools: params.tools ?? [],
+		...(params.model ? { model: params.model } : {}),
+		path: params.path ?? "",
+	};
+
+	const agents = config.agents ?? [];
+	return {
+		config: { ...config, agents: [...agents, agent] },
+		result: { ...ok([`Installed agent '${params.name}'.`]), agent },
+	};
+}
+
+export function uninstallAgent(config: EnsembleConfig, name: string): OpReturn<AgentResult> {
+	const agent = getAgent(config, name);
+	if (!agent) {
+		return { config, result: { ...fail(`Agent '${name}' not found.`), agent: null } };
+	}
+
+	const agents = config.agents ?? [];
+	return {
+		config: {
+			...config,
+			agents: agents.filter((a) => a.name !== name),
+		},
+		result: { ...ok([`Removed agent '${name}'.`]), agent },
+	};
+}
+
+export function enableAgent(config: EnsembleConfig, name: string): OpReturn<AgentResult> {
+	const agent = getAgent(config, name);
+	if (!agent) {
+		return { config, result: { ...fail(`Agent '${name}' not found.`), agent: null } };
+	}
+	const updated = { ...agent, enabled: true };
+	const agents = config.agents ?? [];
+	return {
+		config: { ...config, agents: agents.map((a) => (a.name === name ? updated : a)) },
+		result: { ...ok([`Enabled agent '${name}'.`]), agent: updated },
+	};
+}
+
+export function disableAgent(config: EnsembleConfig, name: string): OpReturn<AgentResult> {
+	const agent = getAgent(config, name);
+	if (!agent) {
+		return { config, result: { ...fail(`Agent '${name}' not found.`), agent: null } };
+	}
+	const updated = { ...agent, enabled: false };
+	const agents = config.agents ?? [];
+	return {
+		config: { ...config, agents: agents.map((a) => (a.name === name ? updated : a)) },
+		result: { ...ok([`Disabled agent '${name}'.`]), agent: updated },
 	};
 }
 

@@ -86,10 +86,44 @@ export const SkillSchema = z.object({
 	lastDescriptionHash: z.string().optional(),
 });
 
-// TODO(v2.0.3): When agents.ts / commands.ts / hooks.ts modules land, their
-// schemas should include both `description` (source-owned, refreshed on
-// re-import) and `userNotes` (user-owned, preserved across re-imports) from
-// day one — same shape as ServerSchema / PluginSchema / SkillSchema above.
+// TODO(v2.0.3): When commands.ts lands, its schema should include both
+// `description` (source-owned, refreshed on re-import) and `userNotes`
+// (user-owned, preserved across re-imports) from day one — same shape as
+// ServerSchema / PluginSchema / SkillSchema / AgentSchema above.
+
+/**
+ * A Claude Code subagent stored in the canonical library at
+ * `~/.config/ensemble/agents/<name>.md`.
+ *
+ * The on-disk file is a markdown document with YAML frontmatter. Frontmatter
+ * fields:
+ *   - `name` (string, required) — stable identifier; filename-safe.
+ *   - `description` (string, source-owned) — surfaced in UIs. Re-imported
+ *     copies overwrite this field so upstream description changes propagate.
+ *   - `tools` (string[] or string) — optional restriction on which tools the
+ *     agent may call; absent means "all tools available to the parent session".
+ *   - `model` (string, optional) — override the default model this agent uses.
+ *
+ * The library entry also carries `userNotes` (user-owned, never touched by
+ * re-import) and `lastDescriptionHash` (so doctor can surface "descriptions
+ * refreshed" findings on re-import). These live only in the library — fan-out
+ * to `~/.claude/agents/` copies only the source-owned frontmatter.
+ */
+export const AgentSchema = z.object({
+	name: z.string().min(1),
+	enabled: z.boolean().default(true),
+	description: z.string().default(""),
+	/** Optional restriction on which tools the agent may call. Empty = all. */
+	tools: z.array(z.string()).default([]),
+	/** Optional model override for this agent. */
+	model: z.string().optional(),
+	/** Filesystem path of the canonical library copy. */
+	path: z.string().default(""),
+	/** Free-form operator-owned notes (never round-tripped to fan-out). */
+	userNotes: z.string().optional(),
+	/** SHA-256 of the last imported description — powers re-import drift checks. */
+	lastDescriptionHash: z.string().optional(),
+});
 
 export const GroupSchema = z.object({
 	name: z.string(),
@@ -225,6 +259,8 @@ export const EnsembleConfigSchema = z.object({
 	marketplaces: z.array(MarketplaceSchema).default([]),
 	rules: z.array(PathRuleSchema).default([]),
 	skills: z.array(SkillSchema).default([]),
+	/** Subagents (v2.0.1 #core-concepts). */
+	agents: z.array(AgentSchema).default([]),
 	settings: SettingsSchema.default({}),
 	profiles: z.record(ProfileSchema).default({}),
 	activeProfile: z.string().nullable().default(null),
@@ -239,6 +275,7 @@ export type Plugin = z.infer<typeof PluginSchema>;
 export type MarketplaceSource = z.infer<typeof MarketplaceSourceSchema>;
 export type Marketplace = z.infer<typeof MarketplaceSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
+export type Agent = z.infer<typeof AgentSchema>;
 export type Group = z.infer<typeof GroupSchema>;
 export type PathRule = z.infer<typeof PathRuleSchema>;
 export type ProjectAssignment = z.infer<typeof ProjectAssignmentSchema>;

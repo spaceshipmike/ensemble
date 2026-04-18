@@ -1,91 +1,83 @@
 {
   "currentCommand": "execute",
-  "completedSteps": ["state-owner-scan", "executor-plan", "executor-build"],
-  "digestWritten": false,
-  "untrackedChanges": [],
-  "scanProgress": {
-    "total": 0,
-    "skipped": 0,
-    "scanned": 0
-  },
+  "completedSteps": ["state-owner-scan", "executor-plan"],
+  "digestWritten": true,
   "buildRun": {
-    "status": "completed",
-    "completedAt": "2026-04-18T10:02:30Z",
-    "startedAt": "2026-04-18T00:00:00Z",
+    "status": "running",
+    "startedAt": "2026-04-18T11:00:00Z",
     "plan": {
-      "specVersion": "2.2.0",
-      "scope": "slim-cut: Chunks 1-3 (snapshots + settings + hooks)",
-      "approvedAt": "2026-04-18T00:00:00Z"
+      "specVersion": "2.3.0",
+      "approvedAt": "2026-04-18T11:00:00Z",
+      "scope": "v2.0.1 slim cut — chunks 4-7",
+      "externalVersionStart": "1.0.9",
+      "proposedEndVersion": "1.1.0",
+      "proposedAtMilestone": "end of chunk 7"
     },
-    "chunkProgress": {
-      "completed": 3,
-      "total": 3
-    },
-    "lastCheckpoint": null,
     "chunks": [
       {
-        "id": 1,
-        "name": "Snapshots + safe-apply wiring",
+        "id": 4,
+        "name": "agents store",
         "status": "completed",
-        "scope": [
-          "src/snapshots.ts — capture, restore, list, retention, manifest",
-          "SnapshotSchema in schemas.ts",
-          "./snapshots subpath export in package.json",
-          "sync.ts: call snapshots.capture() before any client write; record new-files in manifest",
-          "retention pruning on sync exit"
-        ],
-        "scenariosSatisfied": ["Safe Apply and Rollback Snapshots (v2.0)"],
-        "blockedBy": [],
-        "effort": "L",
-        "exit": "ensemble sync writes a snapshot dir before touching client files; ensemble rollback --latest restores byte-identical state",
-        "isGoalGate": true,
-        "specVersionAtBuild": "2.2.0",
-        "completedAt": "2026-04-18T09:51:00Z"
+        "scope": "src/agents.ts + sync fan-out + tests; user can pull+install an agent, fan-out to ~/.claude/agents/; dual-field contract holds",
+        "specRefs": ["#core-concepts L196", "#architecture L2216"],
+        "scenarios": ["L1831", "L1912 (agents half)"],
+        "deps": ["chunks 1-3"],
+        "size": "M",
+        "commitSeed": "chunk 4: agents store (v2.0.1)",
+        "assumptions": ["global-scope default install (matches skills/plugins)"],
+        "startedAt": "2026-04-18T11:05:00Z",
+        "completedAt": "2026-04-18T11:20:00Z",
+        "specVersionAtBuild": "2.3.0",
+        "externalVersion": "1.0.10"
       },
       {
-        "id": 2,
-        "name": "Declarative settings management",
-        "status": "completed",
-        "scope": [
-          "src/settings.ts — non-destructive key-level merge primitive",
-          "managed-key tracking with __ensemble markers",
-          "SettingSchema in schemas.ts",
-          "./settings subpath export in package.json"
-        ],
-        "scenariosSatisfied": [
-          "Non-Destructive settings.json Merge (v2.0)",
-          "Managed Agents, Commands, Hooks, Settings (v2.0) — settings subset"
-        ],
-        "blockedBy": [1],
-        "effort": "M",
-        "exit": "arbitrary user keys in settings.json are byte-identical before/after a sync that modifies Ensemble-owned keys; merge is associative and idempotent",
-        "isGoalGate": false,
-        "specVersionAtBuild": "2.2.0",
-        "completedAt": "2026-04-18T09:56:30Z"
+        "id": 5,
+        "name": "commands store",
+        "status": "planned",
+        "scope": "src/commands.ts parallel to agents; parses description/allowed-tools/argument-hint; fan-out to ~/.claude/commands/",
+        "specRefs": ["#core-concepts L197", "#architecture L2217"],
+        "scenarios": ["L1863", "L1912 (commands half)"],
+        "deps": [4],
+        "size": "M",
+        "commitSeed": "chunk 5: commands store (v2.0.1)"
       },
       {
-        "id": 3,
-        "name": "Hooks store",
-        "status": "completed",
-        "scope": [
-          "src/hooks.ts — 7 lifecycle events, matcher schema",
-          "auto-generated description from event+matcher",
-          "canonical store at ~/.config/ensemble/hooks/",
-          "sync fan-out writing under hooks key via Chunk 2's merge",
-          "HookSchema in schemas.ts",
-          "./hooks subpath export in package.json"
-        ],
-        "scenariosSatisfied": [
-          "Managed Agents, Commands, Hooks, Settings (v2.0) — hooks subset",
-          "Non-Destructive settings.json Merge — hooks-ownership path"
-        ],
-        "blockedBy": [1, 2],
-        "effort": "M",
-        "exit": "install/uninstall a hook for Claude Code; settings.json keeps unrelated keys byte-identical; 7 event names accepted + validated",
-        "isGoalGate": false,
-        "specVersionAtBuild": "2.2.0",
-        "completedAt": "2026-04-18T10:02:30Z"
+        "id": 6,
+        "name": "doctor v2 additive checks",
+        "status": "planned",
+        "scope": "4 additive checks: orphan snapshots, snapshot-dir size, agents/commands drift, retention config visibility",
+        "specRefs": ["#doctor (doctor.ts module role L2190)"],
+        "scenarios": [],
+        "deps": [4, 5],
+        "size": "S",
+        "commitSeed": "chunk 6: doctor v2 additive checks (v2.0.1)",
+        "assumptions": ["500 MB default snapshot-dir size warn threshold"]
+      },
+      {
+        "id": 7,
+        "name": "snapshots inspector (desktop)",
+        "status": "planned",
+        "scope": "Desktop SnapshotsView + snapshots sub-router + Playwright; reverse-chronological list, per-file expand, restore with confirm",
+        "specRefs": ["#desktop-app L878", "#sync L241"],
+        "scenarios": ["L1775"],
+        "deps": [1],
+        "size": "S",
+        "commitSeed": "chunk 7: snapshots inspector desktop (v2.0.1)",
+        "assumptions": ["restore dialog copy mirrors CLI rollback warning"]
       }
-    ]
+    ],
+    "chunkProgress": {
+      "completed": 1,
+      "total": 4
+    },
+    "lastCheckpoint": "2026-04-18T11:20:00Z",
+    "priorities": {
+      "reliability": "high",
+      "speed": "medium",
+      "tokens": "medium",
+      "retries": "conservative",
+      "chunkSize": "small",
+      "verification": "thorough"
+    }
   }
 }
