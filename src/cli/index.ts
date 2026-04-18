@@ -1596,6 +1596,18 @@ program.command("projects").description("List registry projects").action(() => {
 	}
 });
 
+// --- One-shot v1.3 -> v2.0.1 translator (deleted after migration) ---
+
+program
+	.command("import-legacy")
+	.description("Translate the current v1.3 config into v2.0.1 library + install matrix (one-shot)")
+	.option("--dry-run", "Preview the translation without writing")
+	.action((opts: { dryRun?: boolean }) => {
+		const { runImportLegacy, formatSummary } = require("../import-legacy.js") as typeof import("../import-legacy.js");
+		const summary = runImportLegacy({ dryRun: Boolean(opts.dryRun) });
+		console.log(formatSummary(summary));
+	});
+
 // --- Reference ---
 
 program.command("reference").description("Show full command reference").action(() => {

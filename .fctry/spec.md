@@ -767,7 +767,7 @@ A single transitional subsystem — `ensemble import-legacy`, backed by `src/imp
 **Outputs.**
 
 1. A new `~/.config/ensemble/config.json` in the v2.0.1 shape: every server, skill, and plugin is placed in the library; per-client/per-project install state is reconstructed from the disk scan.
-2. A backup at `~/.config/ensemble/config.v1.bak.json` — the user's pre-import v1.3 config, untouched, available for rollback.
+2. A backup at `~/.config/ensemble/config.json.v1.3.bak` — the user's pre-import v1.3 config, untouched, available for rollback.
 3. A human-readable summary printed to stdout: "Imported N servers, M skills, K plugins. Install state reconstructed across C clients. Library contains R total resources."
 
 **Ambiguity handling.** If the disk scan finds a resource that exists in a client's config but not in the v1.3 ensemble registry — or vice versa — the script reports the ambiguity, imports the resource conservatively as "in library, not installed" (so nothing is silently dropped), and lets the user correct it manually. There is no clever reconciliation logic: the user is present at the one-time import and can fix anything that looks wrong.

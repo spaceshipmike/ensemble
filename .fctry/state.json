@@ -7,7 +7,8 @@
     "to": "0.83.0"
   },
   "buildRun": {
-    "status": "running",
+    "status": "awaiting-user",
+    "pausedReason": "Manual gate: user must run ensemble import-legacy on their live machine before chunk 13 proceeds.",
     "startedAt": "2026-04-18T16:00:00Z",
     "plan": {
       "specVersion": "2.4.1",
@@ -57,18 +58,22 @@
         {
           "id": "12",
           "name": "import-legacy.ts + ensemble import-legacy CLI subcommand",
-          "status": "planned",
+          "status": "completed",
           "size": "L",
-          "files": ["src/import-legacy.ts", "src/cli/index.ts", "tests/import-legacy.test.ts"],
+          "files": ["src/import-legacy.ts", "src/cli/index.ts", "tests/import-legacy.test.ts", ".fctry/spec.md"],
           "sections": ["migration"],
-          "dependsOn": ["11a", "11b", "11c"]
+          "dependsOn": ["11a", "11b", "11c"],
+          "startedAt": "2026-04-18T16:52:30Z",
+          "completedAt": "2026-04-18T16:58:00Z",
+          "specVersionAtBuild": "2.4.1"
         },
         {
           "id": "MANUAL",
           "name": "User runs ensemble import-legacy, inspects, confirms",
-          "status": "planned",
+          "status": "awaiting-user",
           "size": "GATE",
-          "dependsOn": ["12"]
+          "dependsOn": ["12"],
+          "awaitingUserAt": "2026-04-18T16:58:30Z"
         },
         {
           "id": "13",
@@ -110,9 +115,10 @@
     },
     "chunkProgress": {
       "total": 7,
-      "completed": 0,
-      "failed": 0
+      "completed": 4,
+      "failed": 0,
+      "awaitingUser": 1
     },
-    "lastCheckpoint": "2026-04-18T16:00:00Z"
+    "lastCheckpoint": "2026-04-18T16:58:30Z"
   }
 }
