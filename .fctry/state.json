@@ -33,11 +33,14 @@
         {
           "id": "11b",
           "name": "New library + install operations (side-by-side with v1.3)",
-          "status": "planned",
+          "status": "completed",
           "size": "M",
-          "files": ["src/operations.ts", "tests/operations.test.ts"],
+          "files": ["src/operations.ts", "tests/operations.test.ts", "src/clients.ts"],
           "sections": ["library-api"],
-          "dependsOn": ["11a"]
+          "dependsOn": ["11a"],
+          "startedAt": "2026-04-18T16:46:00Z",
+          "completedAt": "2026-04-18T16:50:00Z",
+          "specVersionAtBuild": "2.4.1"
         },
         {
           "id": "11c",

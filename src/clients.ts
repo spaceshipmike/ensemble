@@ -37,6 +37,11 @@ export interface ClientDef {
 	requireApp?: string | string[]; // macOS .app bundle path; any-of semantics
 	requireBin?: string; // binary name to resolve on PATH
 	requireVscodeExtension?: string; // directory prefix in ~/.vscode/extensions
+	// v2.0.1 — whether the client supports per-project install scopes.
+	// Only Claude Code today: `~/.claude.json` has a `projects` key whose
+	// entries each carry their own `mcpServers`. Other clients treat install
+	// state as user-global. Absence (undefined) means "does not support it."
+	supportsProjectScoping?: boolean;
 }
 
 // --- Client registry ---
@@ -64,6 +69,7 @@ const clientDefs: ClientDef[] = [
 		agentsDir: "~/.claude/agents",
 		commandsDir: "~/.claude/commands",
 		supportsPlugins: true,
+		supportsProjectScoping: true,
 		contextWindow: 200000,
 	},
 	{

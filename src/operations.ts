@@ -9,7 +9,27 @@ import { resolve } from "node:path";
 import { CLIENTS } from "./clients.js";
 import { getAgent, getClient, getCommand, getGroup, getMarketplace, getPlugin, getServer, getSkill } from "./config.js";
 import { expandPath } from "./clients.js";
-import type { Agent, Command, EnsembleConfig, Group, Marketplace, MarketplaceSource, Plugin, Profile, Server, ServerOrigin, Skill, ToolInfo } from "./schemas.js";
+import type {
+	Agent,
+	Command,
+	EnsembleConfig,
+	Group,
+	Hook,
+	InstallClientRecord,
+	InstallState,
+	LibraryResource,
+	Marketplace,
+	MarketplaceSource,
+	ManagedSetting,
+	PivotSpec,
+	Plugin,
+	Profile,
+	ResourceType,
+	Server,
+	ServerOrigin,
+	Skill,
+	ToolInfo,
+} from "./schemas.js";
 import { RESERVED_MARKETPLACE_NAMES } from "./schemas.js";
 
 // --- Result types ---
@@ -1655,6 +1675,750 @@ export function deleteProfile(
 	return {
 		config: { ...config, profiles: newProfiles, activeProfile: newActive },
 		result: { ...ok([`Deleted profile '${name}'.`]), profile },
+	};
+}
+
+// --- Library-first lifecycle (v2.0.1) ---------------------------------------
+//
+// These operations treat the library as the source of truth and install state
+// as a per-resource matrix. They live side-by-side with the v1.3 verbs during
+// the migration window. The v1.3 verbs are removed in chunk 13 after the user
+// has run `ensemble import-legacy`.
+//
+// Every helper is pure: it reads and returns config, never performs I/O.
+
+export interface LibraryResourceResult extends OpResult {
+	type: ResourceType;
+	name: string;
+}
+
+export interface InstallStateResult extends OpResult {
+	type: ResourceType;
+	name: string;
+	installState: InstallState;
+}
+
+export interface PullResult extends OpResult {
+	type: ResourceType;
+	name: string;
+	alreadyPresent: boolean;
+}
+
+/** Read helper — find a library resource by (name, type). Returns the
+ *  wrapped tagged-union entry or null if it isn't in the library. */
+export function getLibraryResource(
+	config: EnsembleConfig,
+	name: string,
+	type: ResourceType,
+): LibraryResource | null {
+	switch (type) {
+		case "server": {
+			const s = config.servers.find((x) => x.name === name);
+			return s ? { type: "server", resource: s } : null;
+		}
+		case "skill": {
+			const s = config.skills.find((x) => x.name === name);
+			return s ? { type: "skill", resource: s } : null;
+		}
+		case "plugin": {
+			const p = config.plugins.find((x) => x.name === name);
+			return p ? { type: "plugin", resource: p } : null;
+		}
+		case "agent": {
+			const a = (config.agents ?? []).find((x) => x.name === name);
+			return a ? { type: "agent", resource: a } : null;
+		}
+		case "command": {
+			const c = (config.commands ?? []).find((x) => x.name === name);
+			return c ? { type: "command", resource: c } : null;
+		}
+		case "hook": {
+			const h = ((config as EnsembleConfig & { hooks?: Hook[] }).hooks ?? []).find(
+				(x) => x.name === name,
+			);
+			return h ? { type: "hook", resource: h } : null;
+		}
+		case "setting": {
+			const s = (
+				(config as EnsembleConfig & { managedSettings?: ManagedSetting[] }).managedSettings ?? []
+			).find((x) => x.keyPath === name);
+			return s ? { type: "setting", resource: s } : null;
+		}
+	}
+}
+
+/** List every library resource across all seven types, wrapped in their
+ *  tagged-union envelope. Useful for pivot filters and display. */
+export function listLibraryResources(config: EnsembleConfig): LibraryResource[] {
+	const out: LibraryResource[] = [];
+	for (const s of config.servers) out.push({ type: "server", resource: s });
+	for (const s of config.skills) out.push({ type: "skill", resource: s });
+	for (const p of config.plugins) out.push({ type: "plugin", resource: p });
+	for (const a of config.agents ?? []) out.push({ type: "agent", resource: a });
+	for (const c of config.commands ?? []) out.push({ type: "command", resource: c });
+	const hooks = (config as EnsembleConfig & { hooks?: Hook[] }).hooks ?? [];
+	for (const h of hooks) out.push({ type: "hook", resource: h });
+	const settings =
+		(config as EnsembleConfig & { managedSettings?: ManagedSetting[] }).managedSettings ?? [];
+	for (const s of settings) out.push({ type: "setting", resource: s });
+	return out;
+}
+
+/** Read the per-client/per-project install matrix for a single resource. */
+export function getInstallState(
+	config: EnsembleConfig,
+	params: { name: string; type: ResourceType },
+): InstallState {
+	const entry = getLibraryResource(config, params.name, params.type);
+	if (!entry) return {};
+	const res = entry.resource as { installState?: InstallState };
+	return res.installState ?? {};
+}
+
+/** Filter the library through a pivot view. Returns only resources that
+ *  match the pivot's criteria. */
+export function getLibraryByPivot(
+	config: EnsembleConfig,
+	pivot: PivotSpec,
+): LibraryResource[] {
+	const all = listLibraryResources(config);
+	switch (pivot.kind) {
+		case "library":
+			return all;
+		case "project": {
+			const target = pivot.path;
+			return all.filter((r) => {
+				const matrix =
+					(r.resource as { installState?: InstallState }).installState ?? {};
+				for (const entry of Object.values(matrix)) {
+					if (target === undefined && entry.projects.length > 0) return true;
+					if (target !== undefined && entry.projects.includes(target)) return true;
+				}
+				return false;
+			});
+		}
+		case "group": {
+			const group = getGroup(config, pivot.name);
+			if (!group) return [];
+			const members = new Set<string>();
+			for (const n of group.servers) members.add(`server:${n}`);
+			for (const n of group.plugins) members.add(`plugin:${n}`);
+			for (const n of group.skills) members.add(`skill:${n}`);
+			return all.filter((r) => {
+				const key = `${r.type}:${r.type === "setting" ? r.resource.keyPath : r.resource.name}`;
+				return members.has(key);
+			});
+		}
+		case "client": {
+			const { client, scope, project } = pivot;
+			return all.filter((r) => {
+				const record = (r.resource as { installState?: InstallState }).installState?.[client];
+				if (!record) return false;
+				if (scope === "user") return record.installed;
+				if (scope === "project") {
+					if (project === undefined) return record.projects.length > 0;
+					return record.projects.includes(project);
+				}
+				return record.installed || record.projects.length > 0;
+			});
+		}
+		case "marketplace": {
+			return all.filter((r) => {
+				if (r.type === "plugin") return r.resource.marketplace === pivot.name;
+				if (r.type === "server") return r.resource.origin.client === pivot.name;
+				return false;
+			});
+		}
+	}
+}
+
+// --- Library-write helpers ---------------------------------------------------
+
+/** Return a new config with `replacement` swapped in for the matching entry
+ *  of the given type/name. Silently returns the original config if the
+ *  entry isn't found. */
+function replaceLibraryResource(
+	config: EnsembleConfig,
+	name: string,
+	type: ResourceType,
+	mutator: (r: LibraryResource["resource"]) => LibraryResource["resource"],
+): EnsembleConfig {
+	switch (type) {
+		case "server":
+			return {
+				...config,
+				servers: config.servers.map((s) => (s.name === name ? (mutator(s) as Server) : s)),
+			};
+		case "skill":
+			return {
+				...config,
+				skills: config.skills.map((s) => (s.name === name ? (mutator(s) as Skill) : s)),
+			};
+		case "plugin":
+			return {
+				...config,
+				plugins: config.plugins.map((p) => (p.name === name ? (mutator(p) as Plugin) : p)),
+			};
+		case "agent":
+			return {
+				...config,
+				agents: (config.agents ?? []).map((a) =>
+					a.name === name ? (mutator(a) as Agent) : a,
+				),
+			};
+		case "command":
+			return {
+				...config,
+				commands: (config.commands ?? []).map((c) =>
+					c.name === name ? (mutator(c) as Command) : c,
+				),
+			};
+		case "hook": {
+			const hooks = (config as EnsembleConfig & { hooks?: Hook[] }).hooks ?? [];
+			return {
+				...config,
+				hooks: hooks.map((h) => (h.name === name ? (mutator(h) as Hook) : h)),
+			} as EnsembleConfig;
+		}
+		case "setting": {
+			const settings =
+				(config as EnsembleConfig & { managedSettings?: ManagedSetting[] })
+					.managedSettings ?? [];
+			return {
+				...config,
+				managedSettings: settings.map((s) =>
+					s.keyPath === name ? (mutator(s) as ManagedSetting) : s,
+				),
+			} as EnsembleConfig;
+		}
+	}
+}
+
+/** Return a new config with the matching library entry evicted. */
+function removeLibraryEntry(
+	config: EnsembleConfig,
+	name: string,
+	type: ResourceType,
+): EnsembleConfig {
+	switch (type) {
+		case "server":
+			return { ...config, servers: config.servers.filter((s) => s.name !== name) };
+		case "skill":
+			return { ...config, skills: config.skills.filter((s) => s.name !== name) };
+		case "plugin":
+			return { ...config, plugins: config.plugins.filter((p) => p.name !== name) };
+		case "agent":
+			return {
+				...config,
+				agents: (config.agents ?? []).filter((a) => a.name !== name),
+			};
+		case "command":
+			return {
+				...config,
+				commands: (config.commands ?? []).filter((c) => c.name !== name),
+			};
+		case "hook": {
+			const hooks = (config as EnsembleConfig & { hooks?: Hook[] }).hooks ?? [];
+			return { ...config, hooks: hooks.filter((h) => h.name !== name) } as EnsembleConfig;
+		}
+		case "setting": {
+			const settings =
+				(config as EnsembleConfig & { managedSettings?: ManagedSetting[] })
+					.managedSettings ?? [];
+			return {
+				...config,
+				managedSettings: settings.filter((s) => s.keyPath !== name),
+			} as EnsembleConfig;
+		}
+	}
+}
+
+/**
+ * Pull a resource from an external marketplace into the library. Library-only —
+ * install state stays empty, no client config is mutated. Idempotent: a repeat
+ * pull of the same (name, type) is a gentle no-op.
+ */
+export function pullFromMarketplace(
+	config: EnsembleConfig,
+	params: {
+		name: string;
+		type: ResourceType;
+		marketplace?: string;
+		origin?: Partial<ServerOrigin>;
+		command?: string;
+		args?: string[];
+		env?: Record<string, string>;
+		description?: string;
+		path?: string;
+	},
+): OpReturn<PullResult> {
+	const existing = getLibraryResource(config, params.name, params.type);
+	if (existing) {
+		return {
+			config,
+			result: {
+				...ok([`'${params.name}' is already in the library.`]),
+				type: params.type,
+				name: params.name,
+				alreadyPresent: true,
+			},
+		};
+	}
+
+	// Delegate to the type-specific library-add helper below.
+	const added = addToLibrary(config, params);
+	if (!added.result.ok) {
+		return {
+			config,
+			result: {
+				ok: false,
+				error: added.result.error,
+				messages: [],
+				type: params.type,
+				name: params.name,
+				alreadyPresent: false,
+			},
+		};
+	}
+	return {
+		config: added.config,
+		result: {
+			...ok([`Pulled '${params.name}' into the library.`]),
+			type: params.type,
+			name: params.name,
+			alreadyPresent: false,
+		},
+	};
+}
+
+/**
+ * Add a resource to the library from a local source (or explicit params).
+ * Strict library-first: installState stays empty unless the caller passes
+ * an explicit `install` spec.
+ */
+export function addToLibrary(
+	config: EnsembleConfig,
+	params: {
+		name: string;
+		type: ResourceType;
+		// Server params
+		command?: string;
+		args?: string[];
+		env?: Record<string, string>;
+		url?: string;
+		// Skill/agent/command params
+		description?: string;
+		path?: string;
+		// Plugin params
+		marketplace?: string;
+		// Hook params
+		event?: Hook["event"];
+		matcher?: string;
+		// Setting params
+		value?: unknown;
+		// Origin and optional install directive
+		origin?: Partial<ServerOrigin>;
+		install?: { client: string; project?: string };
+	},
+): OpReturn<LibraryResourceResult> {
+	const existing = getLibraryResource(config, params.name, params.type);
+	if (existing) {
+		return {
+			config,
+			result: {
+				...fail(`'${params.name}' is already in the library.`),
+				type: params.type,
+				name: params.name,
+			},
+		};
+	}
+
+	let newConfig = config;
+	switch (params.type) {
+		case "server": {
+			const server: Server = {
+				name: params.name,
+				enabled: true,
+				transport: "stdio",
+				command: params.command ?? "",
+				args: params.args ?? [],
+				env: params.env ?? {},
+				url: params.url ?? "",
+				auth_type: "",
+				auth_ref: "",
+				origin: {
+					source: params.origin?.source ?? "manual",
+					client: params.origin?.client ?? "",
+					registry_id: params.origin?.registry_id ?? "",
+					timestamp: params.origin?.timestamp ?? new Date().toISOString(),
+					trust_tier: params.origin?.trust_tier ?? "local",
+				},
+				tools: [],
+				installState: {},
+			};
+			newConfig = { ...newConfig, servers: [...newConfig.servers, server] };
+			break;
+		}
+		case "skill": {
+			const skill: Skill = {
+				name: params.name,
+				enabled: true,
+				description: params.description ?? "",
+				path: params.path ?? "",
+				origin: params.origin?.source ?? "manual",
+				dependencies: [],
+				tags: [],
+				mode: "pin",
+				installState: {},
+			};
+			newConfig = { ...newConfig, skills: [...newConfig.skills, skill] };
+			break;
+		}
+		case "plugin": {
+			const plugin: Plugin = {
+				name: params.name,
+				marketplace: params.marketplace ?? "",
+				enabled: true,
+				managed: true,
+				installState: {},
+			};
+			newConfig = { ...newConfig, plugins: [...newConfig.plugins, plugin] };
+			break;
+		}
+		case "agent": {
+			const agent: Agent = {
+				name: params.name,
+				enabled: true,
+				description: params.description ?? "",
+				tools: [],
+				path: params.path ?? "",
+				installState: {},
+			};
+			newConfig = {
+				...newConfig,
+				agents: [...(newConfig.agents ?? []), agent],
+			};
+			break;
+		}
+		case "command": {
+			const command: Command = {
+				name: params.name,
+				enabled: true,
+				description: params.description ?? "",
+				allowedTools: [],
+				path: params.path ?? "",
+				installState: {},
+			};
+			newConfig = {
+				...newConfig,
+				commands: [...(newConfig.commands ?? []), command],
+			};
+			break;
+		}
+		case "hook": {
+			if (!params.event || !params.matcher || !params.command) {
+				return {
+					config,
+					result: {
+						...fail(
+							"Hook resources require event, matcher, and command parameters.",
+						),
+						type: params.type,
+						name: params.name,
+					},
+				};
+			}
+			const hook: Hook = {
+				name: params.name,
+				event: params.event,
+				matcher: params.matcher,
+				command: params.command,
+				installState: {},
+			};
+			const existingHooks =
+				((newConfig as EnsembleConfig & { hooks?: Hook[] }).hooks ?? []) as Hook[];
+			newConfig = {
+				...newConfig,
+				hooks: [...existingHooks, hook],
+			} as EnsembleConfig;
+			break;
+		}
+		case "setting": {
+			if (params.value === undefined) {
+				return {
+					config,
+					result: {
+						...fail("Managed settings require a value parameter."),
+						type: params.type,
+						name: params.name,
+					},
+				};
+			}
+			const setting: ManagedSetting = {
+				keyPath: params.name,
+				value: params.value,
+				installState: {},
+			};
+			const existingSettings =
+				((newConfig as EnsembleConfig & { managedSettings?: ManagedSetting[] })
+					.managedSettings ?? []) as ManagedSetting[];
+			newConfig = {
+				...newConfig,
+				managedSettings: [...existingSettings, setting],
+			} as EnsembleConfig;
+			break;
+		}
+	}
+
+	// If the caller explicitly asked for an install as part of the add,
+	// apply it now so the matrix is populated in one call.
+	if (params.install) {
+		const installed = installResource(newConfig, {
+			name: params.name,
+			type: params.type,
+			client: params.install.client,
+			project: params.install.project,
+		});
+		if (!installed.result.ok) {
+			return {
+				config: newConfig,
+				result: {
+					...ok([
+						`Added '${params.name}' to the library (install step: ${installed.result.error}).`,
+					]),
+					type: params.type,
+					name: params.name,
+				},
+			};
+		}
+		newConfig = installed.config;
+	}
+
+	return {
+		config: newConfig,
+		result: {
+			...ok([`Added '${params.name}' to the library.`]),
+			type: params.type,
+			name: params.name,
+		},
+	};
+}
+
+/**
+ * Destructive remove from library. Cascades uninstalls across every client
+ * and project the resource is installed on, then evicts the library entry.
+ */
+export function removeFromLibrary(
+	config: EnsembleConfig,
+	params: { name: string; type: ResourceType },
+): OpReturn<LibraryResourceResult> {
+	const existing = getLibraryResource(config, params.name, params.type);
+	if (!existing) {
+		return {
+			config,
+			result: {
+				...fail(`'${params.name}' is not in the library.`),
+				type: params.type,
+				name: params.name,
+			},
+		};
+	}
+
+	let newConfig = config;
+	const matrix = getInstallState(newConfig, { name: params.name, type: params.type });
+
+	// Cascade uninstalls so any sync after this produces clean client configs.
+	for (const [clientId, record] of Object.entries(matrix)) {
+		if (record.installed) {
+			const un = uninstallResource(newConfig, {
+				name: params.name,
+				type: params.type,
+				client: clientId,
+			});
+			if (un.result.ok) newConfig = un.config;
+		}
+		for (const proj of record.projects) {
+			const un = uninstallResource(newConfig, {
+				name: params.name,
+				type: params.type,
+				client: clientId,
+				project: proj,
+			});
+			if (un.result.ok) newConfig = un.config;
+		}
+	}
+
+	newConfig = removeLibraryEntry(newConfig, params.name, params.type);
+	return {
+		config: newConfig,
+		result: {
+			...ok([`Removed '${params.name}' from the library.`]),
+			type: params.type,
+			name: params.name,
+		},
+	};
+}
+
+/**
+ * Install a library resource onto a client (optionally at a project scope).
+ * Fails if the client doesn't support project scoping and a project was
+ * requested — strict, not best-effort.
+ */
+export function installResource(
+	config: EnsembleConfig,
+	params: { name: string; type: ResourceType; client: string; project?: string },
+): OpReturn<InstallStateResult> {
+	const entry = getLibraryResource(config, params.name, params.type);
+	if (!entry) {
+		return {
+			config,
+			result: {
+				...fail(`'${params.name}' is not in the library.`),
+				type: params.type,
+				name: params.name,
+				installState: {},
+			},
+		};
+	}
+
+	const clientDef = CLIENTS[params.client];
+	if (!clientDef) {
+		return {
+			config,
+			result: {
+				...fail(`Unknown client '${params.client}'.`),
+				type: params.type,
+				name: params.name,
+				installState: {},
+			},
+		};
+	}
+
+	if (params.project && !clientDef.supportsProjectScoping) {
+		return {
+			config,
+			result: {
+				...fail(
+					`Client '${params.client}' does not support per-project install state. Drop --project to install at user scope.`,
+				),
+				type: params.type,
+				name: params.name,
+				installState: {},
+			},
+		};
+	}
+
+	const projectAbs = params.project ? resolve(expandPath(params.project)) : undefined;
+
+	const newConfig = replaceLibraryResource(config, params.name, params.type, (r) => {
+		const curr: InstallState = (r as { installState?: InstallState }).installState ?? {};
+		const record: InstallClientRecord = curr[params.client]
+			? { installed: curr[params.client]!.installed, projects: [...curr[params.client]!.projects] }
+			: { installed: false, projects: [] };
+		if (projectAbs) {
+			if (!record.projects.includes(projectAbs)) record.projects.push(projectAbs);
+		} else {
+			record.installed = true;
+		}
+		return { ...r, installState: { ...curr, [params.client]: record } } as typeof r;
+	});
+
+	const newState = getInstallState(newConfig, params);
+	const scopeLabel = projectAbs ? `${params.client} (project ${projectAbs})` : params.client;
+	return {
+		config: newConfig,
+		result: {
+			...ok([`Installed '${params.name}' on ${scopeLabel}.`]),
+			type: params.type,
+			name: params.name,
+			installState: newState,
+		},
+	};
+}
+
+/**
+ * Uninstall a library resource from a client (optionally a single project
+ * scope). The library entry is untouched — it remains available to re-install.
+ */
+export function uninstallResource(
+	config: EnsembleConfig,
+	params: { name: string; type: ResourceType; client: string; project?: string },
+): OpReturn<InstallStateResult> {
+	const entry = getLibraryResource(config, params.name, params.type);
+	if (!entry) {
+		return {
+			config,
+			result: {
+				...fail(`'${params.name}' is not in the library.`),
+				type: params.type,
+				name: params.name,
+				installState: {},
+			},
+		};
+	}
+
+	const clientDef = CLIENTS[params.client];
+	if (!clientDef) {
+		return {
+			config,
+			result: {
+				...fail(`Unknown client '${params.client}'.`),
+				type: params.type,
+				name: params.name,
+				installState: {},
+			},
+		};
+	}
+
+	if (params.project && !clientDef.supportsProjectScoping) {
+		return {
+			config,
+			result: {
+				...fail(
+					`Client '${params.client}' does not support per-project install state. Drop --project to uninstall at user scope.`,
+				),
+				type: params.type,
+				name: params.name,
+				installState: {},
+			},
+		};
+	}
+
+	const projectAbs = params.project ? resolve(expandPath(params.project)) : undefined;
+
+	const newConfig = replaceLibraryResource(config, params.name, params.type, (r) => {
+		const curr: InstallState = (r as { installState?: InstallState }).installState ?? {};
+		const existing = curr[params.client];
+		if (!existing) return r;
+		const next: InstallClientRecord = {
+			installed: existing.installed,
+			projects: [...existing.projects],
+		};
+		if (projectAbs) {
+			next.projects = next.projects.filter((p) => p !== projectAbs);
+		} else {
+			next.installed = false;
+		}
+		// Drop the client key entirely when the record is empty.
+		const matrix = { ...curr };
+		if (next.installed || next.projects.length > 0) {
+			matrix[params.client] = next;
+		} else {
+			delete matrix[params.client];
+		}
+		return { ...r, installState: matrix } as typeof r;
+	});
+
+	const newState = getInstallState(newConfig, params);
+	const scopeLabel = projectAbs ? `${params.client} (project ${projectAbs})` : params.client;
+	return {
+		config: newConfig,
+		result: {
+			...ok([`Uninstalled '${params.name}' from ${scopeLabel}.`]),
+			type: params.type,
+			name: params.name,
+			installState: newState,
+		},
 	};
 }
 

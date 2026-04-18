@@ -1,6 +1,6 @@
 {
   "name": "ensemble",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Central manager for MCP servers, skills, and plugins across AI clients",
   "workspaces": [
     "packages/*"

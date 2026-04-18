@@ -35,6 +35,15 @@ import {
 	setUserNotes,
 	getUserNotes,
 	parseNoteRef,
+	addToLibrary,
+	getInstallState,
+	getLibraryByPivot,
+	getLibraryResource,
+	installResource,
+	listLibraryResources,
+	pullFromMarketplace,
+	removeFromLibrary,
+	uninstallResource,
 } from "../src/operations.js";
 import { RESERVED_MARKETPLACE_NAMES } from "../src/schemas.js";
 
@@ -459,6 +468,329 @@ describe("operations purity", () => {
 		it("getUserNotes returns null when item has no notes", () => {
 			const config = configWithServer("ctx");
 			expect(getUserNotes(config, "server:ctx")?.userNotes).toBe(null);
+		});
+	});
+});
+
+// --- v2.0.1 library-first lifecycle operations ---
+
+describe("Library-first lifecycle (v2.0.1)", () => {
+	describe("pullFromMarketplace", () => {
+		it("lands a skill in the library with an empty install matrix (L1495)", () => {
+			const { config, result } = pullFromMarketplace(createConfig(), {
+				name: "git-workflow",
+				type: "skill",
+				description: "Git best practices",
+				origin: { source: "registry", trust_tier: "community" },
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.alreadyPresent).toBe(false);
+			const entry = getLibraryResource(config, "git-workflow", "skill");
+			expect(entry).not.toBeNull();
+			expect(entry?.type).toBe("skill");
+			expect(getInstallState(config, { name: "git-workflow", type: "skill" })).toEqual({});
+		});
+
+		it("is a gentle no-op on a repeat pull (L1544)", () => {
+			const first = pullFromMarketplace(createConfig(), {
+				name: "git-workflow",
+				type: "skill",
+				description: "Git best practices",
+			});
+			const second = pullFromMarketplace(first.config, {
+				name: "git-workflow",
+				type: "skill",
+				description: "Git best practices",
+			});
+
+			expect(second.result.ok).toBe(true);
+			expect(second.result.alreadyPresent).toBe(true);
+			expect(second.config.skills.length).toBe(1);
+			// Install matrix unchanged.
+			expect(getInstallState(second.config, { name: "git-workflow", type: "skill" })).toEqual({});
+		});
+	});
+
+	describe("addToLibrary", () => {
+		it("adds a server with an empty install matrix when --install is omitted (L1511)", () => {
+			const { config, result } = addToLibrary(createConfig(), {
+				name: "postgres",
+				type: "server",
+				command: "npx",
+				args: ["@modelcontextprotocol/server-postgres"],
+			});
+
+			expect(result.ok).toBe(true);
+			const entry = getLibraryResource(config, "postgres", "server");
+			expect(entry?.type).toBe("server");
+			if (entry?.type === "server") {
+				expect(entry.resource.command).toBe("npx");
+				expect(entry.resource.installState).toEqual({});
+			}
+		});
+
+		it("populates install state when --install is passed atomically", () => {
+			const { config, result } = addToLibrary(createConfig(), {
+				name: "postgres",
+				type: "server",
+				command: "npx",
+				install: { client: "claude-code" },
+			});
+
+			expect(result.ok).toBe(true);
+			const state = getInstallState(config, { name: "postgres", type: "server" });
+			expect(state["claude-code"]?.installed).toBe(true);
+		});
+
+		it("errors when adding a duplicate resource of the same type", () => {
+			const first = addToLibrary(createConfig(), { name: "postgres", type: "server", command: "npx" });
+			const second = addToLibrary(first.config, { name: "postgres", type: "server", command: "npx" });
+			expect(second.result.ok).toBe(false);
+			expect(second.result.error).toContain("already in the library");
+		});
+	});
+
+	describe("installResource / uninstallResource", () => {
+		function skillInLibrary() {
+			const { config } = addToLibrary(createConfig(), {
+				name: "git-workflow",
+				type: "skill",
+				description: "Git best practices",
+			});
+			return config;
+		}
+
+		it("installing the same skill on two clients updates one library entry (L1583)", () => {
+			let config = skillInLibrary();
+			config = installResource(config, {
+				name: "git-workflow",
+				type: "skill",
+				client: "claude-code",
+			}).config;
+			config = installResource(config, {
+				name: "git-workflow",
+				type: "skill",
+				client: "cursor",
+			}).config;
+
+			// Same library entry — no duplicate.
+			expect(config.skills.length).toBe(1);
+			const state = getInstallState(config, { name: "git-workflow", type: "skill" });
+			expect(state["claude-code"]?.installed).toBe(true);
+			expect(state["cursor"]?.installed).toBe(true);
+		});
+
+		it("uninstall leaves the library entry intact (L1598)", () => {
+			let config = skillInLibrary();
+			config = installResource(config, {
+				name: "git-workflow",
+				type: "skill",
+				client: "claude-code",
+			}).config;
+			const { config: afterUn, result } = uninstallResource(config, {
+				name: "git-workflow",
+				type: "skill",
+				client: "claude-code",
+			});
+			expect(result.ok).toBe(true);
+
+			// Library entry still exists, install matrix is empty.
+			const entry = getLibraryResource(afterUn, "git-workflow", "skill");
+			expect(entry).not.toBeNull();
+			expect(getInstallState(afterUn, { name: "git-workflow", type: "skill" })).toEqual({});
+		});
+
+		it("project-scoped uninstall preserves user-level install (L1614)", () => {
+			let config = skillInLibrary();
+			// Swap to a server so the project-scope test lines up with the scenario.
+			config = addToLibrary(config, { name: "pg", type: "server", command: "npx" }).config;
+			// Install user-scope on Claude Code.
+			config = installResource(config, { name: "pg", type: "server", client: "claude-code" }).config;
+			// Install project-scope on Claude Code.
+			config = installResource(config, {
+				name: "pg",
+				type: "server",
+				client: "claude-code",
+				project: "/Users/me/Code/myapp",
+			}).config;
+
+			// Now uninstall only the project scope.
+			const { config: afterUn } = uninstallResource(config, {
+				name: "pg",
+				type: "server",
+				client: "claude-code",
+				project: "/Users/me/Code/myapp",
+			});
+
+			const state = getInstallState(afterUn, { name: "pg", type: "server" });
+			expect(state["claude-code"]?.installed).toBe(true);
+			expect(state["claude-code"]?.projects).toEqual([]);
+		});
+
+		it("errors clearly when --project is passed against a non-supporting client (L1631)", () => {
+			let config = skillInLibrary();
+			config = addToLibrary(config, { name: "pg", type: "server", command: "npx" }).config;
+			const { config: after, result } = installResource(config, {
+				name: "pg",
+				type: "server",
+				client: "cursor",
+				project: "/Users/me/Code/myapp",
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.error).toContain("cursor");
+			expect(result.error).toContain("per-project install state");
+			// No state was mutated.
+			expect(getInstallState(after, { name: "pg", type: "server" })).toEqual({});
+		});
+
+		it("same strict error applies to uninstall --project against a non-supporting client", () => {
+			let config = skillInLibrary();
+			config = addToLibrary(config, { name: "pg", type: "server", command: "npx" }).config;
+			config = installResource(config, { name: "pg", type: "server", client: "cursor" }).config;
+			const { result } = uninstallResource(config, {
+				name: "pg",
+				type: "server",
+				client: "cursor",
+				project: "/Users/me/Code/myapp",
+			});
+			expect(result.ok).toBe(false);
+			expect(result.error).toContain("cursor");
+		});
+	});
+
+	describe("removeFromLibrary cascades", () => {
+		it("evicts the library entry and drops every install scope (L1559)", () => {
+			let config = createConfig();
+			config = addToLibrary(config, { name: "pg", type: "server", command: "npx" }).config;
+			config = installResource(config, { name: "pg", type: "server", client: "claude-code" }).config;
+			config = installResource(config, { name: "pg", type: "server", client: "cursor" }).config;
+			config = installResource(config, {
+				name: "pg",
+				type: "server",
+				client: "claude-code",
+				project: "/Users/me/Code/myapp",
+			}).config;
+
+			const { config: after, result } = removeFromLibrary(config, {
+				name: "pg",
+				type: "server",
+			});
+
+			expect(result.ok).toBe(true);
+			expect(getLibraryResource(after, "pg", "server")).toBeNull();
+			expect(after.servers.find((s) => s.name === "pg")).toBeUndefined();
+		});
+
+		it("errors when the named resource isn't in the library", () => {
+			const { result } = removeFromLibrary(createConfig(), { name: "ghost", type: "server" });
+			expect(result.ok).toBe(false);
+		});
+	});
+
+	describe("getLibraryByPivot", () => {
+		function configWithMixedLibrary() {
+			let config = createConfig();
+			config = addToLibrary(config, { name: "pg", type: "server", command: "npx" }).config;
+			config = addToLibrary(config, {
+				name: "git-workflow",
+				type: "skill",
+				description: "git",
+			}).config;
+			config = addToLibrary(config, {
+				name: "clangd-lsp",
+				type: "plugin",
+				marketplace: "claude-plugins-official",
+			}).config;
+			config = installResource(config, { name: "pg", type: "server", client: "claude-code" }).config;
+			config = installResource(config, {
+				name: "git-workflow",
+				type: "skill",
+				client: "claude-code",
+				project: "/Users/me/Code/myapp",
+			}).config;
+			return config;
+		}
+
+		it("library pivot returns every resource", () => {
+			const config = configWithMixedLibrary();
+			const all = getLibraryByPivot(config, { kind: "library" });
+			expect(all.length).toBe(3);
+			const types = all.map((r) => r.type).sort();
+			expect(types).toEqual(["plugin", "server", "skill"]);
+		});
+
+		it("client pivot filters by install client", () => {
+			const config = configWithMixedLibrary();
+			const cc = getLibraryByPivot(config, { kind: "client", client: "claude-code" });
+			expect(cc.map((r) => r.type === "setting" ? r.resource.keyPath : r.resource.name).sort()).toEqual([
+				"git-workflow",
+				"pg",
+			]);
+			const cursor = getLibraryByPivot(config, { kind: "client", client: "cursor" });
+			expect(cursor.length).toBe(0);
+		});
+
+		it("project pivot filters by project path", () => {
+			const config = configWithMixedLibrary();
+			const proj = getLibraryByPivot(config, {
+				kind: "project",
+				path: "/Users/me/Code/myapp",
+			});
+			expect(proj.length).toBe(1);
+			const first = proj[0]!;
+			if (first.type === "skill") expect(first.resource.name).toBe("git-workflow");
+		});
+
+		it("marketplace pivot filters plugins by marketplace", () => {
+			const config = configWithMixedLibrary();
+			const mkt = getLibraryByPivot(config, {
+				kind: "marketplace",
+				name: "claude-plugins-official",
+			});
+			expect(mkt.length).toBe(1);
+			const first = mkt[0]!;
+			if (first.type === "plugin") expect(first.resource.name).toBe("clangd-lsp");
+		});
+	});
+
+	describe("listLibraryResources", () => {
+		it("surfaces all seven resource types when present", () => {
+			let config = createConfig();
+			config = addToLibrary(config, { name: "pg", type: "server", command: "npx" }).config;
+			config = addToLibrary(config, { name: "git", type: "skill", description: "" }).config;
+			config = addToLibrary(config, {
+				name: "clangd",
+				type: "plugin",
+				marketplace: "claude-plugins-official",
+			}).config;
+			config = addToLibrary(config, { name: "reviewer", type: "agent", description: "" }).config;
+			config = addToLibrary(config, { name: "evolve", type: "command", description: "" }).config;
+			config = addToLibrary(config, {
+				name: "pre-commit",
+				type: "hook",
+				event: "PreToolUse",
+				matcher: "Bash",
+				command: "true",
+			}).config;
+			config = addToLibrary(config, {
+				name: "permissions.allow",
+				type: "setting",
+				value: [],
+			}).config;
+
+			const all = listLibraryResources(config);
+			const types = all.map((r) => r.type).sort();
+			expect(types).toEqual([
+				"agent",
+				"command",
+				"hook",
+				"plugin",
+				"server",
+				"setting",
+				"skill",
+			]);
 		});
 	});
 });
