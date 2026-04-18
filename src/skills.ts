@@ -89,25 +89,25 @@ export function skillToFrontmatter(skill: Skill, body = ""): string {
 		name: skill.name,
 		enabled: skill.enabled ? "true" : "false",
 	};
-	if (skill.description) meta["description"] = skill.description;
-	if (skill.origin) meta["origin"] = skill.origin;
-	if (skill.dependencies.length > 0) meta["dependencies"] = skill.dependencies;
-	if (skill.tags.length > 0) meta["tags"] = skill.tags;
-	if (skill.mode && skill.mode !== "pin") meta["mode"] = skill.mode;
+	if (skill.description) meta.description = skill.description;
+	if (skill.origin) meta.origin = skill.origin;
+	if (skill.dependencies.length > 0) meta.dependencies = skill.dependencies;
+	if (skill.tags.length > 0) meta.tags = skill.tags;
+	if (skill.mode && skill.mode !== "pin") meta.mode = skill.mode;
 	return formatFrontmatter(meta, body);
 }
 
 export function frontmatterToSkill(text: string, nameOverride = ""): { skill: Skill; body: string } {
 	const { meta, body } = parseFrontmatter(text);
-	const name = nameOverride || String(meta["name"] ?? "");
-	const enabledVal = String(meta["enabled"] ?? "true").toLowerCase();
+	const name = nameOverride || String(meta.name ?? "");
+	const enabledVal = String(meta.enabled ?? "true").toLowerCase();
 
-	let deps = meta["dependencies"] ?? [];
+	let deps = meta.dependencies ?? [];
 	if (typeof deps === "string") {
 		deps = deps.split(",").map((d) => d.trim()).filter(Boolean);
 	}
 
-	let tags = meta["tags"] ?? [];
+	let tags = meta.tags ?? [];
 	if (typeof tags === "string") {
 		tags = tags.split(",").map((t) => t.trim()).filter(Boolean);
 	}
@@ -115,12 +115,12 @@ export function frontmatterToSkill(text: string, nameOverride = ""): { skill: Sk
 	const skill: Skill = {
 		name,
 		enabled: !["false", "0", "no"].includes(enabledVal),
-		description: String(meta["description"] ?? ""),
+		description: String(meta.description ?? ""),
 		path: "",
-		origin: String(meta["origin"] ?? ""),
+		origin: String(meta.origin ?? ""),
 		dependencies: deps,
 		tags,
-		mode: (String(meta["mode"] ?? "pin")) as "pin" | "track",
+		mode: String(meta.mode ?? "pin") as "pin" | "track",
 	};
 	return { skill, body };
 }
