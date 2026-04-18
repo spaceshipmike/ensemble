@@ -45,7 +45,9 @@ Library-first with four layers: schemas/config → operations → sync/I/O → p
 | `init.ts` | Guided onboarding (`ensemble init` / `--auto`) |
 | `export.ts` | Profile-as-plugin group export |
 | `discover.ts` | Filesystem scan for existing installed skills and plugins; feeds `addToLibrary` during `ensemble init` |
-| `cli/index.ts` | Thin Commander.js wrapper over operations |
+| `lifecycle.ts` | Noun-first verb dispatcher — routes `pull`/`install`/`uninstall`/`remove`/`library` across the existing operations layer |
+| `managed-settings.ts` | Canonical managed-settings store at `~/.config/ensemble/managed-settings.json`, backing the `ensemble settings` verbs |
+| `cli/index.ts` | Thin Commander.js wrapper over operations and lifecycle |
 | `index.ts` | Public API barrel export |
 | `packages/desktop/` | Electron desktop app — React + Tailwind over library via IPC |
 

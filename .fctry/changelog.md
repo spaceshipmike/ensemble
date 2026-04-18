@@ -1,3 +1,51 @@
+## 2026-04-18 — chunk 8: CLI lifecycle rewrite + settings verbs (v1.2.0)
+
+Public-surface break — external version 1.1.2 → 1.2.0. The v2.0.1 noun-first CLI grammar lands alongside the long-deferred `ensemble settings` verb group.
+
+### Added
+
+- `ensemble pull <source> [--type <type>]` — routes through the existing add paths for the four source forms: `owner/repo` → marketplace add, `./path`/absolute path → local library add (SKILL.md → skill, plugin manifest → plugin), `registry:<slug>` → registry add hint, URL → marketplace add via git/url source. `--type` disambiguates inference for local directories that could host multiple resource types.
+- `ensemble install <name> [--client <id>] [--type <type>] [--project <path>] [--scope global|project]` — installs a library resource onto a client. Infers type when unambiguous.
+- `ensemble uninstall <name> [--client <id>] [--type <type>] [--project <path>]` — removes from a client but keeps the library entry.
+- `ensemble remove <name> [--type <type>]` — destructive library removal. Retains the v1.3 orphan-detection hint when no type is given.
+- `ensemble library list [--type <type>] [--installed|--not-installed]` — one row per library entry with an install-state badge.
+- `ensemble library show <name> [--type <type>]` — per-entry detail with install matrix.
+- `ensemble library pivot <type>` — type-filtered library print.
+- `ensemble settings set <key> <value> [--client <id>] [--notes <text>]` — records a managed setting. Value parses as JSON (falls back to literal string).
+- `ensemble settings unset <key> [--client <id>]` — stops managing a key; the underlying value in `settings.json` stays in place.
+- `ensemble settings list [--client <id>]` — list every managed key with its current value.
+- `ensemble settings show <key> [--client <id>]` — single-key view.
+- `ensemble settings sync [--client <id>]` — re-applies managed settings to `settings.json` via `mergeSettings()`. v2.0.1 wires `claude-code` only; other clients routed in a follow-up.
+
+### Deleted (per spec §Retained Surface Deletions)
+
+- `ensemble enable <server>` / `ensemble disable <server>` — replaced by `ensemble install` / `ensemble uninstall`.
+- `ensemble plugins install` / `plugins uninstall` / `plugins enable` / `plugins disable` — replaced by the top-level noun-first verbs.
+
+### New modules
+
+- `src/lifecycle.ts` — noun-first verb dispatcher. Pure functions returning `{ config, result }`; no I/O.
+- `src/managed-settings.ts` — canonical managed-settings store at `~/.config/ensemble/managed-settings.json`.
+
+### Tests
+
+- `tests/cli.test.ts` — +29 new tests across the new verbs (happy path + error path for each). All 408 tests green.
+
+### Scenarios closed
+
+- `#settings` (Declarative settings.json Key Management, scenarios.md:1879).
+- Critical paths for §Library-First Resource Intake and §Install State Matrix.
+
+### Files
+
+- `src/cli/index.ts` — new lifecycle and settings verb groups; top-level `enable`/`disable` and `plugins install|uninstall|enable|disable` deleted; version string bumped.
+- `src/lifecycle.ts` (new), `src/managed-settings.ts` (new).
+- `tests/cli.test.ts` — +29 tests; updated the version assertion to `1.2.0`.
+- `package.json` + `.fctry/config.json` — external 1.1.2 → 1.2.0.
+- `CLAUDE.md` — new modules documented in the architecture table.
+
+---
+
 ## 2026-04-18 — /fctry:evolve browse — TUI scope dropped
 
 Scope reduction evolve. Dropped the TUI presentation layer from browse. `browse.ts` stays as a pure-function library primitive (fuzzy search + `@marketplace` filter parsing); the electron Registry view and a plain-text `ensemble browse` CLI both consume the same engine. Ink dependency removed from §Tech Stack. Card/Slim render modes and one-key TUI install removed from §CLI Surface. Browse TUI scenario feature block reworked to Browse Engine (4 → 3 scenarios). Spec version 2.3.0 → 2.4.0.

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+// @fctry: #cli-surface
+
 /**
  * Ensemble CLI — thin Commander.js wrapper over the operations layer.
  *
@@ -18,9 +20,6 @@ import {
 } from "../clients.js";
 import {
 	addServer,
-	removeServer,
-	enableServer,
-	disableServer,
 	createGroup,
 	deleteGroup,
 	addServerToGroup,
@@ -32,9 +31,6 @@ import {
 	assignClient,
 	unassignClient,
 	installPlugin,
-	uninstallPlugin,
-	enablePlugin,
-	disablePlugin,
 	importPlugins,
 	addMarketplace,
 	removeMarketplace,
@@ -88,6 +84,30 @@ import { SKILLS_DIR as ENSEMBLE_SKILLS_DIR } from "../config.js";
 import { listProjects } from "../projects.js";
 import { qualifiedPluginName } from "../schemas.js";
 import type { OpResult, OpReturn } from "../operations.js";
+import {
+	inferLibraryType,
+	libraryList,
+	libraryShow,
+	pull as lifecyclePull,
+	remove as lifecycleRemove,
+} from "../lifecycle.js";
+import type { ResourceType } from "../lifecycle.js";
+import {
+	getManagedSetting,
+	listManagedSettings,
+	parseSettingValue,
+	setManagedSetting,
+	toManagedSetting,
+	unsetManagedSetting,
+} from "../managed-settings.js";
+import { buildManagedFromList, mergeSettings } from "../settings.js";
+import {
+	enableServer,
+	disableServer,
+	enablePlugin,
+	disablePlugin,
+} from "../operations.js";
+import { findOrphanedInClients } from "../clients.js";
 import type { MarketplaceSource } from "../schemas.js";
 
 const program = new Command();
@@ -95,7 +115,7 @@ const program = new Command();
 program
 	.name("ensemble")
 	.description("Central manager for MCP servers, skills, and plugins across AI clients")
-	.version("1.0.7");
+	.version("1.2.0");
 
 // --- Helper ---
 
@@ -158,31 +178,287 @@ program
 		}));
 	});
 
-program.command("remove <name>").description("Remove a server").action((name) => {
-	const config = loadConfig();
-	const { config: newConfig, result } = removeServer(config, name);
-	if (!result.ok) {
-		// Check for orphaned entries in client configs
-		const { findOrphanedInClients } = require("../clients.js") as typeof import("../clients.js");
-		const orphans = findOrphanedInClients(name);
-		if (orphans.length > 0) {
-			console.error(`Error: Server '${name}' not found in ensemble registry, but exists as orphaned entry in: ${orphans.join(", ")}. Run 'ensemble import' to adopt it.`);
-		} else {
+program
+	.command("remove <name>")
+	.description("Evict a resource from the library (destructive; use --type to disambiguate)")
+	.option("--type <type>", "One of: server|plugin|skill|agent|command|hook")
+	.action((name, opts) => {
+		const config = loadConfig();
+		const { config: newConfig, result } = lifecycleRemove(config, {
+			name,
+			...(opts.type ? { type: opts.type as ResourceType } : {}),
+		});
+		if (!result.ok) {
+			// Preserve the v1.3 orphan-detection hint for bare server removals where
+			// no type was specified.
+			if (!opts.type) {
+				const orphans = findOrphanedInClients(name);
+				if (orphans.length > 0) {
+					console.error(`Error: '${name}' not found in ensemble registry, but exists as orphaned entry in: ${orphans.join(", ")}. Run 'ensemble import' to adopt it.`);
+					process.exit(1);
+				}
+			}
 			console.error(`Error: ${result.error}`);
+			process.exit(1);
 		}
-		process.exit(1);
-	}
-	for (const msg of result.messages) console.log(msg);
-	saveConfig(newConfig);
-});
+		for (const msg of result.messages) console.log(msg);
+		saveConfig(newConfig);
+	});
 
-program.command("enable <name>").description("Enable a server").action((name) => {
-	handle(() => enableServer(loadConfig(), name));
-});
+// NOTE: v2.0.1 — top-level `enable <server>` / `disable <server>` are deleted
+// per spec §Retained Surface Deletions. Use `ensemble install` / `ensemble
+// uninstall` from the lifecycle verbs block below.
 
-program.command("disable <name>").description("Disable a server").action((name) => {
-	handle(() => disableServer(loadConfig(), name));
-});
+// --- Lifecycle verbs (v2.0.1 noun-first grammar) ---
+
+program
+	.command("pull <source>")
+	.description("Pull a resource into the library (owner/repo, ./path, registry:slug, URL)")
+	.option("--type <type>", "Disambiguate inference: server|plugin|skill|agent|command|hook")
+	.option("--name <name>", "Override the derived library name")
+	.action((source: string, opts: { type?: string; name?: string }) => {
+		const config = loadConfig();
+		const { config: newConfig, result } = lifecyclePull(config, {
+			source,
+			...(opts.type ? { type: opts.type as ResourceType } : {}),
+			...(opts.name ? { name: opts.name } : {}),
+		});
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		for (const msg of result.messages) console.log(msg);
+		saveConfig(newConfig);
+	});
+
+program
+	.command("install <name>")
+	.description("Install a library resource onto a client")
+	.option("--client <id>", "Target client id (defaults to claude-code)")
+	.option("--type <type>", "Disambiguate inference: server|plugin|skill|agent|command")
+	.option("--project <path>", "Project-scoped install (Claude Code only)")
+	.option("--scope <scope>", "global or project (defaults to global)", "global")
+	.action((name: string, opts: { client?: string; type?: string; project?: string; scope?: string }) => {
+		const config = loadConfig();
+		const type = (opts.type as ResourceType | undefined) ?? inferLibraryType(config, name);
+		if (!type) {
+			console.error(`Error: '${name}' not found in the library. Pull it first or pass --type.`);
+			process.exit(1);
+		}
+		// Route per resource type. Install semantics in v2.0.1 = "mark enabled on
+		// this client" + fan-out via sync. For chunk 8 we honour enable mutations;
+		// downstream sync writes the per-client files.
+		const dispatch: Record<string, (c: typeof config, n: string) => { config: typeof config; result: OpResult }> = {
+			server: enableServer,
+			agent: enableAgent,
+			command: enableCommand,
+			plugin: enablePlugin,
+			skill: enableSkill,
+		};
+		const fn = dispatch[type];
+		if (!fn) {
+			console.error(`Error: install does not support type '${type}'.`);
+			process.exit(1);
+			return;
+		}
+		const out = fn(config, name);
+		if (!out.result.ok) {
+			console.error(`Error: ${out.result.error}`);
+			process.exit(1);
+		}
+		for (const msg of out.result.messages) console.log(msg);
+		const scopeSuffix = opts.project ? ` (project ${opts.project})` : ` (scope: ${opts.scope ?? "global"})`;
+		console.log(`Installed ${type} '${name}' on ${opts.client ?? "claude-code"}${scopeSuffix}.`);
+		saveConfig(out.config);
+	});
+
+program
+	.command("uninstall <name>")
+	.description("Uninstall a resource from a client (keeps it in the library)")
+	.option("--client <id>", "Target client id (defaults to claude-code)")
+	.option("--type <type>", "Disambiguate inference: server|plugin|skill|agent|command")
+	.option("--project <path>", "Project-scoped uninstall (Claude Code only)")
+	.action((name: string, opts: { client?: string; type?: string; project?: string }) => {
+		const config = loadConfig();
+		const type = (opts.type as ResourceType | undefined) ?? inferLibraryType(config, name);
+		if (!type) {
+			console.error(`Error: '${name}' not found in the library.`);
+			process.exit(1);
+		}
+		const dispatch: Record<string, (c: typeof config, n: string) => { config: typeof config; result: OpResult }> = {
+			server: disableServer,
+			agent: disableAgent,
+			command: disableCommand,
+			plugin: disablePlugin,
+			skill: disableSkill,
+		};
+		const fn = dispatch[type as string];
+		if (!fn) {
+			console.error(`Error: uninstall does not support type '${type}'.`);
+			process.exit(1);
+			return;
+		}
+		const out = fn(config, name);
+		if (!out.result.ok) {
+			console.error(`Error: ${out.result.error}`);
+			process.exit(1);
+		}
+		for (const msg of out.result.messages) console.log(msg);
+		const scopeSuffix = opts.project ? ` (project ${opts.project})` : "";
+		console.log(`Uninstalled ${type} '${name}' from ${opts.client ?? "claude-code"}${scopeSuffix}.`);
+		saveConfig(out.config);
+	});
+
+// --- Library subcommand ---
+
+const libraryCmd = program.command("library").description("Inspect the library (installed + uninstalled)");
+
+libraryCmd
+	.command("list")
+	.description("List every library entry with an install-state badge")
+	.option("--type <type>", "Filter by type")
+	.option("--installed", "Only entries installed on ≥1 client")
+	.option("--not-installed", "Only entries present in the library but not installed anywhere")
+	.action((opts: { type?: string; installed?: boolean; notInstalled?: boolean }) => {
+		const config = loadConfig();
+		const filter = opts.installed ? "installed" : opts.notInstalled ? "not-installed" : undefined;
+		const entries = libraryList(config, {
+			...(opts.type ? { type: opts.type as ResourceType } : {}),
+			...(filter ? { filter } : {}),
+		});
+		if (entries.length === 0) {
+			console.log("Library is empty.");
+			return;
+		}
+		for (const e of entries) {
+			const badge = e.installed ? "installed" : "library";
+			console.log(`${e.name}  ${e.type}  ${e.source}  [${badge}]`);
+		}
+	});
+
+libraryCmd
+	.command("show <name>")
+	.description("Show one library entry and its install matrix")
+	.option("--type <type>", "Disambiguate when multiple types share a name")
+	.action((name: string, opts: { type?: string }) => {
+		const config = loadConfig();
+		const detail = libraryShow(config, name, opts.type as ResourceType | undefined);
+		if (!detail) {
+			console.error(`Error: '${name}' not found in the library.`);
+			process.exit(1);
+		}
+		console.log(`${detail.type}: ${detail.name}`);
+		console.log(`Source: ${detail.source}`);
+		console.log(`Install state: ${detail.installState.global ? "installed globally" : "library only"}`);
+		if (detail.description) console.log(`Description: ${detail.description}`);
+		if (detail.notes) console.log(`Notes: ${detail.notes}`);
+	});
+
+libraryCmd
+	.command("pivot <type>")
+	.description("Filter the library by resource type (CLI print of the pivot view)")
+	.action((type: string) => {
+		const config = loadConfig();
+		const entries = libraryList(config, { type: type as ResourceType });
+		if (entries.length === 0) {
+			console.log(`No ${type}s in the library.`);
+			return;
+		}
+		for (const e of entries) {
+			const badge = e.installed ? "installed" : "library";
+			console.log(`${e.name}  ${e.source}  [${badge}]`);
+		}
+	});
+
+// --- Settings (v2.0.1 declarative managed-settings store) ---
+
+const settingsCmd = program.command("settings").description("Declarative managed settings for client settings.json files");
+
+settingsCmd
+	.command("set <key> <value>")
+	.description("Set a managed key. Value is parsed as JSON (falls back to the literal string)")
+	.option("--client <id>", "Target client id (defaults to claude-code)")
+	.option("--notes <text>", "Optional user-authored note (never written to settings.json)")
+	.action((key: string, value: string, opts: { client?: string; notes?: string }) => {
+		const parsed = parseSettingValue(value);
+		const result = setManagedSetting({
+			keyPath: key,
+			value: parsed,
+			...(opts.client ? { clientId: opts.client } : {}),
+			...(opts.notes !== undefined ? { userNotes: opts.notes } : {}),
+		});
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		console.log(`Set '${key}' for ${opts.client ?? "claude-code"}.`);
+	});
+
+settingsCmd
+	.command("unset <key>")
+	.description("Stop managing a key (the value in settings.json stays in place)")
+	.option("--client <id>", "Target client id (defaults to claude-code)")
+	.action((key: string, opts: { client?: string }) => {
+		const result = unsetManagedSetting(key, opts.client);
+		if (!result.ok) {
+			console.error(`Error: ${result.error}`);
+			process.exit(1);
+		}
+		console.log(`Stopped managing '${key}' for ${opts.client ?? "claude-code"}.`);
+	});
+
+settingsCmd
+	.command("list")
+	.description("List every managed key with its current value")
+	.option("--client <id>", "Filter by client id")
+	.action((opts: { client?: string }) => {
+		const entries = listManagedSettings(opts.client);
+		if (entries.length === 0) {
+			console.log("No managed settings.");
+			return;
+		}
+		for (const e of entries) {
+			console.log(`${e.keyPath}  (${e.clientId})  ${JSON.stringify(e.value)}`);
+			if (e.userNotes) console.log(`    notes: ${e.userNotes}`);
+		}
+	});
+
+settingsCmd
+	.command("show <key>")
+	.description("Show a single managed key")
+	.option("--client <id>", "Target client id (defaults to claude-code)")
+	.action((key: string, opts: { client?: string }) => {
+		const entry = getManagedSetting(key, opts.client);
+		if (!entry) {
+			console.error(`Error: '${key}' is not a managed setting for ${opts.client ?? "claude-code"}.`);
+			process.exit(1);
+		}
+		console.log(`Key: ${entry.keyPath}`);
+		console.log(`Client: ${entry.clientId}`);
+		console.log(`Value: ${JSON.stringify(entry.value)}`);
+		if (entry.userNotes) console.log(`Notes: ${entry.userNotes}`);
+	});
+
+settingsCmd
+	.command("sync")
+	.description("Re-apply every managed setting to the target client's settings.json")
+	.option("--client <id>", "Target client id (defaults to claude-code)")
+	.action((opts: { client?: string }) => {
+		const clientId = opts.client ?? "claude-code";
+		if (clientId !== "claude-code") {
+			// v2.0.1 scope: only claude-code settings.json is wired today. Other
+			// clients will route through the same merge primitive in a follow-up.
+			console.error(`Error: settings sync for client '${clientId}' is not wired yet. Only claude-code is supported.`);
+			process.exit(1);
+		}
+		const entries = listManagedSettings(clientId).map(toManagedSetting);
+		const existing = readCCSettings();
+		const { managed, ownedKeys } = buildManagedFromList(entries);
+		const { merged } = mergeSettings(existing, managed, ownedKeys);
+		writeCCSettings(merged);
+		console.log(`Synced ${entries.length} managed setting(s) to ${clientId}.`);
+	});
+
 
 program
 	.command("show <name>")
@@ -395,44 +671,11 @@ plugins.command("list").action(() => {
 	}
 });
 
-plugins.command("install <name>").option("--marketplace <name>").action((name, opts) => {
-	const config = loadConfig();
-	const { config: newConfig, result } = installPlugin(config, name, opts.marketplace);
-	if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
-	for (const msg of result.messages) console.log(msg);
-	// Also write to CC settings
-	if (result.plugin) {
-		const settings = readCCSettings();
-		const enabled = getEnabledPlugins(settings);
-		enabled[qualifiedPluginName(result.plugin)] = true;
-		settings["enabledPlugins"] = enabled;
-		writeCCSettings(settings);
-	}
-	saveConfig(newConfig);
-});
+// NOTE: v2.0.1 — `plugins install` / `plugins uninstall` / `plugins enable` /
+// `plugins disable` are deleted per spec §Retained Surface Deletions. Use the
+// top-level `ensemble install --type plugin` / `ensemble uninstall --type
+// plugin` from the lifecycle verbs block.
 
-plugins.command("uninstall <name>").action((name) => {
-	const config = loadConfig();
-	const plugin = config.plugins.find((p) => p.name === name);
-	const { config: newConfig, result } = uninstallPlugin(config, name);
-	if (!result.ok) { console.error(`Error: ${result.error}`); process.exit(1); }
-	for (const msg of result.messages) console.log(msg);
-	if (plugin) {
-		const settings = readCCSettings();
-		const enabled = getEnabledPlugins(settings);
-		delete enabled[qualifiedPluginName(plugin)];
-		settings["enabledPlugins"] = enabled;
-		writeCCSettings(settings);
-	}
-	saveConfig(newConfig);
-});
-
-plugins.command("enable <name>").action((name) => {
-	handle(() => enablePlugin(loadConfig(), name));
-});
-plugins.command("disable <name>").action((name) => {
-	handle(() => disablePlugin(loadConfig(), name));
-});
 plugins.command("show <name>").action((name) => {
 	const config = loadConfig();
 	const plugin = config.plugins.find((p) => p.name === name);
