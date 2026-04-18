@@ -7,6 +7,55 @@
 
 import { z } from "zod";
 
+// --- Install state (v2.0.1 library-first resource lifecycle) ---
+
+/**
+ * Per-client install record for a library resource.
+ *
+ * `installed: true` means the resource is installed at user scope on that
+ * client. `projects` is the list of project paths where the resource is
+ * installed at project scope (only populated for clients whose
+ * `supportsProjectScoping` is true — for other clients the array is always
+ * empty). A resource can be installed at user scope, project scope, both,
+ * or neither.
+ */
+export const InstallClientRecordSchema = z.object({
+	installed: z.boolean().default(false),
+	projects: z.array(z.string()).default([]),
+});
+
+/**
+ * The per-client/per-project install matrix for a single library resource.
+ *
+ * Keys are client ids (e.g., "claude-code", "cursor"). Absence of a key
+ * means the resource is not installed on that client. An empty object
+ * means the resource lives in the library but is not installed anywhere —
+ * strict library-first default.
+ */
+export const InstallStateSchema = z.record(InstallClientRecordSchema);
+
+/**
+ * A view descriptor for the library — which slice the caller wants to see.
+ *
+ * - `library` — the full library, unfiltered.
+ * - `project` — only resources installed on at least one project scope (optionally filtered to a specific path).
+ * - `group` — only resources referenced by a named group.
+ * - `client` — only resources installed on a specific client (optionally filtered to user scope or a project scope).
+ * - `marketplace` — only resources whose origin is a given marketplace.
+ */
+export const PivotSpecSchema = z.discriminatedUnion("kind", [
+	z.object({ kind: z.literal("library") }),
+	z.object({ kind: z.literal("project"), path: z.string().optional() }),
+	z.object({ kind: z.literal("group"), name: z.string() }),
+	z.object({
+		kind: z.literal("client"),
+		client: z.string(),
+		scope: z.enum(["user", "project"]).optional(),
+		project: z.string().optional(),
+	}),
+	z.object({ kind: z.literal("marketplace"), name: z.string() }),
+]);
+
 // --- Atomic schemas ---
 
 export const ServerOriginSchema = z.object({
@@ -45,6 +94,8 @@ export const ServerSchema = z.object({
 	description: z.string().optional(),
 	userNotes: z.string().optional(),
 	lastDescriptionHash: z.string().optional(),
+	// v2.0.1 library-first install matrix. Empty object = in library, not installed.
+	installState: InstallStateSchema.default({}),
 });
 
 export const PluginSchema = z.object({
@@ -56,6 +107,8 @@ export const PluginSchema = z.object({
 	description: z.string().optional(),
 	userNotes: z.string().optional(),
 	lastDescriptionHash: z.string().optional(),
+	// v2.0.1 library-first install matrix.
+	installState: InstallStateSchema.default({}),
 });
 
 export const MarketplaceSourceSchema = z.object({
@@ -84,6 +137,8 @@ export const SkillSchema = z.object({
 	// Notes & description hash (v2.0.3)
 	userNotes: z.string().optional(),
 	lastDescriptionHash: z.string().optional(),
+	// v2.0.1 library-first install matrix.
+	installState: InstallStateSchema.default({}),
 });
 
 // TODO(v2.0.3): When commands.ts lands, its schema should include both
@@ -123,6 +178,8 @@ export const AgentSchema = z.object({
 	userNotes: z.string().optional(),
 	/** SHA-256 of the last imported description — powers re-import drift checks. */
 	lastDescriptionHash: z.string().optional(),
+	/** v2.0.1 library-first install matrix. */
+	installState: InstallStateSchema.default({}),
 });
 
 /**
@@ -157,6 +214,8 @@ export const CommandSchema = z.object({
 	userNotes: z.string().optional(),
 	/** SHA-256 of the last imported description — powers re-import drift checks. */
 	lastDescriptionHash: z.string().optional(),
+	/** v2.0.1 library-first install matrix. */
+	installState: InstallStateSchema.default({}),
 });
 
 export const GroupSchema = z.object({
@@ -238,6 +297,8 @@ export const HookSchema = z.object({
 	// description is auto-computed on serialize (not stored in the library JSON)
 	description: z.string().optional(),
 	userNotes: z.string().optional(),
+	/** v2.0.1 library-first install matrix. */
+	installState: InstallStateSchema.default({}),
 });
 
 // --- Managed settings schema (v2.0.1 non-destructive settings.json merge) ---
@@ -254,6 +315,8 @@ export const SettingSchema = z.object({
 	keyPath: z.string().min(1),
 	value: z.unknown(),
 	userNotes: z.string().optional(),
+	/** v2.0.1 library-first install matrix. */
+	installState: InstallStateSchema.default({}),
 });
 
 // --- Snapshot schemas (v2.0.1 safe-apply and rollback) ---
@@ -306,6 +369,38 @@ export const EnsembleConfigSchema = z.object({
 	activeProfile: z.string().nullable().default(null),
 }).passthrough();
 
+// --- Library resource tagged union (v2.0.1) ---
+
+/**
+ * The seven library resource types. Every entry in the library carries
+ * one of these `type` tags so that callers can pattern-match without
+ * resolving the underlying Zod schema.
+ */
+export const ResourceTypeSchema = z.enum([
+	"server",
+	"skill",
+	"plugin",
+	"agent",
+	"command",
+	"hook",
+	"setting",
+]);
+
+/**
+ * A discriminated union of all seven library resource kinds. Useful for
+ * code that works over "any library resource" — install/uninstall helpers,
+ * pivot filters, summary rendering.
+ */
+export const LibraryResourceSchema = z.discriminatedUnion("type", [
+	z.object({ type: z.literal("server"), resource: ServerSchema }),
+	z.object({ type: z.literal("skill"), resource: SkillSchema }),
+	z.object({ type: z.literal("plugin"), resource: PluginSchema }),
+	z.object({ type: z.literal("agent"), resource: AgentSchema }),
+	z.object({ type: z.literal("command"), resource: CommandSchema }),
+	z.object({ type: z.literal("hook"), resource: HookSchema }),
+	z.object({ type: z.literal("setting"), resource: SettingSchema }),
+]);
+
 // --- Inferred types ---
 
 export type ServerOrigin = z.infer<typeof ServerOriginSchema>;
@@ -329,6 +424,11 @@ export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type ManagedSetting = z.infer<typeof SettingSchema>;
 export type HookEvent = z.infer<typeof HookEventSchema>;
 export type Hook = z.infer<typeof HookSchema>;
+export type InstallClientRecord = z.infer<typeof InstallClientRecordSchema>;
+export type InstallState = z.infer<typeof InstallStateSchema>;
+export type PivotSpec = z.infer<typeof PivotSpecSchema>;
+export type ResourceType = z.infer<typeof ResourceTypeSchema>;
+export type LibraryResource = z.infer<typeof LibraryResourceSchema>;
 
 // --- Constants ---
 

@@ -710,6 +710,7 @@ export function doImport(
 					trust_tier: "local",
 				},
 				tools: [],
+				installState: {},
 			};
 			newConfig = { ...newConfig, servers: [...newConfig.servers, server] };
 			imported.push(s);
@@ -756,6 +757,7 @@ export function doImport(
 						auth_ref: imported.authRef,
 						origin: { source: "import", client: `${clientId}:${projPath}`, registry_id: "", timestamp: new Date().toISOString(), trust_tier: "local" },
 						tools: [],
+						installState: {},
 					};
 					newConfig = { ...newConfig, servers: [...newConfig.servers, server] };
 					projServers.push(imported);

@@ -91,6 +91,7 @@ export function frontmatterToAgent(
 		tools,
 		...(typeof modelValue === "string" && modelValue ? { model: modelValue } : {}),
 		path: "",
+		installState: {},
 		...(typeof userNotesValue === "string" && userNotesValue ? { userNotes: userNotesValue } : {}),
 		...(typeof hashValue === "string" && hashValue ? { lastDescriptionHash: hashValue } : {}),
 	};

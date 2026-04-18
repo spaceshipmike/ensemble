@@ -121,6 +121,7 @@ export function frontmatterToSkill(text: string, nameOverride = ""): { skill: Sk
 		dependencies: deps,
 		tags,
 		mode: String(meta.mode ?? "pin") as "pin" | "track",
+		installState: {},
 	};
 	return { skill, body };
 }

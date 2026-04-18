@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+	AgentSchema,
 	ClientAssignmentSchema,
+	CommandSchema,
 	EnsembleConfigSchema,
 	GroupSchema,
+	HookSchema,
+	InstallStateSchema,
+	LibraryResourceSchema,
 	MarketplaceSchema,
+	PivotSpecSchema,
 	PluginSchema,
 	RESERVED_MARKETPLACE_NAMES,
+	ResourceTypeSchema,
 	ServerSchema,
+	SettingSchema,
 	SettingsSchema,
 	SkillSchema,
 	qualifiedPluginName,
@@ -221,5 +229,225 @@ describe("RESERVED_MARKETPLACE_NAMES", () => {
 	it("contains known reserved names", () => {
 		expect(RESERVED_MARKETPLACE_NAMES.has("claude-plugins-official")).toBe(true);
 		expect(RESERVED_MARKETPLACE_NAMES.has("my-custom-marketplace")).toBe(false);
+	});
+});
+
+// --- v2.0.1 library-first schemas ---
+
+describe("InstallStateSchema", () => {
+	it("defaults to an empty map for a library-only resource", () => {
+		const state = InstallStateSchema.parse({});
+		expect(state).toEqual({});
+	});
+
+	it("round-trips a single user-scope install", () => {
+		const input = { "claude-code": { installed: true, projects: [] } };
+		const state = InstallStateSchema.parse(input);
+		const reparsed = InstallStateSchema.parse(JSON.parse(JSON.stringify(state)));
+		expect(reparsed).toEqual(input);
+	});
+
+	it("round-trips user + project scopes across multiple clients", () => {
+		const input = {
+			"claude-code": {
+				installed: true,
+				projects: ["/Users/me/Code/app", "/Users/me/Code/other"],
+			},
+			cursor: { installed: true, projects: [] },
+			"codex-cli": { installed: false, projects: [] },
+		};
+		const state = InstallStateSchema.parse(input);
+		const reparsed = InstallStateSchema.parse(JSON.parse(JSON.stringify(state)));
+		expect(reparsed).toEqual(input);
+	});
+
+	it("applies defaults when installed/projects are omitted", () => {
+		const state = InstallStateSchema.parse({ "claude-code": {} });
+		expect(state["claude-code"]).toEqual({ installed: false, projects: [] });
+	});
+});
+
+describe("PivotSpecSchema", () => {
+	it("parses a library pivot", () => {
+		const pivot = PivotSpecSchema.parse({ kind: "library" });
+		expect(pivot.kind).toBe("library");
+	});
+
+	it("parses a project pivot with an optional path", () => {
+		const pivot = PivotSpecSchema.parse({
+			kind: "project",
+			path: "/Users/me/Code/app",
+		});
+		expect(pivot.kind).toBe("project");
+		if (pivot.kind === "project") {
+			expect(pivot.path).toBe("/Users/me/Code/app");
+		}
+	});
+
+	it("parses a group pivot requiring a name", () => {
+		const pivot = PivotSpecSchema.parse({ kind: "group", name: "dev-tools" });
+		expect(pivot.kind).toBe("group");
+		if (pivot.kind === "group") {
+			expect(pivot.name).toBe("dev-tools");
+		}
+	});
+
+	it("parses a client pivot with optional scope and project", () => {
+		const pivot = PivotSpecSchema.parse({
+			kind: "client",
+			client: "claude-code",
+			scope: "project",
+			project: "/Users/me/Code/app",
+		});
+		expect(pivot.kind).toBe("client");
+		if (pivot.kind === "client") {
+			expect(pivot.client).toBe("claude-code");
+			expect(pivot.scope).toBe("project");
+			expect(pivot.project).toBe("/Users/me/Code/app");
+		}
+	});
+
+	it("parses a marketplace pivot", () => {
+		const pivot = PivotSpecSchema.parse({
+			kind: "marketplace",
+			name: "claude-plugins-official",
+		});
+		expect(pivot.kind).toBe("marketplace");
+	});
+
+	it("rejects a group pivot missing name", () => {
+		expect(() => PivotSpecSchema.parse({ kind: "group" })).toThrow();
+	});
+
+	it("rejects an unknown pivot kind", () => {
+		expect(() => PivotSpecSchema.parse({ kind: "cabinet" })).toThrow();
+	});
+});
+
+describe("installState field on the seven resource schemas", () => {
+	it("ServerSchema defaults installState to an empty map", () => {
+		const server = ServerSchema.parse({ name: "pg" });
+		expect(server.installState).toEqual({});
+	});
+
+	it("PluginSchema defaults installState to an empty map", () => {
+		const plugin = PluginSchema.parse({ name: "clangd-lsp" });
+		expect(plugin.installState).toEqual({});
+	});
+
+	it("SkillSchema defaults installState to an empty map", () => {
+		const skill = SkillSchema.parse({ name: "git-workflow" });
+		expect(skill.installState).toEqual({});
+	});
+
+	it("AgentSchema defaults installState to an empty map", () => {
+		const agent = AgentSchema.parse({ name: "reviewer" });
+		expect(agent.installState).toEqual({});
+	});
+
+	it("CommandSchema defaults installState to an empty map", () => {
+		const cmd = CommandSchema.parse({ name: "evolve" });
+		expect(cmd.installState).toEqual({});
+	});
+
+	it("HookSchema defaults installState to an empty map", () => {
+		const hook = HookSchema.parse({
+			name: "pre-commit",
+			event: "PreToolUse",
+			matcher: "Bash",
+			command: "echo hi",
+		});
+		expect(hook.installState).toEqual({});
+	});
+
+	it("SettingSchema defaults installState to an empty map", () => {
+		const setting = SettingSchema.parse({ keyPath: "permissions.allow", value: [] });
+		expect(setting.installState).toEqual({});
+	});
+
+	it("round-trips a server with a populated install matrix", () => {
+		const input = {
+			name: "pg",
+			installState: {
+				"claude-code": { installed: true, projects: ["/Users/me/Code/app"] },
+				cursor: { installed: true, projects: [] },
+			},
+		};
+		const server = ServerSchema.parse(input);
+		const reparsed = ServerSchema.parse(JSON.parse(JSON.stringify(server)));
+		expect(reparsed.installState).toEqual(input.installState);
+	});
+});
+
+describe("ResourceTypeSchema", () => {
+	it("accepts every resource tag", () => {
+		for (const t of ["server", "skill", "plugin", "agent", "command", "hook", "setting"]) {
+			expect(ResourceTypeSchema.parse(t)).toBe(t);
+		}
+	});
+
+	it("rejects an unknown resource type", () => {
+		expect(() => ResourceTypeSchema.parse("widget")).toThrow();
+	});
+});
+
+describe("LibraryResourceSchema", () => {
+	it("parses a server resource wrapper", () => {
+		const wrapped = LibraryResourceSchema.parse({
+			type: "server",
+			resource: { name: "pg" },
+		});
+		expect(wrapped.type).toBe("server");
+		if (wrapped.type === "server") {
+			expect(wrapped.resource.name).toBe("pg");
+		}
+	});
+
+	it("parses a hook resource wrapper", () => {
+		const wrapped = LibraryResourceSchema.parse({
+			type: "hook",
+			resource: {
+				name: "fmt",
+				event: "PreToolUse",
+				matcher: "Bash",
+				command: "true",
+			},
+		});
+		expect(wrapped.type).toBe("hook");
+	});
+
+	it("rejects a mismatch between type tag and resource shape", () => {
+		expect(() =>
+			LibraryResourceSchema.parse({
+				type: "server",
+				resource: { keyPath: "permissions.allow", value: [] },
+			}),
+		).toThrow();
+	});
+});
+
+describe("Backward compatibility — v1.3 config loads cleanly", () => {
+	it("accepts a v1.3-shaped config with no installState anywhere and fills defaults", () => {
+		// Simulates a user's existing ~/.config/ensemble/config.json from v1.3.
+		const v13 = {
+			servers: [
+				{ name: "ctx", command: "npx", args: ["tsx", "index.ts"], enabled: true },
+				{ name: "pg", command: "npx", args: ["postgres"], enabled: false },
+			],
+			plugins: [{ name: "clangd-lsp", marketplace: "claude-plugins-official", enabled: true }],
+			skills: [{ name: "git-workflow", description: "Git best practices", enabled: true }],
+			groups: [],
+			clients: [],
+			marketplaces: [],
+			rules: [],
+		};
+		const config = EnsembleConfigSchema.parse(v13);
+		expect(config.servers[0]?.installState).toEqual({});
+		expect(config.servers[1]?.installState).toEqual({});
+		expect(config.plugins[0]?.installState).toEqual({});
+		expect(config.skills[0]?.installState).toEqual({});
+		// enabled is preserved alongside installState during the transition.
+		expect(config.servers[0]?.enabled).toBe(true);
+		expect(config.servers[1]?.enabled).toBe(false);
 	});
 });

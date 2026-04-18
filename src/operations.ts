@@ -142,6 +142,7 @@ export function addServer(
 			trust_tier: params.origin?.trust_tier ?? "local",
 		},
 		tools: params.tools ?? [],
+		installState: {},
 	};
 
 	return {
@@ -707,7 +708,13 @@ export function installPlugin(
 		}
 	}
 
-	const plugin: Plugin = { name, marketplace: resolvedMarketplace, enabled: true, managed: true };
+	const plugin: Plugin = {
+		name,
+		marketplace: resolvedMarketplace,
+		enabled: true,
+		managed: true,
+		installState: {},
+	};
 	return {
 		config: { ...config, plugins: [...config.plugins, plugin] },
 		result: { ...ok([`Installed plugin '${name}' from ${resolvedMarketplace}.`]), plugin },
@@ -777,7 +784,13 @@ export function importPlugins(
 
 		if (getPlugin(newConfig, pname!)) continue;
 
-		const plugin: Plugin = { name: pname!, marketplace: mkt!, enabled: isEnabled, managed: false };
+		const plugin: Plugin = {
+			name: pname!,
+			marketplace: mkt!,
+			enabled: isEnabled,
+			managed: false,
+			installState: {},
+		};
 		newConfig = { ...newConfig, plugins: [...newConfig.plugins, plugin] };
 		imported.push(plugin);
 	}
@@ -852,6 +865,7 @@ export function installSkill(
 		dependencies: params.dependencies ?? [],
 		tags: params.tags ?? [],
 		mode: params.mode ?? "pin",
+		installState: {},
 	};
 
 	return {
@@ -926,6 +940,7 @@ export function installAgent(
 		tools: params.tools ?? [],
 		...(params.model ? { model: params.model } : {}),
 		path: params.path ?? "",
+		installState: {},
 	};
 
 	const agents = config.agents ?? [];
@@ -1003,6 +1018,7 @@ export function installCommand(
 		allowedTools: params.allowedTools ?? [],
 		...(params.argumentHint ? { argumentHint: params.argumentHint } : {}),
 		path: params.path ?? "",
+		installState: {},
 	};
 
 	const commands = config.commands ?? [];

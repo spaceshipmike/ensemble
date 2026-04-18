@@ -88,6 +88,7 @@ export function frontmatterToCommand(
 		allowedTools,
 		...(typeof argHintValue === "string" && argHintValue ? { argumentHint: argHintValue } : {}),
 		path: "",
+		installState: {},
 		...(typeof userNotesValue === "string" && userNotesValue ? { userNotes: userNotesValue } : {}),
 		...(typeof hashValue === "string" && hashValue ? { lastDescriptionHash: hashValue } : {}),
 	};

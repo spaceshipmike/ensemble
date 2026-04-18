@@ -161,7 +161,11 @@ export function parseSettingValue(raw: string): unknown {
 
 /** Convert the stored shape back into the shared ManagedSetting type for fan-out. */
 export function toManagedSetting(entry: StoredManagedSetting): ManagedSetting {
-	const base: ManagedSetting = { keyPath: entry.keyPath, value: entry.value };
+	const base: ManagedSetting = {
+		keyPath: entry.keyPath,
+		value: entry.value,
+		installState: {},
+	};
 	if (entry.userNotes !== undefined) base.userNotes = entry.userNotes;
 	return base;
 }
