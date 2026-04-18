@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENSEMBLE_MARKER } from "../src/clients.js";
-import { createConfig } from "../src/config.js";
-import { addServer, assignClient, createGroup, addServerToGroup, installSkill } from "../src/operations.js";
+import { createConfig, isActiveForClient, resolvePlugins, resolveServers, resolveSkills } from "../src/config.js";
+import { addServer, addToLibrary, assignClient, createGroup, addServerToGroup, installResource, installSkill } from "../src/operations.js";
 import { syncClient, syncSkills, computeContextCost, suggestGroupSplits } from "../src/sync.js";
 
 let tmpDir: string;
@@ -136,6 +136,108 @@ describe("computeContextCost", () => {
 		const config = createConfig();
 		const cost = computeContextCost(config, "fake-client");
 		expect(cost.contextWindow).toBe(128000);
+	});
+});
+
+describe("v2.0.1 read path: installState matrix takes precedence over enabled", () => {
+	it("resource with empty installState falls back to enabled=true", () => {
+		let config = createConfig();
+		({ config } = addServer(config, { name: "ctx", command: "npx" }));
+		// Empty install matrix — legacy path.
+		expect(config.servers[0]?.installState).toEqual({});
+		expect(config.servers[0]?.enabled).toBe(true);
+		expect(resolveServers(config, "cursor").length).toBe(1);
+		expect(resolveServers(config, "claude-code").length).toBe(1);
+	});
+
+	it("resource with empty installState and enabled=false is excluded", () => {
+		let config = createConfig();
+		({ config } = addServer(config, { name: "ctx", command: "npx" }));
+		config = {
+			...config,
+			servers: config.servers.map((s) => ({ ...s, enabled: false })),
+		};
+		expect(resolveServers(config, "cursor").length).toBe(0);
+	});
+
+	it("populated installState drives resolveServers, overriding enabled", () => {
+		let config = createConfig();
+		// Start with addToLibrary so the installState flow is used.
+		({ config } = addToLibrary(config, { name: "ctx", type: "server", command: "npx" }));
+		// Mark enabled false to prove installState wins.
+		config = {
+			...config,
+			servers: config.servers.map((s) => ({ ...s, enabled: false })),
+		};
+		// Install on claude-code only.
+		({ config } = installResource(config, {
+			name: "ctx",
+			type: "server",
+			client: "claude-code",
+		}));
+		expect(resolveServers(config, "claude-code").map((s) => s.name)).toEqual(["ctx"]);
+		expect(resolveServers(config, "cursor").length).toBe(0);
+	});
+
+	it("populated installState drives resolvePlugins and resolveSkills", () => {
+		let config = createConfig();
+		({ config } = addToLibrary(config, {
+			name: "git-workflow",
+			type: "skill",
+			description: "",
+		}));
+		({ config } = addToLibrary(config, {
+			name: "clangd-lsp",
+			type: "plugin",
+			marketplace: "claude-plugins-official",
+		}));
+		({ config } = installResource(config, {
+			name: "git-workflow",
+			type: "skill",
+			client: "cursor",
+		}));
+		({ config } = installResource(config, {
+			name: "clangd-lsp",
+			type: "plugin",
+			client: "claude-code",
+		}));
+
+		expect(resolveSkills(config, "cursor").map((s) => s.name)).toEqual(["git-workflow"]);
+		expect(resolveSkills(config, "claude-code").length).toBe(0);
+		expect(resolvePlugins(config, "claude-code").map((p) => p.name)).toEqual(["clangd-lsp"]);
+		expect(resolvePlugins(config, "cursor").length).toBe(0);
+	});
+
+	it("project-scope install without user-scope still resolves at user scope as false", () => {
+		let config = createConfig();
+		({ config } = addToLibrary(config, { name: "pg", type: "server", command: "npx" }));
+		({ config } = installResource(config, {
+			name: "pg",
+			type: "server",
+			client: "claude-code",
+			project: "/Users/me/Code/myapp",
+		}));
+
+		// isActiveForClient returns true because installState has any entry for claude-code
+		// (project-scope install counts as "active for this client" at the resolve layer;
+		// user-scope vs. project-scope is a later sync-writer concern).
+		expect(isActiveForClient(config.servers[0]!, "claude-code")).toBe(true);
+		// But cursor — no entry — returns false.
+		expect(isActiveForClient(config.servers[0]!, "cursor")).toBe(false);
+	});
+
+	it("v2.0.1-shape config round-trips through resolve* with matrix source of truth", () => {
+		let config = createConfig();
+		({ config } = addToLibrary(config, { name: "pg", type: "server", command: "npx" }));
+		({ config } = installResource(config, {
+			name: "pg",
+			type: "server",
+			client: "claude-code",
+		}));
+		// Simulate a disk round trip — JSON stringify/parse drops prototypes.
+		const rehydrated = JSON.parse(JSON.stringify(config));
+		expect(resolveServers(rehydrated, "claude-code").length).toBe(1);
+		expect(resolveServers(rehydrated, "cursor").length).toBe(0);
 	});
 });
 

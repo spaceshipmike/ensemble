@@ -45,11 +45,14 @@
         {
           "id": "11c",
           "name": "sync.ts read path for installState (fallback to enabled)",
-          "status": "planned",
+          "status": "completed",
           "size": "M",
-          "files": ["src/sync.ts", "tests/sync.test.ts"],
+          "files": ["src/sync.ts", "src/config.ts", "tests/sync.test.ts"],
           "sections": ["sync"],
-          "dependsOn": ["11a", "11b"]
+          "dependsOn": ["11a", "11b"],
+          "startedAt": "2026-04-18T16:51:00Z",
+          "completedAt": "2026-04-18T16:52:00Z",
+          "specVersionAtBuild": "2.4.1"
         },
         {
           "id": "12",

@@ -137,6 +137,29 @@ export function matchRule(config: EnsembleConfig, projectPath: string): Ensemble
 
 // --- Resolution helpers ---
 
+/**
+ * v2.0.1 read gate — decide whether a resource should reach `clientId` at
+ * user scope, preferring the `installState` matrix when it has any entries
+ * and falling back to the legacy `enabled` flag when the matrix is empty.
+ *
+ * This keeps existing v1.3 configs (no matrix) behaving exactly as before
+ * while letting v2.0.1 configs drive sync purely from the install matrix.
+ * Introduced in chunk 11c; the v1.3 `enabled` fallback is deleted in a
+ * later chunk when the matrix is the sole source of truth.
+ */
+export function isActiveForClient(
+	resource: { installState?: Record<string, { installed: boolean; projects: string[] }>; enabled?: boolean },
+	clientId: string,
+): boolean {
+	const matrix = resource.installState;
+	if (matrix && Object.keys(matrix).length > 0) {
+		const record = matrix[clientId];
+		if (!record) return false;
+		return record.installed || record.projects.length > 0;
+	}
+	return resource.enabled !== false;
+}
+
 /** Get the servers a client should receive based on group assignment. */
 export function resolveServers(
 	config: EnsembleConfig,
@@ -147,9 +170,11 @@ export function resolveServers(
 	if (effectiveGroup) {
 		const group = config.groups.find((g) => g.name === effectiveGroup);
 		if (!group) return [];
-		return config.servers.filter((s) => s.enabled && group.servers.includes(s.name));
+		return config.servers.filter(
+			(s) => isActiveForClient(s, clientId) && group.servers.includes(s.name),
+		);
 	}
-	return config.servers.filter((s) => s.enabled);
+	return config.servers.filter((s) => isActiveForClient(s, clientId));
 }
 
 /** Get the plugins a client should receive based on group assignment. */
@@ -162,9 +187,11 @@ export function resolvePlugins(
 	if (effectiveGroup) {
 		const group = config.groups.find((g) => g.name === effectiveGroup);
 		if (!group) return [];
-		return config.plugins.filter((p) => p.enabled && group.plugins.includes(p.name));
+		return config.plugins.filter(
+			(p) => isActiveForClient(p, clientId) && group.plugins.includes(p.name),
+		);
 	}
-	return config.plugins.filter((p) => p.enabled);
+	return config.plugins.filter((p) => isActiveForClient(p, clientId));
 }
 
 /** Get the skills a client should receive based on group assignment. */
@@ -177,9 +204,11 @@ export function resolveSkills(
 	if (effectiveGroup) {
 		const group = config.groups.find((g) => g.name === effectiveGroup);
 		if (!group) return [];
-		return config.skills.filter((s) => s.enabled && group.skills.includes(s.name));
+		return config.skills.filter(
+			(s) => isActiveForClient(s, clientId) && group.skills.includes(s.name),
+		);
 	}
-	return config.skills.filter((s) => s.enabled);
+	return config.skills.filter((s) => isActiveForClient(s, clientId));
 }
 
 /**

@@ -28,7 +28,7 @@ import {
 	writeCCSettings,
 	writeServersNested,
 } from "./clients.js";
-import { computeEntryHash, getClient, matchRule, resolveAgents, resolveCommands, resolvePlugins, resolveServers, resolveSkills } from "./config.js";
+import { computeEntryHash, getClient, isActiveForClient, matchRule, resolveAgents, resolveCommands, resolvePlugins, resolveServers, resolveSkills } from "./config.js";
 import { RESERVED_MARKETPLACE_NAMES, qualifiedPluginName } from "./schemas.js";
 import type { Agent, Command, EnsembleConfig, Server } from "./schemas.js";
 import { scanSecrets } from "./secrets.js";
@@ -473,7 +473,21 @@ function syncProjectPlugins(
 	const messages: string[] = [];
 	const newEnabled: Record<string, boolean> = {};
 	for (const p of plugins) {
-		newEnabled[qualifiedPluginName(p)] = p.enabled;
+		// v2.0.1: if the install matrix has been populated for this plugin,
+		// the plugin is active for THIS project only when the project path
+		// is listed under claude-code's projects array (or installed at user
+		// scope). Otherwise fall back to the legacy enabled flag.
+		const matrix = p.installState;
+		let active: boolean;
+		if (matrix && Object.keys(matrix).length > 0) {
+			const record = matrix["claude-code"];
+			active = Boolean(
+				record && (record.installed || record.projects.includes(projectPath)),
+			);
+		} else {
+			active = p.enabled;
+		}
+		newEnabled[qualifiedPluginName(p)] = active;
 	}
 
 	// Read project's .claude/settings.local.json
@@ -583,7 +597,9 @@ function syncCCPlugins(
 	const plugins = resolvePlugins(config, clientId);
 	const newEnabled: Record<string, boolean> = {};
 	for (const p of plugins) {
-		newEnabled[qualifiedPluginName(p)] = p.enabled;
+		// v2.0.1: prefer install matrix (user-scope installed flag); fall back
+		// to the legacy enabled flag when the matrix is empty.
+		newEnabled[qualifiedPluginName(p)] = isActiveForClient(p, clientId);
 	}
 	const currentEnabled = getEnabledPlugins(settings);
 
