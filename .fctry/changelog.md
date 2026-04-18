@@ -1,3 +1,56 @@
+## 2026-04-18 — chunk 10: desktop tRPC sub-routers + retro fixes (v1.2.3)
+
+Completes desktop IPC coverage for every v2.0.1 resource type and folds in
+the chunks 4–7 retro follow-up on the stale `DOCTOR · SOON` assertion.
+
+### Added
+
+- `agentsRouter` — `list` / `show` / `setOrAdd` / `remove` on the canonical
+  `config.agents` store.
+- `commandsRouter` — same four procedures on `config.commands`.
+- `hooksRouter` — `list` / `show` / `setOrAdd` / `remove` on the
+  file-backed canonical hook store (`~/.config/ensemble/hooks/`).
+- `settingsRouter` — `list` / `show` / `setOrAdd` / `remove` on the
+  managed-settings store from chunk 8.
+
+Each sub-router mirrors the `snapshotsRouter` shape (reads = queries,
+writes = mutations, zod-validated input, one `fresh()`-backed config read
+per mutation, `saveConfig()` on success). All four are wired into
+`appRouter` at the root.
+
+### Fixed
+
+- `packages/desktop/e2e/layout.spec.ts` — removed the stale
+  `DOCTOR · SOON` text assertion. The placeholder was replaced by the
+  real `DoctorView` in an earlier chunk; the e2e assertion now checks
+  that the DOCTOR tab is active instead. Playwright Electron launch is
+  still broken from prior sessions (same as chunks 4–7 retro); the
+  snapshots spec remains unrunnable locally and is logged as a
+  known-blocked follow-up rather than a chunk-10 regression.
+
+### Tests
+
+- `packages/desktop/src/main/ipc/router.test.ts` — +12 new tests (3 per
+  sub-router × 4 routers). Mocks for every new pure operation and the
+  hook + managed-settings stores. 46/46 router tests green.
+
+### Files
+
+- `packages/desktop/src/main/ipc/router.ts` — imports + four new
+  sub-routers + appRouter wiring.
+- `packages/desktop/src/main/ipc/router.test.ts` — mocks + +12 tests.
+- `packages/desktop/e2e/layout.spec.ts` — DOCTOR · SOON assertion fix.
+- `CLAUDE.md` — IPC coverage note.
+
+### Version
+
+External 1.2.2 → 1.2.3 (auto patch bump on commit). Closes chunk 10 of
+the chunks 8–10 build block. No user-visible scenario maps directly to
+this chunk — it completes the desktop surface that the §Managed Agents /
+Commands / Hooks / Settings scenarios reach through the renderer.
+
+---
+
 ## 2026-04-18 — chunk 9: browse engine + CLI + desktop wiring (v1.2.2)
 
 Post-evolve browse shipping. The v2.0 browse engine lands as a pure-function

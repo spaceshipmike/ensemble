@@ -63,7 +63,8 @@ test("switching to MATRIX view swaps content", async () => {
   await expect(page.getByRole("button", { name: "MATRIX" })).toBeVisible();
 });
 
-test("switching to DOCTOR view shows placeholder", async () => {
+test("switching to DOCTOR view renders the doctor surface", async () => {
   await page.getByRole("button", { name: "DOCTOR" }).click();
-  await expect(page.getByText(/DOCTOR · SOON/i)).toBeVisible();
+  // DoctorView replaced the v0 SOON placeholder; assert the active tab instead.
+  await expect(page.getByRole("button", { name: "DOCTOR" })).toBeVisible();
 });

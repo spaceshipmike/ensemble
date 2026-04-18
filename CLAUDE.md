@@ -49,6 +49,8 @@ Library-first with four layers: schemas/config → operations → sync/I/O → p
 | `managed-settings.ts` | Canonical managed-settings store at `~/.config/ensemble/managed-settings.json`, backing the `ensemble settings` verbs |
 | `browse.ts` | Library-side browse engine — pure-function fuzzy search over library + discoverable resources with `@marketplace/` filter parsing. Powers `ensemble browse` and the desktop Registry view. |
 | `cli/index.ts` | Thin Commander.js wrapper over operations and lifecycle |
+
+Desktop IPC (chunk 10) now exposes `agents`, `commands`, `hooks`, and `settings` sub-routers alongside the existing `browse` and `snapshots` routers — the Electron renderer can drive every v2.0.1 resource type.
 | `index.ts` | Public API barrel export |
 | `packages/desktop/` | Electron desktop app — React + Tailwind over library via IPC |
 

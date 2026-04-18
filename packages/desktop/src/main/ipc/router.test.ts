@@ -183,6 +183,104 @@ vi.mock("ensemble", () => {
       deleted: [],
       missing: [],
     })),
+
+    // --- Agents / Commands (chunk 10) ---
+    installAgent: vi.fn(
+      (c: { agents?: unknown[] }, params: { name: string; description?: string }) => ({
+        config: {
+          ...c,
+          agents: [
+            ...(c.agents ?? []),
+            { name: params.name, description: params.description ?? "" },
+          ],
+        },
+        result: {
+          ok: true,
+          messages: [],
+          agent: { name: params.name, description: params.description ?? "" },
+        },
+      }),
+    ),
+    uninstallAgent: vi.fn((c: { agents?: { name: string }[] }, name: string) => ({
+      config: { ...c, agents: (c.agents ?? []).filter((a) => a.name !== name) },
+      result: { ok: true, messages: [], agent: { name } },
+    })),
+    enableAgent: vi.fn((c: unknown, name: string) => ({
+      config: c,
+      result: { ok: true, messages: [], agent: { name, enabled: true } },
+    })),
+    disableAgent: vi.fn((c: unknown) => ({ config: c, result: { ok: true, messages: [] } })),
+
+    installCommand: vi.fn(
+      (c: { commands?: unknown[] }, params: { name: string; description?: string }) => ({
+        config: {
+          ...c,
+          commands: [
+            ...(c.commands ?? []),
+            { name: params.name, description: params.description ?? "" },
+          ],
+        },
+        result: {
+          ok: true,
+          messages: [],
+          command: { name: params.name, description: params.description ?? "" },
+        },
+      }),
+    ),
+    uninstallCommand: vi.fn((c: { commands?: { name: string }[] }, name: string) => ({
+      config: { ...c, commands: (c.commands ?? []).filter((x) => x.name !== name) },
+      result: { ok: true, messages: [], command: { name } },
+    })),
+    enableCommand: vi.fn((c: unknown, name: string) => ({
+      config: c,
+      result: { ok: true, messages: [], command: { name, enabled: true } },
+    })),
+    disableCommand: vi.fn((c: unknown) => ({ config: c, result: { ok: true, messages: [] } })),
+
+    // --- Hooks (chunk 10) ---
+    addHook: vi.fn((params: { name: string; event: string; matcher: string; command: string }) => ({
+      ok: true,
+      hook: { ...params, description: `${params.event} → ${params.matcher}` },
+    })),
+    removeHook: vi.fn(() => ({ ok: true })),
+    getHook: vi.fn((name: string) => ({
+      name,
+      event: "PreToolUse",
+      matcher: "*",
+      command: "echo hi",
+      description: "PreToolUse → *",
+    })),
+    listHooks: vi.fn(() => [
+      {
+        name: "lint-on-write",
+        event: "PreToolUse",
+        matcher: "Write",
+        command: "npm run lint",
+        description: "PreToolUse → Write",
+      },
+    ]),
+
+    // --- Managed settings (chunk 10) ---
+    listManagedSettings: vi.fn(() => [
+      { keyPath: "permissions.allow", value: ["Read"], clientId: "claude-code" },
+    ]),
+    getManagedSetting: vi.fn((keyPath: string, clientId?: string) => ({
+      keyPath,
+      value: ["Read"],
+      clientId: clientId ?? "claude-code",
+    })),
+    setManagedSetting: vi.fn((params: { keyPath: string; value: unknown; clientId?: string }) => ({
+      ok: true,
+      entry: {
+        keyPath: params.keyPath,
+        value: params.value,
+        clientId: params.clientId ?? "claude-code",
+      },
+    })),
+    unsetManagedSetting: vi.fn((keyPath: string, clientId?: string) => ({
+      ok: true,
+      removed: { keyPath, value: null, clientId: clientId ?? "claude-code" },
+    })),
   };
 });
 
@@ -409,5 +507,96 @@ describe("browseRouter", () => {
     const rows = await caller.browse.list({ query: "alp" });
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("alpha");
+  });
+});
+
+// --- Agents / Commands / Hooks / Settings (chunk 10) -----------------------
+
+describe("agentsRouter", () => {
+  it("list returns an empty array on a fresh config", async () => {
+    const agents = await caller.agents.list();
+    expect(Array.isArray(agents)).toBe(true);
+  });
+
+  it("setOrAdd installs a new agent", async () => {
+    const agent = await caller.agents.setOrAdd({
+      name: "reviewer",
+      description: "Reviews code.",
+    });
+    expect(agent?.name).toBe("reviewer");
+    expect(saveSpy).toHaveBeenCalled();
+  });
+
+  it("remove evicts an agent from the canonical store", async () => {
+    const res = await caller.agents.remove({ name: "reviewer" });
+    expect(res).toEqual({ removed: "reviewer" });
+  });
+});
+
+describe("commandsRouter", () => {
+  it("list returns an empty array on a fresh config", async () => {
+    const cmds = await caller.commands.list();
+    expect(Array.isArray(cmds)).toBe(true);
+  });
+
+  it("setOrAdd installs a new command", async () => {
+    const cmd = await caller.commands.setOrAdd({
+      name: "evolve",
+      description: "Evolve the spec.",
+      argumentHint: "<section>",
+    });
+    expect(cmd?.name).toBe("evolve");
+    expect(saveSpy).toHaveBeenCalled();
+  });
+
+  it("remove evicts a command from the canonical store", async () => {
+    const res = await caller.commands.remove({ name: "evolve" });
+    expect(res).toEqual({ removed: "evolve" });
+  });
+});
+
+describe("hooksRouter", () => {
+  it("list returns the canonical hooks", async () => {
+    const hooks = await caller.hooks.list();
+    expect(hooks).toHaveLength(1);
+    expect(hooks[0].name).toBe("lint-on-write");
+  });
+
+  it("setOrAdd creates a new hook", async () => {
+    const hook = await caller.hooks.setOrAdd({
+      name: "fmt",
+      event: "PreToolUse",
+      matcher: "Edit",
+      command: "npm run format",
+    });
+    expect(hook?.name).toBe("fmt");
+    expect(hook?.description).toContain("PreToolUse");
+  });
+
+  it("remove evicts a hook", async () => {
+    const res = await caller.hooks.remove({ name: "fmt" });
+    expect(res).toEqual({ removed: "fmt" });
+  });
+});
+
+describe("settingsRouter", () => {
+  it("list returns the managed settings", async () => {
+    const entries = await caller.settings.list({});
+    expect(entries).toHaveLength(1);
+    expect(entries[0].keyPath).toBe("permissions.allow");
+  });
+
+  it("setOrAdd records a managed key", async () => {
+    const entry = await caller.settings.setOrAdd({
+      keyPath: "theme",
+      value: "dark",
+    });
+    expect(entry?.keyPath).toBe("theme");
+    expect(entry?.value).toBe("dark");
+  });
+
+  it("remove stops managing a key", async () => {
+    const res = await caller.settings.remove({ keyPath: "theme" });
+    expect(res).toEqual({ removed: "theme" });
   });
 });

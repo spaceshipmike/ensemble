@@ -96,6 +96,26 @@ import {
   uninstallSkill,
   unwireTool,
   wireTool,
+  // Agents (v2.0.1)
+  installAgent,
+  uninstallAgent,
+  enableAgent,
+  disableAgent,
+  // Commands (v2.0.1)
+  installCommand,
+  uninstallCommand,
+  enableCommand,
+  disableCommand,
+  // Hooks (v2.0.1 canonical hooks store)
+  addHook,
+  removeHook,
+  getHook,
+  listHooks,
+  // Managed settings (v2.0.1)
+  listManagedSettings,
+  getManagedSetting,
+  setManagedSetting,
+  unsetManagedSetting,
 } from "ensemble";
 import type {
   AdoptResult,
@@ -846,6 +866,234 @@ const browseRouter = router({
     }),
 });
 
+// --- Agents / Commands / Hooks / Settings sub-routers (v2.0.1 chunk 10) --
+
+const agentsRouter = router({
+  /** All agents in the canonical store. */
+  list: procedure.query(() => fresh().agents ?? []),
+
+  /** One agent by name. Throws when the name is not in the store. */
+  show: procedure
+    .input(z.object({ name: z.string() }))
+    .query(({ input }) => {
+      const agent = (fresh().agents ?? []).find((a) => a.name === input.name);
+      if (!agent) throw new Error(`Agent '${input.name}' not found.`);
+      return agent;
+    }),
+
+  /** Install or enable an agent. `install` here = "mark enabled on claude-code". */
+  setOrAdd: procedure
+    .input(
+      z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        tools: z.array(z.string()).optional(),
+        model: z.string().optional(),
+        path: z.string().optional(),
+      }),
+    )
+    .mutation(({ input }) => {
+      const config = fresh();
+      const exists = (config.agents ?? []).some((a) => a.name === input.name);
+      if (exists) {
+        const { config: next, result } = enableAgent(config, input.name);
+        if (!result.ok) throw new Error(result.error);
+        saveConfig(next);
+        return result.agent;
+      }
+      const { config: next, result } = installAgent(config, {
+        name: input.name,
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.tools !== undefined ? { tools: input.tools } : {}),
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(input.path !== undefined ? { path: input.path } : {}),
+      });
+      if (!result.ok) throw new Error(result.error);
+      saveConfig(next);
+      return result.agent;
+    }),
+
+  /** Remove an agent from the canonical store (disable + uninstall). */
+  remove: procedure
+    .input(z.object({ name: z.string() }))
+    .mutation(({ input }) => {
+      const config = fresh();
+      const { config: disabled } = disableAgent(config, input.name);
+      const { config: next, result } = uninstallAgent(disabled, input.name);
+      if (!result.ok) throw new Error(result.error);
+      saveConfig(next);
+      return { removed: input.name };
+    }),
+});
+
+const commandsRouter = router({
+  list: procedure.query(() => fresh().commands ?? []),
+
+  show: procedure
+    .input(z.object({ name: z.string() }))
+    .query(({ input }) => {
+      const cmd = (fresh().commands ?? []).find((c) => c.name === input.name);
+      if (!cmd) throw new Error(`Command '${input.name}' not found.`);
+      return cmd;
+    }),
+
+  setOrAdd: procedure
+    .input(
+      z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        allowedTools: z.array(z.string()).optional(),
+        argumentHint: z.string().optional(),
+        path: z.string().optional(),
+      }),
+    )
+    .mutation(({ input }) => {
+      const config = fresh();
+      const exists = (config.commands ?? []).some((c) => c.name === input.name);
+      if (exists) {
+        const { config: next, result } = enableCommand(config, input.name);
+        if (!result.ok) throw new Error(result.error);
+        saveConfig(next);
+        return result.command;
+      }
+      const { config: next, result } = installCommand(config, {
+        name: input.name,
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.allowedTools !== undefined ? { allowedTools: input.allowedTools } : {}),
+        ...(input.argumentHint !== undefined ? { argumentHint: input.argumentHint } : {}),
+        ...(input.path !== undefined ? { path: input.path } : {}),
+      });
+      if (!result.ok) throw new Error(result.error);
+      saveConfig(next);
+      return result.command;
+    }),
+
+  remove: procedure
+    .input(z.object({ name: z.string() }))
+    .mutation(({ input }) => {
+      const config = fresh();
+      const { config: disabled } = disableCommand(config, input.name);
+      const { config: next, result } = uninstallCommand(disabled, input.name);
+      if (!result.ok) throw new Error(result.error);
+      saveConfig(next);
+      return { removed: input.name };
+    }),
+});
+
+const hooksRouter = router({
+  /** Every hook in the canonical store. */
+  list: procedure.query(() => listHooks()),
+
+  /** One hook by name. Throws when the hook is not in the store. */
+  show: procedure
+    .input(z.object({ name: z.string() }))
+    .query(({ input }) => {
+      const hook = getHook(input.name);
+      if (!hook) throw new Error(`Hook '${input.name}' not found.`);
+      return hook;
+    }),
+
+  /** Create a new hook. Throws when a hook with the same name already exists. */
+  setOrAdd: procedure
+    .input(
+      z.object({
+        name: z.string(),
+        event: z.enum([
+          "PreToolUse",
+          "PostToolUse",
+          "SessionStart",
+          "UserPromptSubmit",
+          "PreCompact",
+          "Stop",
+          "Notification",
+        ]),
+        matcher: z.string(),
+        command: z.string(),
+        userNotes: z.string().optional(),
+      }),
+    )
+    .mutation(({ input }) => {
+      const result = addHook({
+        name: input.name,
+        event: input.event,
+        matcher: input.matcher,
+        command: input.command,
+        ...(input.userNotes !== undefined ? { userNotes: input.userNotes } : {}),
+      });
+      if (!result.ok) throw new Error(result.error);
+      return result.hook;
+    }),
+
+  /** Remove a hook from the canonical store. */
+  remove: procedure
+    .input(z.object({ name: z.string() }))
+    .mutation(({ input }) => {
+      const result = removeHook(input.name);
+      if (!result.ok) throw new Error(result.error);
+      return { removed: input.name };
+    }),
+});
+
+const settingsRouter = router({
+  /** Every managed setting across all clients (or filtered by client). */
+  list: procedure
+    .input(z.object({ clientId: z.string().optional() }).default({}))
+    .query(({ input }) => listManagedSettings(input.clientId)),
+
+  /** One managed setting. Throws when the key is not managed. */
+  show: procedure
+    .input(
+      z.object({
+        keyPath: z.string(),
+        clientId: z.string().optional(),
+      }),
+    )
+    .query(({ input }) => {
+      const entry = getManagedSetting(input.keyPath, input.clientId);
+      if (!entry) {
+        throw new Error(
+          `'${input.keyPath}' is not a managed setting for ${input.clientId ?? "claude-code"}.`,
+        );
+      }
+      return entry;
+    }),
+
+  /** Set or update a managed key. */
+  setOrAdd: procedure
+    .input(
+      z.object({
+        keyPath: z.string(),
+        value: z.unknown(),
+        clientId: z.string().optional(),
+        userNotes: z.string().optional(),
+      }),
+    )
+    .mutation(({ input }) => {
+      const result = setManagedSetting({
+        keyPath: input.keyPath,
+        value: input.value,
+        ...(input.clientId ? { clientId: input.clientId } : {}),
+        ...(input.userNotes !== undefined ? { userNotes: input.userNotes } : {}),
+      });
+      if (!result.ok) throw new Error(result.error);
+      return result.entry;
+    }),
+
+  /** Stop managing a key (value stays in settings.json). */
+  remove: procedure
+    .input(
+      z.object({
+        keyPath: z.string(),
+        clientId: z.string().optional(),
+      }),
+    )
+    .mutation(({ input }) => {
+      const result = unsetManagedSetting(input.keyPath, input.clientId);
+      if (!result.ok) throw new Error(result.error);
+      return { removed: input.keyPath };
+    }),
+});
+
 // --- Root -------------------------------------------------------------------
 
 export const appRouter = router({
@@ -867,6 +1115,10 @@ export const appRouter = router({
   notes: notesRouter,
   snapshots: snapshotsRouter,
   browse: browseRouter,
+  agents: agentsRouter,
+  commands: commandsRouter,
+  hooks: hooksRouter,
+  settings: settingsRouter,
 });
 
 export type AppRouter = typeof appRouter;
