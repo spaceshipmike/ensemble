@@ -1,9 +1,9 @@
 ```yaml
 title: Ensemble
-spec-version: 2.2.0
+spec-version: 2.3.0
 spec-format: nlspec-v2
 status: active
-date: 2026-04-17
+date: 2026-04-18
 author: Michael Lebowitz
 synopsis:
   short: "Claude Code extension platform — full lifecycle for MCP servers, skills, plugins, agents, commands, hooks, and settings; MCPs and skills additionally mirror across 16 other AI clients"
@@ -881,7 +881,7 @@ Features that go beyond CLI parity — interactions that only make sense in a GU
 
 The desktop app follows the portfolio's Electron scaffold: an end-to-end type-safe bridge between the React renderer and the Ensemble library, with full Electron sandboxing.
 
-1. **Main process** — Imports the Ensemble library directly (`import { loadConfig, saveConfig } from 'ensemble'`). Exposes every operation as a **tRPC procedure** on a single `appRouter`, organized into namespaced sub-routers (config, servers, skills, plugins, groups, clients, sync, doctor, registry, profiles, rules, library, projects, marketplaces, collisions, search, rules). Every procedure validates its input with a Zod schema and returns a typed result. `electron-trpc`'s `createIPCHandler` wires the router to the main window.
+1. **Main process** — Imports the Ensemble library directly (`import { loadConfig, saveConfig } from 'ensemble'`). Exposes every operation as a **tRPC procedure** on a single `appRouter`, organized into namespaced sub-routers (config, servers, groups, projects, library, clients, sync, plugins, marketplaces, skills, rules, profiles, collisions, search, doctor, notes). Every procedure validates its input with a Zod schema and returns a typed result. `electron-trpc`'s `createIPCHandler` wires the router to the main window.
 2. **Preload script** — Minimal: a single call to `exposeElectronTRPC()` from `electron-trpc/main`. The preload script is intentionally tiny and never contains business logic — it exists only to establish the tRPC bridge under `contextIsolation: true`.
 3. **Renderer process** — React components consume the typed tRPC client via `@trpc/react-query` hooks (`trpc.servers.add.useMutation()`, `trpc.doctor.run.useQuery()`, etc.). The renderer never uses `ipcRenderer` directly and never sees a `window.ensemble` global — all calls go through the tRPC client, which inherits its types from `AppRouter` at compile time.
 
@@ -2135,7 +2135,7 @@ ensemble/
 │   │   ├── projects.ts               # Cross-client project scanner (distinct from src/projects.ts SQLite reader)
 │   │   └── wire.ts                   # Wire operations — copies a discovered tool into a target scope, or removes a managed copy
 │   ├── index.ts                      # Public API surface — re-exports for library consumers
-│   └── # v2.0.1 targets (see Modules (v2.0.1 targets) below): agents.ts, commands.ts, hooks.ts, settings.ts, snapshots.ts, browse.ts, import-legacy.ts
+│   └── # v2.0.1 targets (see Modules (v2.0.1 targets) below): browse.ts, import-legacy.ts
 ├── src/cli/
 │   └── index.ts                      # Commander.js CLI — thin wrapper over operations
 ├── packages/
@@ -2159,14 +2159,13 @@ ensemble/
 │       │   │   │   ├── components/   # Shared UI components
 │       │   │   │   ├── hooks/        # React hooks wrapping tRPC queries/mutations
 │       │   │   │   ├── panels/       # Detail panels composed into views
-│       │   │   │   └── views/        # Section views (Servers, Skills, Plugins, Groups, …)
+│       │   │   │   └── views/        # Top-level views (Matrix, Doctor)
 │       │   │   └── index.html
 │       │   └── shared/               # Types shared across main/preload/renderer
 │       ├── e2e/                      # Playwright E2E tests
 │       │   └── *.spec.ts             # Autonomous UI tests
 │       ├── package.json              # Desktop-specific deps (electron, react, tailwind, playwright)
 │       ├── electron-builder.yml      # Build/packaging config
-│       ├── tailwind.config.ts
 │       ├── tsconfig.json
 │       └── electron.vite.config.ts   # Main/preload/renderer build config (electron-vite)
 ├── package.json                      # Root package.json with workspaces config
@@ -2184,13 +2183,18 @@ ensemble/
 | `clients.ts` | Client definitions (17 clients, including `skills_dir`), detection, config file read/write, CC settings helpers |
 | `operations.ts` | Pure business logic for all mutations — shared by CLI, desktop app, and library consumers |
 | `projects.ts` | Project registry reader — reads project-registry SQLite DB via better-sqlite3. Distinct from `src/discovery/projects.ts` (see discovery subsystem below). |
-| `sync.ts` | Sync engine — writes configs per client and runs the symlink fan-out for skills. Uses resolution helpers from `config.ts`. |
+| `sync.ts` | Sync engine — resolve + write configs per client, symlink fan-out for skills, non-destructive hook/settings merge, pre-sync snapshot creation, drift detection. Uses resolution helpers from `config.ts`. |
 | `skills.ts` | Skill store — SKILL.md frontmatter parsing, canonical store CRUD |
 | `search.ts` | Local capability search — BM25 scoring across servers and skills |
 | `registry.ts` | Registry adapter framework — search, show, install across extensible backends. Dynamic marketplace auto-discovery is a §Future deferral, not a current responsibility. |
 | `doctor.ts` | Deterministic health audit with structured scoring across 5 categories |
 | `secrets.ts` | Secret scanning — regex-based detection of hardcoded secrets in env values and skill content |
 | `usage.ts` | Usage tracking — records command/search usage for self-learning search scoring |
+| `hooks.ts` | Hook store — non-destructive `settings.json` merge under the `hooks` key, seven lifecycle events |
+| `settings.ts` | Declarative `settings.json` key management — non-destructive key-level merge preserving unmanaged keys |
+| `snapshots.ts` | Safe apply / rollback snapshots — pre-sync capture of every touched file, forward-restore semantics, retention |
+| `agents.ts` | Subagent store — `.claude/agents/*.md` frontmatter parsing (name, description, tools, optional model), canonical store CRUD, fan-out to client agents directories. Dual-field contract: source-owned `description` refreshes from frontmatter on re-pull; `userNotes` lives on the library entry and never round-trips into the `.md`. |
+| `commands.ts` | Slash command store — `.claude/commands/*.md` frontmatter parsing (description + optional allowed-tools, argument-hint), canonical store CRUD, fan-out to client commands directories. Same dual-field contract as agents. |
 | `setlist.ts` | Setlist capability integration — read-only interface to `@setlist/core` for portfolio capability awareness |
 | `init.ts` | Guided onboarding — `ensemble init` / `--auto` flow, client detection, server/skill import, group creation, initial sync |
 | `export.ts` | Profile-as-plugin packaging — exports a group as a self-contained Claude Code plugin directory (skills copied, not symlinked) |
@@ -2211,15 +2215,10 @@ The modules below are described in the spec as v2.0.1 targets. They do not exist
 
 | Module | Role (target) |
 |--------|---------------|
-| `agents.ts` | Subagent store — `.claude/agents/*.md` frontmatter parsing (name, description, tools, model), canonical store CRUD, fan-out to client agents directories. Implements the dual-field annotation model: source-owned `description` comes from frontmatter (refreshed on re-pull), `userNotes` is stored on the library entry and never touches the `.md` file. |
-| `commands.ts` | Slash command store — `.claude/commands/*.md` frontmatter parsing (description, allowed-tools, argument-hint), canonical store CRUD, fan-out to client commands directories. Same dual-field contract as agents: `description` from frontmatter, `userNotes` on the library entry, `userNotes` never round-trips into the `.md`. |
-| `hooks.ts` | Hook store — validation of the 7 lifecycle event types, non-destructive merge into client `settings.json` under the `hooks` key, `__ensemble` tagging for additive detection. Generates each hook's source-owned `description` from event + matcher (e.g. `"PostToolUse → Edit"`); this is the canonical description of what the hook is and is recomputed on every change to event or matcher. `userNotes` is where the user records *why* the hook exists, stored on the hook entry in the library manifest. |
-| `settings.ts` | Settings store — declarative management of individual `settings.json` keys with non-destructive key-level merge; per-client diff generation |
-| `snapshots.ts` | Safe apply / rollback snapshots — pre-write capture of every file Ensemble touches, restore operations, retention pruning |
 | `browse.ts` | TUI-grade discovery engine — fuzzy search across installed + discoverable resources, `@marketplace-name` filter parsing, Card/Slim render modes, drives both `ensemble browse` CLI and the desktop Registry page |
 | `import-legacy.ts` | **Throwaway.** One-shot v1.3 → v2.0.1 config translator backing `ensemble import-legacy`. Reads the current v1.3 `config.json` plus a live scan of every detected client's on-disk config, writes a v2.0.1-shaped library + install-state matrix, and backs up the original to `config.v1.bak.json`. Runs once on the user's machine during the v2.0.1 transition, then the file and its CLI subcommand are deleted in a follow-up commit. Explicitly not a permanent subsystem — see §Migration. |
 
-When any target module lands, move its row up into `### Modules (built)` and update the role string to present tense. The `sync.ts` row in the built table gains "hook/settings merge, snapshot creation" responsibilities at that time.
+When any remaining target module lands, move its row up into `### Modules (built)` with a present-tense role description.
 
 ## Design Principles
 

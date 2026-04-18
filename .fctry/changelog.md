@@ -1,3 +1,61 @@
+## 2026-04-18 — v1.1.0 release — v2.0.1 slim cut feature-complete
+
+Milestone 2 from the /fctry:execute chunks-4-7 build. External version bumped 1.0.14 → 1.1.0. Marks the feature-complete v2.0.1 slim cut: chunks 1–7 shipped snapshots + safe-apply, settings.json declarative merge, hooks store, agents store, commands store, doctor v2 additive checks, and the desktop snapshots inspector. Spec parity update folded in: §Architecture → Modules (built) now includes `agents.ts` + `commands.ts`; Modules (v2.0.1 targets) reduced to `browse.ts` + `import-legacy.ts`. CLAUDE.md built table gained the two rows; additive-sync rule widened to include agents, commands, hooks, and managed settings keys.
+
+---
+
+## 2026-04-18 — /fctry:review — 1 spec drift + 5 CLAUDE.md drift resolved
+
+Incremental review after today's architecture evolve. State Owner found one real spec drift (§Desktop App → IPC Architecture router inventory stale) and CLAUDE.md stale on two fronts: (a) yesterday's review claimed registry.ts + doctor.ts row fixes that never landed in the working tree, (b) today's evolve collapsed the target blocks but didn't add the promoted modules to CLAUDE.md's built table. User approved all recommendations at the inline action prompts. Spec version unchanged (2.3.0) — review is spec maintenance, not evolution.
+
+### Changes
+
+- **§Desktop App → IPC Architecture** `[modified]` — sub-router inventory sentence updated to match the shipped `appRouter`: added `notes`, removed phantom `registry`, de-duplicated `rules`. Final list: config, servers, groups, projects, library, clients, sync, plugins, marketplaces, skills, rules, profiles, collisions, search, doctor, notes. Target-status note at line 880 still covers the unbuilt target-router set.
+
+### CLAUDE.md
+
+- Added rows for `hooks.ts`, `settings.ts`, `snapshots.ts` in the built modules table — matches today's spec promotion.
+- Expanded `sync.ts` role: + "non-destructive hook/settings merge, pre-sync snapshot creation".
+- Removed stale "dynamic marketplace discovery" from `registry.ts` row (applied the yesterday-deferred edit).
+- Updated `doctor.ts` row: "5 categories" → "6 categories (adds `capability`)" (applied the yesterday-deferred edit; doctor.ts:26 lists 6 category values).
+- Reworded Project description (L5) to reflect hooks/settings as built rather than "v2.0.1 expands scope to"; called out the remaining three target modules (`agents.ts`, `commands.ts`, `browse.ts`) explicitly.
+
+### Synopsis
+
+Not regenerated. Review edits do not shift product stance.
+
+### Health at close
+
+Clean on covered sections. One caveat: if any future review or evolve again claims to edit CLAUDE.md, verify the edit actually landed — yesterday's changelog claimed two edits that never hit the working tree, which this review caught and applied.
+
+---
+
+## 2026-04-18 — /fctry:evolve §Architecture — promote built modules; collapse CLAUDE.md target blocks; tree nits
+
+Pure descriptive drift-cleanup evolve. Chunks 1–3 of the v2.0.1 slim cut landed overnight (`src/snapshots.ts`, `src/settings.ts`, `src/hooks.ts`); spec and CLAUDE.md both still described them as unbuilt. User selected "fold into this evolve" at the drift resolution prompt; Interviewer confirmed no new scope beyond the cleanup. Spec Writer executed mechanically. Spec version bumped 2.2.0 → 2.3.0 per auto-on-evolve rule.
+
+### Changes
+
+- **§Architecture → Modules (built)** `[modified]` — added rows for `hooks.ts`, `settings.ts`, `snapshots.ts` (promoted from the v2.0.1 target table with present-tense role descriptions). Placed in the operations-layer cluster alongside `secrets.ts` / `usage.ts` / `setlist.ts`.
+- **§Architecture → `sync.ts` row** `[modified]` — role expanded to include "non-destructive hook/settings merge, pre-sync snapshot creation, drift detection" per the spec's own promotion rule (sync.ts imports all three new modules and uses them in the sync path).
+- **§Architecture → Modules (v2.0.1 targets)** `[modified]` — removed `hooks.ts`, `settings.ts`, `snapshots.ts` rows. Table now holds four unbuilt targets: `agents.ts`, `commands.ts`, `browse.ts`, `import-legacy.ts`.
+- **§Architecture → closing paragraph** `[modified]` — shortened to a single forward-looking sentence ("When any remaining target module lands, move its row up …"). The now-fired sync.ts promotion note dropped.
+- **§Architecture → ASCII tree** `[modified]` — (a) inline targets comment updated to list only the four remaining unbuilt targets; (b) `views/` example comment corrected to `Top-level views (Matrix, Doctor)` matching the actual Matrix-centric UI; (c) phantom `tailwind.config.ts` line removed (Tailwind v4 uses the Vite plugin).
+
+### CLAUDE.md
+
+- Both v2.0.1 blocks collapsed to a single pointer line after the built modules table: `**v2.0.1 targets:** See .fctry/spec.md §Architecture → Modules (v2.0.1 targets) …`. This closes a follow-up that was queued but never ran from the 2026-04-17 evolve; it was doubly out-of-date because it still claimed `hooks.ts`/`settings.ts`/`snapshots.ts` don't exist.
+
+### Synopsis
+
+Not regenerated. No goals/patterns/tech-stack changes — the three promoted modules were already enumerated in `goals` (hook lifecycle management, declarative settings.json management, safe apply with rollback snapshots) as v2.0.1 ambitions.
+
+### Scenarios
+
+Unchanged. Scenario Crafter confirmed all four drift items are documentary — no user-observable behavior change.
+
+---
+
 ## 2026-04-18 — /fctry:review — 4 drift items resolved; health 94/100 → clean
 
 Full-spec review. State Owner found 7 spec-ahead / 2 code-ahead / 1 diverged item; 5 were already covered by §Architecture's freshly-added v2.0.1 target annotation. User approved all four recommendations at the inline action prompts. Spec version unchanged (2.2.0) — review is spec maintenance, not evolution.
