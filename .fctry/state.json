@@ -47,14 +47,17 @@
       {
         "id": 6,
         "name": "doctor v2 additive checks",
-        "status": "planned",
+        "status": "completed",
         "scope": "4 additive checks: orphan snapshots, snapshot-dir size, agents/commands drift, retention config visibility",
         "specRefs": ["#doctor (doctor.ts module role L2190)"],
         "scenarios": [],
         "deps": [4, 5],
         "size": "S",
         "commitSeed": "chunk 6: doctor v2 additive checks (v2.0.1)",
-        "assumptions": ["500 MB default snapshot-dir size warn threshold"]
+        "assumptions": ["500 MB default snapshot-dir size warn threshold"],
+        "startedAt": "2026-04-18T11:45:00Z",
+        "completedAt": "2026-04-18T11:55:00Z",
+        "specVersionAtBuild": "2.3.0"
       },
       {
         "id": 7,
@@ -70,10 +73,10 @@
       }
     ],
     "chunkProgress": {
-      "completed": 2,
+      "completed": 3,
       "total": 4
     },
-    "lastCheckpoint": "2026-04-18T11:40:00Z",
+    "lastCheckpoint": "2026-04-18T11:55:00Z",
     "priorities": {
       "reliability": "high",
       "speed": "medium",

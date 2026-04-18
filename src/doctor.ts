@@ -5,8 +5,10 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, lstatSync, readlinkSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { toFanoutContent as agentFanoutContent, readAgentMd } from "./agents.js";
 import {
 	CLIENTS,
 	expandPath,
@@ -14,10 +16,12 @@ import {
 	readClientConfig,
 	resolvedPaths,
 } from "./clients.js";
-import { computeEntryHash, SKILLS_DIR } from "./config.js";
+import { toFanoutContent as commandFanoutContent, readCommandMd } from "./commands.js";
+import { SKILLS_DIR, computeEntryHash, resolveAgents, resolveCommands } from "./config.js";
+import type { EnsembleConfig } from "./schemas.js";
 import { scanSecrets } from "./secrets.js";
 import { getMcpCapabilities } from "./setlist.js";
-import type { EnsembleConfig } from "./schemas.js";
+import * as snapshots from "./snapshots.js";
 
 // --- Types ---
 
@@ -753,6 +757,246 @@ function checkDescriptionsRefreshed(config: EnsembleConfig): DoctorCheck[] {
 	}));
 }
 
+// --- v2.0.1 additive checks (#doctor) ---
+
+/**
+ * Orphan snapshots: a snapshot's manifest lists a file path that no longer
+ * exists AND no surviving library entry would re-create it on next sync.
+ * Surfaces snapshots that can be pruned without cost.
+ *
+ * Conservative: we only flag a snapshot as orphaned when ALL captured paths
+ * are orphans (no file on disk, no library entry). Partial orphans are noise.
+ */
+function checkOrphanSnapshots(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	let all: ReturnType<typeof snapshots.list>;
+	try {
+		all = snapshots.list();
+	} catch {
+		return checks;
+	}
+	if (all.length === 0) return checks;
+
+	// Build the set of paths a future sync MIGHT write. We can't enumerate
+	// every client perfectly, but we can detect the common case where a
+	// snapshot references names no longer in the library.
+	const liveAgentNames = new Set((config.agents ?? []).map((a) => a.name));
+	const liveCommandNames = new Set((config.commands ?? []).map((c) => c.name));
+	const liveSkillNames = new Set(config.skills.map((s) => s.name));
+
+	function isOrphanPath(path: string): boolean {
+		if (existsSync(path)) return false;
+		// Try to match against known library entries by basename segments.
+		const segments = path.split("/");
+		const fileName = segments[segments.length - 1] ?? "";
+		const baseName = fileName.endsWith(".md") ? fileName.slice(0, -3) : fileName;
+		if (path.includes("/.claude/agents/") && liveAgentNames.has(baseName)) return false;
+		if (path.includes("/.claude/commands/") && liveCommandNames.has(baseName)) return false;
+		if (path.includes("/skills/") && liveSkillNames.has(baseName)) return false;
+		return true;
+	}
+
+	let orphanCount = 0;
+	for (const snap of all) {
+		if (snap.files.length === 0) continue;
+		const allOrphan = snap.files.every((f) => isOrphanPath(f.path));
+		if (allOrphan) {
+			orphanCount++;
+			checks.push({
+				id: "orphan-snapshot",
+				category: "freshness",
+				maxPoints: 2,
+				earnedPoints: 1,
+				severity: "info",
+				message: `Snapshot '${snap.id}' captures only paths whose library entries are gone (candidate for pruning).`,
+				fix: { command: `ensemble rollback --prune`, description: "Prune orphan snapshots" },
+			});
+		}
+	}
+	if (orphanCount === 0 && all.length > 0) {
+		checks.push({
+			id: "orphan-snapshot",
+			category: "freshness",
+			maxPoints: 2,
+			earnedPoints: 2,
+			severity: "info",
+			message: `No orphan snapshots detected (${all.length} snapshot${all.length === 1 ? "" : "s"} on disk).`,
+		});
+	}
+	return checks;
+}
+
+/**
+ * Snapshot-dir size check: warn when the snapshots root exceeds the
+ * configured `snapshot_dir_size_warn_mb` threshold. Default 500 MB.
+ * 0 disables the check.
+ */
+function checkSnapshotDirSize(config: EnsembleConfig): DoctorCheck[] {
+	const thresholdMb = config.settings.snapshot_dir_size_warn_mb ?? 500;
+	if (thresholdMb <= 0) return [];
+	const root = snapshots.snapshotsRoot();
+	if (!existsSync(root)) return [];
+
+	function dirSize(dir: string): number {
+		let total = 0;
+		try {
+			for (const entry of readdirSync(dir, { withFileTypes: true })) {
+				const full = join(dir, entry.name);
+				try {
+					if (entry.isDirectory()) {
+						total += dirSize(full);
+					} else if (entry.isFile()) {
+						total += statSync(full).size;
+					}
+				} catch {
+					/* ignore per-entry errors */
+				}
+			}
+		} catch {
+			/* ignore */
+		}
+		return total;
+	}
+
+	const totalBytes = dirSize(root);
+	const totalMb = Math.round(totalBytes / (1024 * 1024));
+	if (totalMb >= thresholdMb) {
+		return [
+			{
+				id: "snapshot-dir-size",
+				category: "freshness",
+				maxPoints: 3,
+				earnedPoints: 1,
+				severity: "warning",
+				message: `Snapshot directory is ${totalMb} MB (threshold ${thresholdMb} MB). Consider shortening snapshot_retention_days or running 'ensemble rollback --prune'.`,
+			},
+		];
+	}
+	return [
+		{
+			id: "snapshot-dir-size",
+			category: "freshness",
+			maxPoints: 3,
+			earnedPoints: 3,
+			severity: "info",
+			message: `Snapshot directory ${totalMb} MB / ${thresholdMb} MB warn threshold.`,
+		},
+	];
+}
+
+/**
+ * Agents + commands drift: compare each library entry's expected fan-out
+ * content to the on-disk fan-out file for every client with the relevant
+ * directory configured. A mismatch on a file carrying the __ensemble marker
+ * means someone edited the fan-out copy directly (drift) — surface it so
+ * the user can decide to re-sync or adopt the edit.
+ */
+function hashString(s: string): string {
+	return createHash("sha256").update(s).digest("hex");
+}
+
+function checkAgentsCommandsDrift(config: EnsembleConfig): DoctorCheck[] {
+	const checks: DoctorCheck[] = [];
+	const managedMarker = /^---[\s\S]*?__ensemble:\s*true[\s\S]*?---/m;
+	let agentsChecked = 0;
+	let commandsChecked = 0;
+	let driftCount = 0;
+
+	for (const client of Object.values(CLIENTS)) {
+		if (client.agentsDir) {
+			const dir = expandPath(client.agentsDir);
+			for (const a of resolveAgents(config, client.id)) {
+				const target = join(dir, `${a.name}.md`);
+				if (!existsSync(target)) continue;
+				let current: string;
+				try {
+					current = readFileSync(target, "utf-8");
+				} catch {
+					continue;
+				}
+				if (!managedMarker.test(current)) continue;
+				agentsChecked++;
+				const canonical = readAgentMd(a.name);
+				const body = canonical?.body ?? "";
+				const expected = agentFanoutContent(a, body);
+				if (hashString(current) !== hashString(expected)) {
+					driftCount++;
+					checks.push({
+						id: "agent-drift",
+						category: "parity",
+						maxPoints: 3,
+						earnedPoints: 0,
+						severity: "warning",
+						message: `Agent '${a.name}' fan-out in ${client.name} drifted from library. Run 'ensemble sync ${client.id}' to re-fan-out.`,
+					});
+				}
+			}
+		}
+		if (client.commandsDir) {
+			const dir = expandPath(client.commandsDir);
+			for (const c of resolveCommands(config, client.id)) {
+				const target = join(dir, `${c.name}.md`);
+				if (!existsSync(target)) continue;
+				let current: string;
+				try {
+					current = readFileSync(target, "utf-8");
+				} catch {
+					continue;
+				}
+				if (!managedMarker.test(current)) continue;
+				commandsChecked++;
+				const canonical = readCommandMd(c.name);
+				const body = canonical?.body ?? "";
+				const expected = commandFanoutContent(c, body);
+				if (hashString(current) !== hashString(expected)) {
+					driftCount++;
+					checks.push({
+						id: "command-drift",
+						category: "parity",
+						maxPoints: 3,
+						earnedPoints: 0,
+						severity: "warning",
+						message: `Command '${c.name}' fan-out in ${client.name} drifted from library. Run 'ensemble sync ${client.id}' to re-fan-out.`,
+					});
+				}
+			}
+		}
+	}
+	if (driftCount === 0 && agentsChecked + commandsChecked > 0) {
+		checks.push({
+			id: "agents-commands-drift",
+			category: "parity",
+			maxPoints: 3,
+			earnedPoints: 3,
+			severity: "info",
+			message: `${agentsChecked} agent fan-out(s) and ${commandsChecked} command fan-out(s) match the library.`,
+		});
+	}
+	return checks;
+}
+
+/**
+ * Retention config visibility: surface the current snapshot_retention_days
+ * and snapshot_dir_size_warn_mb values so the user doesn't have to grep the
+ * config file to know the pruning policy.
+ */
+function checkRetentionConfigVisibility(config: EnsembleConfig): DoctorCheck[] {
+	const days = config.settings.snapshot_retention_days;
+	const mb = config.settings.snapshot_dir_size_warn_mb ?? 500;
+	const daysLabel = days === 0 ? "pruning disabled" : `${days} day${days === 1 ? "" : "s"}`;
+	const mbLabel = mb === 0 ? "size warn disabled" : `warn at ${mb} MB`;
+	return [
+		{
+			id: "snapshot-retention-config",
+			category: "freshness",
+			maxPoints: 1,
+			earnedPoints: 1,
+			severity: "info",
+			message: `Snapshot retention: ${daysLabel}; ${mbLabel}.`,
+		},
+	];
+}
+
 // --- Main doctor function ---
 
 export function runDoctor(config: EnsembleConfig): DoctorResult {
@@ -777,6 +1021,11 @@ export function runDoctor(config: EnsembleConfig): DoctorResult {
 		...checkCapabilityGaps(config),
 		...checkSkillsSummary(config),
 		...checkDescriptionsRefreshed(config),
+		// v2.0.1 additive checks
+		...checkOrphanSnapshots(config),
+		...checkSnapshotDirSize(config),
+		...checkAgentsCommandsDrift(config),
+		...checkRetentionConfigVisibility(config),
 	];
 
 	// Calculate scores using additive model (matching Python)

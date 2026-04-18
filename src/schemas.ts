@@ -197,6 +197,10 @@ export const SettingsSchema = z.object({
 	// v2.0.1 safe-apply: how many days of snapshots to keep before pruning.
 	// 0 disables pruning.
 	snapshot_retention_days: z.number().int().min(0).default(30),
+	// v2.0.1 doctor: the size (in MB) at which doctor warns that the snapshot
+	// dir has grown unreasonably. Nudges the user toward a retention sweep.
+	// Default 500 MB; 0 disables the check.
+	snapshot_dir_size_warn_mb: z.number().int().min(0).default(500),
 });
 
 // --- Hook schema (v2.0.1 canonical hooks store) ---
