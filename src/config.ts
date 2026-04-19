@@ -150,12 +150,14 @@ export function matchRule(config: EnsembleConfig, projectPath: string): Ensemble
 export function isActiveForClient(
 	resource: { installState?: Record<string, { installed: boolean; projects: string[] }>; enabled?: boolean },
 	clientId: string,
+	projectPath?: string,
 ): boolean {
 	const matrix = resource.installState;
 	if (matrix && Object.keys(matrix).length > 0) {
 		const record = matrix[clientId];
 		if (!record) return false;
-		return record.installed || record.projects.length > 0;
+		if (projectPath) return record.installed || record.projects.includes(projectPath);
+		return record.installed;
 	}
 	return resource.enabled !== false;
 }

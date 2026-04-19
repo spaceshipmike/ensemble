@@ -69,16 +69,35 @@ export interface ImportLegacySummary {
 
 // --- Pure translator core ---
 
+/** Raw server entry as it appears in a client's on-disk config. */
+export type RawServerEntry = Record<string, unknown>;
+
 export interface ClientSnapshot {
 	clientId: string;
-	/** managed servers from this client's config, by server name. */
-	managedServers: Set<string>;
-	/** project-scope managed servers, by project path -> set of server names. */
-	projectManagedServers: Map<string, Set<string>>;
+	/** managed servers from this client's user-scope config, by server name -> raw disk entry. */
+	managedServers: Map<string, RawServerEntry>;
+	/** project-scope managed servers: projectPath -> name -> raw disk entry. */
+	projectManagedServers: Map<string, Map<string, RawServerEntry>>;
 	/** user-scope plugin qualified names (name@marketplace). */
 	userPlugins: Map<string, boolean>;
 	/** project-scope plugins: projectPath -> qname -> enabled. */
 	projectPlugins: Map<string, Map<string, boolean>>;
+}
+
+/**
+ * Shape a raw disk server entry into the fields ServerSchema understands.
+ * Unknown fields fall through as zod schema defaults.
+ */
+function serverFieldsFromEntry(entry: RawServerEntry): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	if (typeof entry.command === "string") out.command = entry.command;
+	if (Array.isArray(entry.args)) out.args = entry.args;
+	if (entry.env && typeof entry.env === "object" && !Array.isArray(entry.env)) out.env = entry.env;
+	if (typeof entry.transport === "string") out.transport = entry.transport;
+	if (typeof entry.url === "string") out.url = entry.url;
+	if (typeof entry.auth_type === "string") out.auth_type = entry.auth_type;
+	if (typeof entry.auth_ref === "string") out.auth_ref = entry.auth_ref;
+	return out;
 }
 
 /**
@@ -110,14 +129,18 @@ export function translateConfig(
 
 	for (const snap of snapshots) {
 		// user-scope: anything the ensemble marker identifies on this client
-		for (const name of snap.managedServers) {
+		for (const [name, entry] of snap.managedServers) {
 			let server = serverByName.get(name);
 			if (!server) {
-				// Disk has this server; v1.3 registry doesn't. Add to library and
-				// mark it installed on the client where it was found — the disk
-				// state is the ground truth for a discovered-from-disk resource.
+				// Disk has this server; v1.3 registry doesn't. Add to library with
+				// the on-disk command/args/env/transport preserved so a later sync
+				// can round-trip the entry without losing its real configuration.
 				server = EnsembleConfigSchema.parse({
-					servers: [{ name, origin: { source: "import", client: snap.clientId, timestamp: new Date().toISOString() } }],
+					servers: [{
+						name,
+						...serverFieldsFromEntry(entry),
+						origin: { source: "import", client: snap.clientId, timestamp: new Date().toISOString() },
+					}],
 				}).servers[0]!;
 				servers.push(server);
 				serverByName.set(name, server);
@@ -126,12 +149,16 @@ export function translateConfig(
 			server.installState[snap.clientId] = { installed: true, projects: current.projects };
 		}
 		// project-scope
-		for (const [projPath, names] of snap.projectManagedServers) {
-			for (const name of names) {
+		for (const [projPath, entries] of snap.projectManagedServers) {
+			for (const [name, entry] of entries) {
 				let server = serverByName.get(name);
 				if (!server) {
 					server = EnsembleConfigSchema.parse({
-						servers: [{ name, origin: { source: "import", client: `${snap.clientId}:${projPath}`, timestamp: new Date().toISOString() } }],
+						servers: [{
+							name,
+							...serverFieldsFromEntry(entry),
+							origin: { source: "import", client: `${snap.clientId}:${projPath}`, timestamp: new Date().toISOString() },
+						}],
 					}).servers[0]!;
 					servers.push(server);
 					serverByName.set(name, server);
@@ -229,13 +256,13 @@ export function translateConfig(
 		skills: [],
 	};
 	for (const snap of snapshots) {
-		for (const name of snap.managedServers) {
+		for (const name of snap.managedServers.keys()) {
 			if (!base.servers.some((s) => s.name === name)) {
 				discoveredFromDisk.servers.push({ name, client: snap.clientId });
 			}
 		}
-		for (const [projPath, names] of snap.projectManagedServers) {
-			for (const name of names) {
+		for (const [projPath, entries] of snap.projectManagedServers) {
+			for (const name of entries.keys()) {
 				if (!base.servers.some((s) => s.name === name)) {
 					discoveredFromDisk.servers.push({ name, client: snap.clientId, project: projPath });
 				}
@@ -260,8 +287,10 @@ export function translateConfig(
 	// Registry-only: things the v1.3 registry lists but disk doesn't.
 	const seenServerNames = new Set<string>();
 	for (const snap of snapshots) {
-		for (const n of snap.managedServers) seenServerNames.add(n);
-		for (const [, names] of snap.projectManagedServers) for (const n of names) seenServerNames.add(n);
+		for (const n of snap.managedServers.keys()) seenServerNames.add(n);
+		for (const [, entries] of snap.projectManagedServers) {
+			for (const n of entries.keys()) seenServerNames.add(n);
+		}
 	}
 	const seenPluginIds = new Set<string>();
 	for (const d of discoveredPlugins) {
@@ -302,8 +331,8 @@ export function translateConfig(
  * intentionally ignored — they aren't ours to attribute.
  */
 export function snapshotClient(clientDef: ClientDef): ClientSnapshot {
-	const managed = new Set<string>();
-	const projectManaged = new Map<string, Set<string>>();
+	const managed = new Map<string, RawServerEntry>();
+	const projectManaged = new Map<string, Map<string, RawServerEntry>>();
 	const userPlugins = new Map<string, boolean>();
 	const projectPlugins = new Map<string, Map<string, boolean>>();
 
@@ -313,7 +342,7 @@ export function snapshotClient(clientDef: ClientDef): ClientSnapshot {
 		const serversBlock = getNested(raw, clientDef.serversKey);
 		if (serversBlock && typeof serversBlock === "object") {
 			for (const [name, entry] of Object.entries(serversBlock as Record<string, unknown>)) {
-				if (isManagedEntry(entry)) managed.add(name);
+				if (isManagedEntry(entry)) managed.set(name, entry as RawServerEntry);
 			}
 		}
 		// Claude Code — project-scope servers + plugins
@@ -324,11 +353,11 @@ export function snapshotClient(clientDef: ClientDef): ClientSnapshot {
 					if (!projData || typeof projData !== "object") continue;
 					const servers = (projData as Record<string, unknown>)["mcpServers"];
 					if (servers && typeof servers === "object") {
-						const names = projectManaged.get(projPath) ?? new Set<string>();
+						const entries = projectManaged.get(projPath) ?? new Map<string, RawServerEntry>();
 						for (const [sname, entry] of Object.entries(servers as Record<string, unknown>)) {
-							if (isManagedEntry(entry)) names.add(sname);
+							if (isManagedEntry(entry)) entries.set(sname, entry as RawServerEntry);
 						}
-						if (names.size > 0) projectManaged.set(projPath, names);
+						if (entries.size > 0) projectManaged.set(projPath, entries);
 					}
 				}
 			}

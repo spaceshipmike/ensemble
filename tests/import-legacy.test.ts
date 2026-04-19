@@ -79,14 +79,14 @@ describe("translateConfig — pure translator", () => {
 		const snapshots: ClientSnapshot[] = [
 			{
 				clientId: "cursor",
-				managedServers: new Set(["a", "b"]),
+				managedServers: new Map([["a", { command: "npx" }], ["b", { command: "npx" }]]),
 				projectManagedServers: new Map(),
 				userPlugins: new Map(),
 				projectPlugins: new Map(),
 			},
 			{
 				clientId: "claude-desktop",
-				managedServers: new Set(["a"]),
+				managedServers: new Map([["a", { command: "npx" }]]),
 				projectManagedServers: new Map(),
 				userPlugins: new Map(),
 				projectPlugins: new Map(),
@@ -109,14 +109,14 @@ describe("translateConfig — pure translator", () => {
 		const snapshots: ClientSnapshot[] = [
 			{
 				clientId: "cursor",
-				managedServers: new Set(["ctx", "pg"]),
+				managedServers: new Map([["ctx", { command: "npx" }], ["pg", { command: "npx" }]]),
 				projectManagedServers: new Map(),
 				userPlugins: new Map(),
 				projectPlugins: new Map(),
 			},
 			{
 				clientId: "claude-desktop",
-				managedServers: new Set(["ctx"]),
+				managedServers: new Map([["ctx", { command: "npx" }]]),
 				projectManagedServers: new Map(),
 				userPlugins: new Map(),
 				projectPlugins: new Map(),
@@ -139,10 +139,10 @@ describe("translateConfig — pure translator", () => {
 		const snapshots: ClientSnapshot[] = [
 			{
 				clientId: "claude-code",
-				managedServers: new Set(["pg"]),
+				managedServers: new Map([["pg", { command: "npx" }]]),
 				projectManagedServers: new Map([
-					["/Users/me/Code/app", new Set(["pg"])],
-					["/Users/me/Code/other", new Set(["pg"])],
+					["/Users/me/Code/app", new Map([["pg", { command: "npx" }]])],
+					["/Users/me/Code/other", new Map([["pg", { command: "npx" }]])],
 				]),
 				userPlugins: new Map(),
 				projectPlugins: new Map(),
@@ -162,7 +162,7 @@ describe("translateConfig — pure translator", () => {
 		const snapshots: ClientSnapshot[] = [
 			{
 				clientId: "cursor",
-				managedServers: new Set(["ghost-server"]),
+				managedServers: new Map([["ghost-server", { command: "npx" }]]),
 				projectManagedServers: new Map(),
 				userPlugins: new Map(),
 				projectPlugins: new Map(),
@@ -177,6 +177,63 @@ describe("translateConfig — pure translator", () => {
 		expect(next.servers[0]!.installState["cursor"]?.installed).toBe(true);
 	});
 
+	it("disk-only servers preserve command/args/env/transport from the disk entry (no data loss)", () => {
+		const v13 = EnsembleConfigSchema.parse({ servers: [] });
+		const snapshots: ClientSnapshot[] = [
+			{
+				clientId: "cursor",
+				managedServers: new Map([
+					[
+						"context7",
+						{
+							command: "npx",
+							args: ["-y", "@upstash/context7-mcp"],
+							env: { NODE_ENV: "production" },
+							transport: "stdio",
+							__ensemble: true,
+						},
+					],
+				]),
+				projectManagedServers: new Map(),
+				userPlugins: new Map(),
+				projectPlugins: new Map(),
+			},
+		];
+		const { next } = translateConfig(v13, snapshots, [], []);
+		const context7 = next.servers.find((s) => s.name === "context7")!;
+		expect(context7.command).toBe("npx");
+		expect(context7.args).toEqual(["-y", "@upstash/context7-mcp"]);
+		expect(context7.env).toEqual({ NODE_ENV: "production" });
+		expect(context7.transport).toBe("stdio");
+	});
+
+	it("project-scope disk-only server preserves command/args from that project's entry", () => {
+		const v13 = EnsembleConfigSchema.parse({ servers: [] });
+		const snapshots: ClientSnapshot[] = [
+			{
+				clientId: "claude-code",
+				managedServers: new Map(),
+				projectManagedServers: new Map([
+					[
+						"/Users/me/Code/app",
+						new Map([
+							[
+								"codebase-memory",
+								{ command: "/usr/local/bin/codebase-memory-mcp", args: [], env: {} },
+							],
+						]),
+					],
+				]),
+				userPlugins: new Map(),
+				projectPlugins: new Map(),
+			},
+		];
+		const { next } = translateConfig(v13, snapshots, [], []);
+		const cm = next.servers.find((s) => s.name === "codebase-memory")!;
+		expect(cm.command).toBe("/usr/local/bin/codebase-memory-mcp");
+		expect(cm.installState["claude-code"]?.projects).toEqual(["/Users/me/Code/app"]);
+	});
+
 	it("registry-only servers keep an empty install matrix (conservative drop-nothing)", () => {
 		const v13 = EnsembleConfigSchema.parse({
 			servers: [{ name: "ctx", command: "npx" }, { name: "deleted-from-disk", command: "npx" }],
@@ -184,7 +241,7 @@ describe("translateConfig — pure translator", () => {
 		const snapshots: ClientSnapshot[] = [
 			{
 				clientId: "cursor",
-				managedServers: new Set(["ctx"]),
+				managedServers: new Map([["ctx", { command: "npx" }]]),
 				projectManagedServers: new Map(),
 				userPlugins: new Map(),
 				projectPlugins: new Map(),
@@ -372,6 +429,8 @@ describe("snapshotClient — disk scan honours the __ensemble marker", () => {
 		// Hand-roll a client def with configPath pointing at our temp file.
 		const clientDef = { ...CLIENTS["cursor"]!, configPath: fakeCursorPath };
 		const snap = snapshotClient(clientDef);
-		expect([...snap.managedServers].sort()).toEqual(["ensemble-one", "ensemble-two"]);
+		expect([...snap.managedServers.keys()].sort()).toEqual(["ensemble-one", "ensemble-two"]);
+		// The raw disk entry is preserved verbatim so the translator can restore command/args/env.
+		expect(snap.managedServers.get("ensemble-one")).toMatchObject({ command: "npx" });
 	});
 });

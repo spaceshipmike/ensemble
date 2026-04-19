@@ -208,7 +208,7 @@ describe("v2.0.1 read path: installState matrix takes precedence over enabled", 
 		expect(resolvePlugins(config, "cursor").length).toBe(0);
 	});
 
-	it("project-scope install without user-scope still resolves at user scope as false", () => {
+	it("project-scope install does not leak into user-scope resolution", () => {
 		let config = createConfig();
 		({ config } = addToLibrary(config, { name: "pg", type: "server", command: "npx" }));
 		({ config } = installResource(config, {
@@ -218,11 +218,13 @@ describe("v2.0.1 read path: installState matrix takes precedence over enabled", 
 			project: "/Users/me/Code/myapp",
 		}));
 
-		// isActiveForClient returns true because installState has any entry for claude-code
-		// (project-scope install counts as "active for this client" at the resolve layer;
-		// user-scope vs. project-scope is a later sync-writer concern).
-		expect(isActiveForClient(config.servers[0]!, "claude-code")).toBe(true);
-		// But cursor — no entry — returns false.
+		// Without a projectPath, isActiveForClient is user-scope — project-only install returns false.
+		expect(isActiveForClient(config.servers[0]!, "claude-code")).toBe(false);
+		// With the matching projectPath, the same resource is active.
+		expect(isActiveForClient(config.servers[0]!, "claude-code", "/Users/me/Code/myapp")).toBe(true);
+		// A non-matching projectPath stays false.
+		expect(isActiveForClient(config.servers[0]!, "claude-code", "/Users/me/Code/other")).toBe(false);
+		// Cursor has no matrix entry at all.
 		expect(isActiveForClient(config.servers[0]!, "cursor")).toBe(false);
 	});
 
