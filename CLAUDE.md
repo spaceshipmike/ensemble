@@ -6,7 +6,7 @@ Ensemble — Library, CLI, TUI, and desktop app for centrally managing Claude Co
 
 ## Tech Stack
 
-- TypeScript, Node 20+, npm (workspaces monorepo)
+- TypeScript, Node 24+, npm (workspaces monorepo)
 - CLI: Commander.js (`ensemble` / `ens`)
 - Desktop: Electron + React + Tailwind CSS v4 (packages/desktop/), scaffold-compliant (sandboxed, tRPC bridge, minimal preload)
 - Desktop IPC: `electron-trpc` 0.7 + `@trpc/server`/`@trpc/client`/`@trpc/react-query` **pinned to ^10.45** and `@tanstack/react-query` pinned to ^4.36. Do not bump any of these independently — electron-trpc 0.7 is not compatible with tRPC v11, and tRPC v10 requires react-query v4. Bumping any one of the four breaks the stack until electron-trpc ships a v11 release.
