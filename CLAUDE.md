@@ -70,5 +70,5 @@ import { syncClient } from 'ensemble/sync';
 2. **Run tests before committing.** All tests must pass: `npm test`
 3. **Additive sync only.** Never delete servers, plugins, skills, agents, commands, hooks, or managed settings keys the user didn't create via Ensemble. The `__ensemble` marker (or `ensemble: managed` frontmatter on markdown resources) identifies managed entries.
 4. **Secrets stay in 1Password.** Env values may contain `op://` references — store them as-is, never resolve.
-5. **Always update docs with functionality changes.** Update `COMMANDS.md` and `.fctry/changelog.md`.
+5. **Always update docs with functionality changes.** Update `COMMANDS.md`.
 6. **Type check.** `npx tsc --noEmit` must pass.
